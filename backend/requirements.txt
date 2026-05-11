@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+httpx
+rdflib
+python-dotenv
+pytest
+pytest-asyncio

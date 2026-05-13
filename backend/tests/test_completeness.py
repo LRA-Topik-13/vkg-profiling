@@ -27,6 +27,17 @@ def test_mapping_coverage_uses_ontology_and_obda_metadata():
     assert 0 <= data["overall_coverage"] <= 100
 
 
+def test_filter_clause_accepts_prefixed_facet_values():
+    clause = completeness_router.build_filter_clause(
+        "isGivenAt",
+        ":uni3/university",
+        "Course",
+    )
+
+    assert "<http://example.org/voc#isGivenAt>" in clause
+    assert "<http://example.org/voc#uni3/university>" in clause
+
+
 @pytest.mark.asyncio
 async def test_property_completeness_uses_metadata_property_uri(monkeypatch):
     async def fake_execute_sparql(query: str):

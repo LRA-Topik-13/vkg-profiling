@@ -74,9 +74,12 @@ def build_filter_clause(
         return ""
     prop_uri = resolve_property_uri(filter_property, class_name)
     if filter_value.startswith("http"):
-        value_str = f"<{filter_value}>"
+        value_uri = filter_value
+    elif filter_value.startswith(":"):
+        value_uri = f"{VOC_BASE}{filter_value[1:]}"
     else:
-        value_str = f"<{VOC_BASE}{filter_value}>"
+        value_uri = f"{VOC_BASE}{filter_value}"
+    value_str = f"<{value_uri}>"
     return f"?entity <{prop_uri}> {value_str} ."
 
 

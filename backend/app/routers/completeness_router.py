@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from fastapi import APIRouter, Query, HTTPException
 from typing import Optional
 from app.dependencies import execute_sparql
@@ -17,6 +18,212 @@ PREFIXES = """
 
 VOC_BASE = "http://example.org/voc#"
 FOAF_BASE = "http://xmlns.com/foaf/0.1/"
+MAX_PAGE_LIMIT = 500
+DEFAULT_PAGE_LIMIT = 100
+_LOCAL_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
+_LOCAL_URI_PART_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_./-]*$")
+_HTTP_URI_RE = re.compile(r"^https?://[^\s<>{}|^`\"]+$")
+
+
+def _validate_http_uri(uri: str, label: str = "URI") -> str:
+    if not _HTTP_URI_RE.match(uri):
+        raise HTTPException(status_code=400, detail=f"Invalid {label}: '{uri}'")
+    return uri
+
+
+def _validate_local_name(value: str, label: str = "name") -> str:
+    if not _LOCAL_NAME_RE.match(value):
+        raise HTTPException(status_code=400, detail=f"Invalid {label}: '{value}'")
+    return value
+
+
+def _validate_local_uri_part(value: str, label: str = "value") -> str:
+    if not _LOCAL_URI_PART_RE.match(value):
+        raise HTTPException(status_code=400, detail=f"Invalid {label}: '{value}'")
+    return value
+
+
+def _validate_pagination(limit: int, offset: int) -> tuple[int, int]:
+    if limit < 1 or limit > MAX_PAGE_LIMIT:
+        raise HTTPException(status_code=400, detail=f"limit must be between 1 and {MAX_PAGE_LIMIT}")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be greater than or equal to 0")
+    return limit, offset
+
+
+def _count_binding(raw: dict, var_name: str, default: int = 0) -> int:
+    bindings = raw.get("results", {}).get("bindings", [])
+    if not bindings:
+        return default
+    value = bindings[0].get(var_name, {}).get("value")
+    return int(value) if value is not None else default
+
+
+def _all_known_property_uris() -> set[str]:
+    from app.routers.metadata_router import KNOWN_PROPERTIES, ONTOLOGY_PROPERTIES
+
+    uris = {p["uri"] for props in KNOWN_PROPERTIES.values() for p in props}
+    uris.update(p["uri"] for p in ONTOLOGY_PROPERTIES)
+    return uris
+
+
+def _property_values(prop_uris: list[str]) -> str:
+    return " ".join(f"<{u}>" for u in prop_uris)
+
+
+def _class_union(
+    classes: list[dict],
+    body_template: str,
+    class_var: str = "class",
+) -> str:
+    branches = []
+    for cls in classes:
+        body = (
+            body_template
+            .replace("{class_uri}", cls["uri"])
+            .replace("{class_var}", class_var)
+        )
+        branches.append(f"{{\n  BIND(<{cls['uri']}> AS ?{class_var})\n  {body}\n}}")
+    return "\nUNION\n".join(branches)
+
+
+def _property_count_union(
+    class_uri: str,
+    prop_uris: list[str],
+    entity_var: str = "entity",
+    value_var: str = "val",
+    prop_var: str = "prop",
+    filter_clause: str = "",
+) -> str:
+    branches = []
+    for prop_uri in prop_uris:
+        branches.append(
+            "{\n"
+            f"  ?{entity_var} a <{class_uri}> .\n"
+            f"  {filter_clause}\n"
+            f"  ?{entity_var} <{prop_uri}> ?{value_var} .\n"
+            f"  BIND(<{prop_uri}> AS ?{prop_var})\n"
+            "}"
+        )
+    return "\nUNION\n".join(branches)
+
+
+def _entity_label_config(class_name: str) -> list[dict]:
+    from app.routers.metadata_router import KNOWN_PROPERTIES
+
+    name_keywords = ("name", "title", "label", "topic")
+    return [
+        p for p in KNOWN_PROPERTIES.get(class_name, [])
+        if p.get("type") == "data"
+        and any(kw in p["localName"].lower() for kw in name_keywords)
+    ]
+
+
+async def _labels_for_entities(class_name: str, class_uri: str, entity_uris: list[str]) -> dict[str, str]:
+    label_props = _entity_label_config(class_name)
+    if not label_props or not entity_uris:
+        return {}
+
+    values = " ".join(f"<{_validate_http_uri(uri, 'entity URI')}>" for uri in entity_uris)
+    optionals = "\n".join(
+        f"OPTIONAL {{ ?e <{p['uri']}> ?v{i} }}"
+        for i, p in enumerate(label_props)
+    )
+    vars_select = " ".join(
+        f"(SAMPLE(?v{i}) AS ?val{i})"
+        for i in range(len(label_props))
+    )
+    label_q = f"""
+        {PREFIXES}
+        SELECT ?e {vars_select} WHERE {{
+            VALUES ?e {{ {values} }}
+            ?e a <{class_uri}> .
+            {optionals}
+        }}
+        GROUP BY ?e
+    """
+    label_res = await execute_sparql(label_q)
+    labels: dict[str, str] = {}
+    for b in label_res.get("results", {}).get("bindings", []):
+        e_uri = b["e"]["value"]
+        parts = []
+        for i in range(len(label_props)):
+            val = b.get(f"val{i}", {}).get("value")
+            if val:
+                parts.append(val)
+        if parts:
+            labels[e_uri] = " ".join(parts)
+    return labels
+
+
+def _interlinking_metadata() -> tuple[list[dict], list[str], dict[str, dict], dict[str, str]]:
+    from app.routers.metadata_router import KNOWN_CLASSES, ONTOLOGY_PROPERTIES
+
+    obj_props = [p for p in ONTOLOGY_PROPERTIES if p.get("type") == "object"]
+    obj_prop_uris = [p["uri"] for p in obj_props]
+    prop_meta = {
+        p["uri"]: {
+            "localName": p["localName"],
+            "label": p.get("label"),
+            "domain": p.get("domain"),
+            "range": p.get("range"),
+        }
+        for p in obj_props
+    }
+    cls_lookup = {
+        c["uri"]: c.get("label") or c["localName"]
+        for c in KNOWN_CLASSES
+    }
+    return obj_props, obj_prop_uris, prop_meta, cls_lookup
+
+
+def _ln(uri: str) -> str:
+    return uri.split("#")[-1] if "#" in uri else uri.split("/")[-1]
+
+
+def _object_prop_values(obj_prop_uris: list[str]) -> str:
+    if not obj_prop_uris:
+        return ""
+    return f"VALUES ?p {{ {_property_values(obj_prop_uris)} }}"
+
+
+def _linked_body(obj_prop_uris: list[str]) -> str:
+    values = _object_prop_values(obj_prop_uris)
+    if not values:
+        return "FILTER(false)"
+    return f"""
+        {{
+            {{
+                {values}
+                ?e ?p ?other .
+                FILTER(isIRI(?other))
+                FILTER(?p != rdf:type)
+            }} UNION {{
+                {values}
+                ?other ?p ?e .
+                FILTER(?p != rdf:type)
+            }}
+        }}
+    """
+
+
+def _not_linked_filters(obj_prop_uris: list[str]) -> str:
+    values = _object_prop_values(obj_prop_uris)
+    if not values:
+        return ""
+    return f"""
+        FILTER NOT EXISTS {{
+            {values}
+            ?e ?p ?other .
+            FILTER(isIRI(?other))
+            FILTER(?p != rdf:type)
+        }}
+        FILTER NOT EXISTS {{
+            {values}
+            ?other ?p ?e .
+            FILTER(?p != rdf:type)
+        }}
+    """
 
 
 def _get_property_labels(class_name: str) -> dict[str, str | None]:
@@ -28,6 +235,7 @@ def _get_property_labels(class_name: str) -> dict[str, str | None]:
 def resolve_class_uri(class_name: str) -> str:
     from app.routers.metadata_router import KNOWN_CLASSES
 
+    _validate_local_name(class_name, "class name")
     entry = next((c for c in KNOWN_CLASSES if c["localName"] == class_name), None)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"Class '{class_name}' not found")
@@ -35,11 +243,15 @@ def resolve_class_uri(class_name: str) -> str:
 
 
 def resolve_property_uri(prop: str, class_name: Optional[str] = None) -> str:
-    if prop.startswith("http"):
-        return prop
-
     from app.routers.metadata_router import KNOWN_PROPERTIES
 
+    if prop.startswith("http"):
+        prop = _validate_http_uri(prop, "property URI")
+        if prop not in _all_known_property_uris():
+            raise HTTPException(status_code=404, detail=f"Property '{prop}' not found")
+        return prop
+
+    _validate_local_name(prop, "property name")
     if class_name:
         for entry in KNOWN_PROPERTIES.get(class_name, []):
             if entry["localName"] == prop:
@@ -50,19 +262,7 @@ def resolve_property_uri(prop: str, class_name: Optional[str] = None) -> str:
             if entry["localName"] == prop:
                 return entry["uri"]
 
-    KNOWN = {
-        "firstName":    f"{FOAF_BASE}firstName",
-        "lastName":     f"{FOAF_BASE}lastName",
-        "teaches":      f"{VOC_BASE}teaches",
-        "givesLecture": f"{VOC_BASE}givesLecture",
-        "givesLab":     f"{VOC_BASE}givesLab",
-        "attends":      f"{VOC_BASE}attends",
-        "title":        f"{VOC_BASE}title",
-        "isGivenAt":    f"{VOC_BASE}isGivenAt",
-    }
-    if prop in KNOWN:
-        return KNOWN[prop]
-    return f"{VOC_BASE}{prop}"
+    raise HTTPException(status_code=404, detail=f"Property '{prop}' not found")
 
 
 def build_filter_clause(
@@ -74,11 +274,13 @@ def build_filter_clause(
         return ""
     prop_uri = resolve_property_uri(filter_property, class_name)
     if filter_value.startswith("http"):
-        value_uri = filter_value
+        value_uri = _validate_http_uri(filter_value, "filter value URI")
     elif filter_value.startswith(":"):
-        value_uri = f"{VOC_BASE}{filter_value[1:]}"
+        local_value = _validate_local_uri_part(filter_value[1:], "filter value")
+        value_uri = f"{VOC_BASE}{local_value}"
     else:
-        value_uri = f"{VOC_BASE}{filter_value}"
+        local_value = _validate_local_uri_part(filter_value, "filter value")
+        value_uri = f"{VOC_BASE}{local_value}"
     value_str = f"<{value_uri}>"
     return f"?entity <{prop_uri}> {value_str} ."
 

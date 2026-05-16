@@ -987,73 +987,115 @@ def mapping_coverage():
 async def class_summary():
     from app.routers.metadata_router import KNOWN_CLASSES, KNOWN_PROPERTIES
 
-    async def _process_class(cls) -> dict:
+    prop_pairs = [
+        (cls, prop)
+        for cls in KNOWN_CLASSES
+        for prop in KNOWN_PROPERTIES.get(cls["localName"], [])
+    ]
+
+    total_q = f"""
+        {PREFIXES}
+        SELECT ?class (COUNT(DISTINCT ?e) AS ?n) WHERE {{
+            {_class_union(KNOWN_CLASSES, "?e a <{class_uri}> .")}
+        }}
+        GROUP BY ?class
+    """
+
+    def _prop_branch(cls: dict, prop: dict) -> str:
+        return (
+            "{\n"
+            f"  ?e a <{cls['uri']}> .\n"
+            f"  ?e <{prop['uri']}> ?v .\n"
+            f"  BIND(<{cls['uri']}> AS ?class)\n"
+            f"  BIND(<{prop['uri']}> AS ?prop)\n"
+            "}"
+        )
+
+    filled_q = None
+    if prop_pairs:
+        filled_q = f"""
+            {PREFIXES}
+            SELECT ?class ?prop (COUNT(DISTINCT ?e) AS ?n) WHERE {{
+                {" UNION ".join(_prop_branch(cls, prop) for cls, prop in prop_pairs)}
+            }}
+            GROUP BY ?class ?prop
+        """
+
+    try:
+        if filled_q:
+            total_raw, filled_raw = await asyncio.gather(
+                execute_sparql(total_q),
+                execute_sparql(filled_q),
+            )
+        else:
+            total_raw = await execute_sparql(total_q)
+            filled_raw = {"results": {"bindings": []}}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+
+    totals = {cls["uri"]: 0 for cls in KNOWN_CLASSES}
+    total_bindings = total_raw.get("results", {}).get("bindings", [])
+    if len(KNOWN_CLASSES) == 1 and total_bindings and "class" not in total_bindings[0]:
+        totals[KNOWN_CLASSES[0]["uri"]] = int(total_bindings[0]["n"]["value"])
+    else:
+        for row in total_bindings:
+            cls_uri = row.get("class", {}).get("value")
+            if cls_uri in totals:
+                totals[cls_uri] = int(row["n"]["value"])
+
+    filled_counts = {(cls["uri"], prop["uri"]): 0 for cls, prop in prop_pairs}
+    for row in filled_raw.get("results", {}).get("bindings", []):
+        cls_uri = row.get("class", {}).get("value")
+        prop_uri = row.get("prop", {}).get("value")
+        key = (cls_uri, prop_uri)
+        if key in filled_counts:
+            filled_counts[key] = int(row["n"]["value"])
+
+    results = []
+    for cls in KNOWN_CLASSES:
         cls_name = cls["localName"]
         cls_uri = cls["uri"]
         props = KNOWN_PROPERTIES.get(cls_name, [])
+        total = totals[cls_uri]
 
-        try:
-            total_raw = await execute_sparql(f"""
-                {PREFIXES}
-                SELECT (COUNT(DISTINCT ?e) AS ?n) WHERE {{ ?e a <{cls_uri}> . }}
-            """)
-            total_bindings = total_raw.get("results", {}).get("bindings", [])
-            total = int(total_bindings[0]["n"]["value"]) if total_bindings else 0
-
-            if total == 0 or not props:
-                return {
-                    "class": cls_name,
-                    "label": cls.get("label"),
-                    "uri": cls_uri,
-                    "total_entities": total,
-                    "properties_count": len(props),
-                    "completeness": 0.0,
-                    "by_property": [],
-                }
-
-            async def _count_prop(p) -> tuple[str, int]:
-                raw = await execute_sparql(f"""
-                    {PREFIXES}
-                    SELECT (COUNT(DISTINCT ?e) AS ?n) WHERE {{
-                        ?e a <{cls_uri}> .
-                        ?e <{p["uri"]}> ?v .
-                    }}
-                """)
-                bindings = raw.get("results", {}).get("bindings", [])
-                return p["localName"], int(bindings[0]["n"]["value"]) if bindings else 0
-
-            prop_results = await asyncio.gather(*[_count_prop(p) for p in props])
-
-            labels = _get_property_labels(cls_name)
-            by_property = []
-            for prop_name, filled in prop_results:
-                fill_rate = round((filled / total) * 100, 2)
-                entry = {
-                    "property": prop_name,
-                    "filled": filled,
-                    "missing": total - filled,
-                    "completeness": fill_rate,
-                }
-                label = labels.get(prop_name)
-                if label:
-                    entry["label"] = label
-                by_property.append(entry)
-
-            overall = round(sum(bp["completeness"] for bp in by_property) / len(by_property), 2)
-
-            return {
+        if total == 0 or not props:
+            results.append({
                 "class": cls_name,
                 "label": cls.get("label"),
                 "uri": cls_uri,
                 "total_entities": total,
                 "properties_count": len(props),
-                "completeness": overall,
-                "by_property": by_property,
-            }
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+                "completeness": 0.0,
+                "by_property": [],
+            })
+            continue
 
-    results = list(await asyncio.gather(*[_process_class(cls) for cls in KNOWN_CLASSES]))
+        labels = _get_property_labels(cls_name)
+        by_property = []
+        for prop in props:
+            filled = filled_counts.get((cls_uri, prop["uri"]), 0)
+            fill_rate = round((filled / total) * 100, 2)
+            entry = {
+                "property": prop["localName"],
+                "filled": filled,
+                "missing": total - filled,
+                "completeness": fill_rate,
+            }
+            label = labels.get(prop["localName"])
+            if label:
+                entry["label"] = label
+            by_property.append(entry)
+
+        overall = round(sum(bp["completeness"] for bp in by_property) / len(by_property), 2)
+        results.append({
+            "class": cls_name,
+            "label": cls.get("label"),
+            "uri": cls_uri,
+            "total_entities": total,
+            "properties_count": len(props),
+            "completeness": overall,
+            "by_property": by_property,
+        })
 
     total_entities = sum(r["total_entities"] for r in results)
     classes_with_data = [r for r in results if r["total_entities"] > 0]

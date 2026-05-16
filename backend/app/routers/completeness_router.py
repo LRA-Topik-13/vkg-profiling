@@ -536,20 +536,28 @@ async def entity_count(
     if not target_classes:
         raise HTTPException(status_code=404, detail=f"Class '{class_name}' not found")
 
-    async def count_class(cls):
+    try:
         q = f"""
             {PREFIXES}
-            SELECT (COUNT(DISTINCT ?entity) AS ?count) WHERE {{
-                ?entity a <{cls["uri"]}> .
+            SELECT ?class (COUNT(DISTINCT ?entity) AS ?count) WHERE {{
+                {_class_union(target_classes, "?entity a <{class_uri}> .")}
             }}
+            GROUP BY ?class
         """
-        result = await execute_sparql(q)
-        bindings = result.get("results", {}).get("bindings", [])
-        count = int(bindings[0]["count"]["value"]) if bindings else 0
-        return {"class": cls["localName"], "uri": cls["uri"], "count": count}
-
-    try:
-        results = list(await asyncio.gather(*[count_class(cls) for cls in target_classes]))
+        raw = await execute_sparql(q)
+        counts = {cls["uri"]: 0 for cls in target_classes}
+        bindings = raw.get("results", {}).get("bindings", [])
+        if len(target_classes) == 1 and bindings and "class" not in bindings[0]:
+            counts[target_classes[0]["uri"]] = int(bindings[0]["count"]["value"])
+        else:
+            for row in bindings:
+                cls_uri = row.get("class", {}).get("value")
+                if cls_uri in counts:
+                    counts[cls_uri] = int(row["count"]["value"])
+        results = [
+            {"class": cls["localName"], "uri": cls["uri"], "count": counts[cls["uri"]]}
+            for cls in target_classes
+        ]
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
 
@@ -775,21 +783,32 @@ async def distinct_properties(
     if not target_classes:
         raise HTTPException(status_code=404, detail=f"Class '{class_name}' not found")
 
-    async def count_props(cls):
+    try:
         q = f"""
             {PREFIXES}
-            SELECT (COUNT(DISTINCT ?p) AS ?count) WHERE {{
-                ?entity a <{cls["uri"]}> .
-                ?entity ?p ?o .
+            SELECT ?class (COUNT(DISTINCT ?p) AS ?count) WHERE {{
+                {_class_union(target_classes, "?entity a <{class_uri}> . ?entity ?p ?o .")}
             }}
+            GROUP BY ?class
         """
-        result = await execute_sparql(q)
-        bindings = result.get("results", {}).get("bindings", [])
-        count = int(bindings[0]["count"]["value"]) if bindings else 0
-        return {"class": cls["localName"], "uri": cls["uri"], "distinct_properties": count}
-
-    try:
-        results = list(await asyncio.gather(*[count_props(cls) for cls in target_classes]))
+        raw = await execute_sparql(q)
+        counts = {cls["uri"]: 0 for cls in target_classes}
+        bindings = raw.get("results", {}).get("bindings", [])
+        if len(target_classes) == 1 and bindings and "class" not in bindings[0]:
+            counts[target_classes[0]["uri"]] = int(bindings[0]["count"]["value"])
+        else:
+            for row in bindings:
+                cls_uri = row.get("class", {}).get("value")
+                if cls_uri in counts:
+                    counts[cls_uri] = int(row["count"]["value"])
+        results = [
+            {
+                "class": cls["localName"],
+                "uri": cls["uri"],
+                "distinct_properties": counts[cls["uri"]],
+            }
+            for cls in target_classes
+        ]
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
 

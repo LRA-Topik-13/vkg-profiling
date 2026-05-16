@@ -424,33 +424,35 @@ async def completeness_by_property(
         }}
     """
 
-    async def count_property(prop_uri: str) -> int:
-        q = f"""
-            {PREFIXES}
-            SELECT (COUNT(DISTINCT ?entity) AS ?filled) WHERE {{
-                ?entity a <{class_uri}> .
-                {filter_clause}
-                ?entity <{prop_uri}> ?val .
-            }}
-        """
-        result = await execute_sparql(q)
-        bindings = result.get("results", {}).get("bindings", [])
-        if bindings:
-            return int(bindings[0]["filled"]["value"])
-        return 0
+    prop_union = _property_count_union(class_uri, prop_uris, filter_clause=filter_clause)
+    filled_query = f"""
+        {PREFIXES}
+        SELECT ?prop (COUNT(DISTINCT ?entity) AS ?filled) WHERE {{
+            {prop_union}
+        }}
+        GROUP BY ?prop
+    """
 
     try:
-        total_raw, *filled_counts = await asyncio.gather(
+        total_raw, filled_raw = await asyncio.gather(
             execute_sparql(count_query),
-            *[count_property(uri) for uri in prop_uris],
+            execute_sparql(filled_query),
         )
-        total_bindings = total_raw.get("results", {}).get("bindings", [])
-        total_entities = int(total_bindings[0]["total"]["value"]) if total_bindings else 0
+        total_entities = _count_binding(total_raw, "total")
+        filled_by_uri = {uri: 0 for uri in prop_uris}
+        filled_bindings = filled_raw.get("results", {}).get("bindings", [])
+        if len(prop_uris) == 1 and filled_bindings and "prop" not in filled_bindings[0]:
+            filled_by_uri[prop_uris[0]] = int(filled_bindings[0]["filled"]["value"])
+        else:
+            for row in filled_bindings:
+                prop_uri = row.get("prop", {}).get("value")
+                if prop_uri in filled_by_uri:
+                    filled_by_uri[prop_uri] = int(row["filled"]["value"])
 
         labels = _get_property_labels(class_name)
         prop_results = []
         for i, prop_name in enumerate(prop_list):
-            filled = filled_counts[i]
+            filled = filled_by_uri[prop_uris[i]]
             missing = total_entities - filled
             completeness = round((filled / total_entities) * 100, 2) if total_entities > 0 else 0.0
             entry = {

@@ -567,202 +567,128 @@ async def entity_count(
 
 @router.get("/interlinking")
 async def interlinking_completeness():
-    from app.routers.metadata_router import KNOWN_CLASSES, KNOWN_PROPERTIES, ONTOLOGY_PROPERTIES
+    from app.routers.metadata_router import KNOWN_CLASSES
 
-    NAME_KEYWORDS = ("name", "title", "label", "topic")
+    _, obj_prop_uris, prop_meta, cls_lookup = _interlinking_metadata()
+    linked_body = _linked_body(obj_prop_uris)
+    values = _object_prop_values(obj_prop_uris)
 
-    def _find_label_props(cls_name: str) -> list[dict]:
-        props = KNOWN_PROPERTIES.get(cls_name, [])
-        return [p for p in props
-                if p.get("type") == "data"
-                and any(kw in p["localName"].lower() for kw in NAME_KEYWORDS)]
+    total_q = f"""
+        {PREFIXES}
+        SELECT ?class (COUNT(DISTINCT ?e) AS ?n) WHERE {{
+            {_class_union(KNOWN_CLASSES, "?e a <{class_uri}> .")}
+        }}
+        GROUP BY ?class
+    """
 
-    obj_props = [p for p in ONTOLOGY_PROPERTIES if p.get("type") == "object"]
-    obj_prop_uris = [p["uri"] for p in obj_props]
-
-    prop_meta = {}
-    for p in obj_props:
-        prop_meta[p["uri"]] = {
-            "localName": p["localName"],
-            "label": p.get("label"),
-            "domain": p.get("domain"),
-            "range": p.get("range"),
-        }
-
-    cls_lookup = {}
-    for c in KNOWN_CLASSES:
-        cls_lookup[c["uri"]] = c.get("label") or c["localName"]
-
-    def _ln(uri: str) -> str:
-        return uri.split("#")[-1] if "#" in uri else uri.split("/")[-1]
-
-    if not obj_prop_uris:
-        obj_prop_filter = ""
-    else:
-        values = " ".join(f"<{u}>" for u in obj_prop_uris)
-        obj_prop_filter = f"VALUES ?p {{ {values} }}"
-
-    async def _process_class(cls) -> dict:
-        cls_uri = cls["uri"]
-        cls_name = cls["localName"]
-
-        total_q = f"""
-            {PREFIXES}
-            SELECT DISTINCT ?e WHERE {{
-                ?e a <{cls_uri}> .
-            }}
-        """
-
-        linked_union_q = f"""
-            {PREFIXES}
-            SELECT DISTINCT ?e WHERE {{
-                ?e a <{cls_uri}> .
-                {{
-                    {obj_prop_filter}
-                    ?e ?p ?other .
-                    FILTER(isIRI(?other))
-                    FILTER(?p != rdf:type)
-                }} UNION {{
-                    {obj_prop_filter}
-                    ?other ?p ?e .
-                    FILTER(?p != rdf:type)
+    try:
+        if obj_prop_uris:
+            linked_q = f"""
+                {PREFIXES}
+                SELECT ?class (COUNT(DISTINCT ?e) AS ?n) WHERE {{
+                    {_class_union(KNOWN_CLASSES, "?e a <{class_uri}> . " + linked_body)}
                 }}
-            }}
-        """
+                GROUP BY ?class
+            """
 
-        out_detail_q = f"""
-            {PREFIXES}
-            SELECT ?p (COUNT(DISTINCT ?e) AS ?n) WHERE {{
-                ?e a <{cls_uri}> .
-                {obj_prop_filter}
-                ?e ?p ?other .
-                FILTER(isIRI(?other))
-                FILTER(?p != rdf:type)
-            }}
-            GROUP BY ?p
-        """
+            outgoing_q = f"""
+                {PREFIXES}
+                SELECT ?class ?p (COUNT(DISTINCT ?e) AS ?n) WHERE {{
+                    {_class_union(KNOWN_CLASSES, "?e a <{class_uri}> . " + values + " ?e ?p ?other . FILTER(isIRI(?other)) FILTER(?p != rdf:type)")}
+                }}
+                GROUP BY ?class ?p
+            """
 
-        in_detail_q = f"""
-            {PREFIXES}
-            SELECT ?p (COUNT(DISTINCT ?e) AS ?n) WHERE {{
-                ?e a <{cls_uri}> .
-                {obj_prop_filter}
-                ?other ?p ?e .
-                FILTER(?p != rdf:type)
-            }}
-            GROUP BY ?p
-        """
+            incoming_q = f"""
+                {PREFIXES}
+                SELECT ?class ?p (COUNT(DISTINCT ?e) AS ?n) WHERE {{
+                    {_class_union(KNOWN_CLASSES, "?e a <{class_uri}> . " + values + " ?other ?p ?e . FILTER(?p != rdf:type)")}
+                }}
+                GROUP BY ?class ?p
+            """
 
-        try:
-            total_res, union_res, out_detail_res, in_detail_res = await asyncio.gather(
+            total_res, linked_res, out_detail_res, in_detail_res = await asyncio.gather(
                 execute_sparql(total_q),
-                execute_sparql(linked_union_q),
-                execute_sparql(out_detail_q),
-                execute_sparql(in_detail_q),
+                execute_sparql(linked_q),
+                execute_sparql(outgoing_q),
+                execute_sparql(incoming_q),
             )
+        else:
+            total_res = await execute_sparql(total_q)
+            linked_res = out_detail_res = in_detail_res = {"results": {"bindings": []}}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
 
-            all_entities = [b["e"]["value"] for b in total_res["results"]["bindings"]]
-            linked_entities = {b["e"]["value"] for b in union_res["results"]["bindings"]}
-            not_linked_entities = [e for e in all_entities if e not in linked_entities]
+    totals = {cls["uri"]: 0 for cls in KNOWN_CLASSES}
+    linked_counts = {cls["uri"]: 0 for cls in KNOWN_CLASSES}
+    for row in total_res.get("results", {}).get("bindings", []):
+        cls_uri = row.get("class", {}).get("value")
+        if cls_uri in totals:
+            totals[cls_uri] = int(row["n"]["value"])
+    for row in linked_res.get("results", {}).get("bindings", []):
+        cls_uri = row.get("class", {}).get("value")
+        if cls_uri in linked_counts:
+            linked_counts[cls_uri] = int(row["n"]["value"])
 
-            total = len(all_entities)
-            linked_any = len(linked_entities)
-            not_linked = total - linked_any
-            ratio = round((linked_any / total) * 100, 2) if total > 0 else 0.0
+    link_details = {cls["uri"]: [] for cls in KNOWN_CLASSES}
+    outgoing_totals = {cls["uri"]: 0 for cls in KNOWN_CLASSES}
+    incoming_totals = {cls["uri"]: 0 for cls in KNOWN_CLASSES}
 
-            entity_labels: dict[str, str] = {}
-            label_props = _find_label_props(cls_name)
-            if label_props and all_entities:
-                optionals = "\n".join(
-                    f"OPTIONAL {{ ?e <{p['uri']}> ?v{i} }}"
-                    for i, p in enumerate(label_props)
-                )
-                vars_select = " ".join(
-                    f"(SAMPLE(?v{i}) AS ?val{i})"
-                    for i in range(len(label_props))
-                )
-                label_q = f"""
-                    {PREFIXES}
-                    SELECT ?e {vars_select} WHERE {{
-                        ?e a <{cls_uri}> .
-                        {optionals}
-                    }}
-                    GROUP BY ?e
-                """
-                label_res = await execute_sparql(label_q)
-                for b in label_res.get("results", {}).get("bindings", []):
-                    e_uri = b["e"]["value"]
-                    parts = []
-                    for i in range(len(label_props)):
-                        val = b.get(f"val{i}", {}).get("value")
-                        if val:
-                            parts.append(val)
-                    if parts:
-                        entity_labels[e_uri] = " ".join(parts)
+    for b in out_detail_res.get("results", {}).get("bindings", []):
+        cls_uri = b.get("class", {}).get("value")
+        p_uri = b.get("p", {}).get("value")
+        if cls_uri not in link_details or not p_uri:
+            continue
+        count = int(b["n"]["value"])
+        outgoing_totals[cls_uri] += count
+        meta = prop_meta.get(p_uri, {})
+        target_uri = meta.get("range")
+        link_details[cls_uri].append({
+            "direction": "outgoing",
+            "property": meta.get("localName") or _ln(p_uri),
+            "propertyLabel": meta.get("label"),
+            "targetClass": cls_lookup.get(target_uri) or (_ln(target_uri) if target_uri else None),
+            "count": count,
+        })
 
-            def _entity_obj(uri: str) -> dict:
-                return {"uri": uri, "label": entity_labels.get(uri)}
+    for b in in_detail_res.get("results", {}).get("bindings", []):
+        cls_uri = b.get("class", {}).get("value")
+        p_uri = b.get("p", {}).get("value")
+        if cls_uri not in link_details or not p_uri:
+            continue
+        count = int(b["n"]["value"])
+        incoming_totals[cls_uri] += count
+        meta = prop_meta.get(p_uri, {})
+        source_uri = meta.get("domain")
+        link_details[cls_uri].append({
+            "direction": "incoming",
+            "property": meta.get("localName") or _ln(p_uri),
+            "propertyLabel": meta.get("label"),
+            "sourceClass": cls_lookup.get(source_uri) or (_ln(source_uri) if source_uri else None),
+            "count": count,
+        })
 
-            links = []
-            outgoing_total = 0
-            for b in out_detail_res.get("results", {}).get("bindings", []):
-                p_uri = b["p"]["value"]
-                count = int(b["n"]["value"])
-                outgoing_total += count
-                meta = prop_meta.get(p_uri, {})
-                target_uri = meta.get("range")
-                links.append({
-                    "direction": "outgoing",
-                    "property": meta.get("localName") or _ln(p_uri),
-                    "propertyLabel": meta.get("label"),
-                    "targetClass": cls_lookup.get(target_uri) or (_ln(target_uri) if target_uri else None),
-                    "count": count,
-                })
-
-            incoming_total = 0
-            for b in in_detail_res.get("results", {}).get("bindings", []):
-                p_uri = b["p"]["value"]
-                count = int(b["n"]["value"])
-                incoming_total += count
-                meta = prop_meta.get(p_uri, {})
-                source_uri = meta.get("domain")
-                links.append({
-                    "direction": "incoming",
-                    "property": meta.get("localName") or _ln(p_uri),
-                    "propertyLabel": meta.get("label"),
-                    "sourceClass": cls_lookup.get(source_uri) or (_ln(source_uri) if source_uri else None),
-                    "count": count,
-                })
-
-            return {
-                "class": cls_name,
-                "label": cls.get("label"),
-                "total_entities": total,
-                "linked": linked_any,
-                "not_linked": not_linked,
-                "outgoing": outgoing_total,
-                "incoming": incoming_total,
-                "ratio": ratio,
-                "links": links,
-                "linked_entities": [_entity_obj(e) for e in sorted(linked_entities)],
-                "not_linked_entities": [_entity_obj(e) for e in sorted(not_linked_entities)],
-            }
-        except Exception:
-            return {
-                "class": cls_name,
-                "label": cls.get("label"),
-                "total_entities": 0,
-                "linked": 0,
-                "not_linked": 0,
-                "outgoing": 0,
-                "incoming": 0,
-                "ratio": 0.0,
-                "links": [],
-                "linked_entities": [],
-                "not_linked_entities": [],
-            }
-
-    results = list(await asyncio.gather(*[_process_class(cls) for cls in KNOWN_CLASSES]))
+    results = []
+    for cls in KNOWN_CLASSES:
+        cls_uri = cls["uri"]
+        total = totals[cls_uri]
+        linked_any = linked_counts[cls_uri]
+        not_linked = max(total - linked_any, 0)
+        ratio = round((linked_any / total) * 100, 2) if total > 0 else 0.0
+        results.append({
+            "class": cls["localName"],
+            "label": cls.get("label"),
+            "total_entities": total,
+            "linked": linked_any,
+            "not_linked": not_linked,
+            "outgoing": outgoing_totals[cls_uri],
+            "incoming": incoming_totals[cls_uri],
+            "ratio": ratio,
+            "links": link_details[cls_uri],
+            "linked_entities": [],
+            "not_linked_entities": [],
+            "entity_drilldown": f"/completeness/interlinking/entities?class_name={cls['localName']}",
+        })
 
     total_entities = sum(r["total_entities"] for r in results)
     total_linked = sum(r["linked"] for r in results)
@@ -771,6 +697,77 @@ async def interlinking_completeness():
     return {
         "classes": results,
         "overall_ratio": overall_ratio,
+    }
+
+
+@router.get("/interlinking/entities")
+async def interlinking_entities(
+    class_name: str = Query(..., description="Class to inspect, e.g. Course"),
+    status: str = Query("linked", description="linked or not_linked"),
+    limit: int = DEFAULT_PAGE_LIMIT,
+    offset: int = 0,
+    include_total: bool = True,
+):
+    limit, offset = _validate_pagination(limit, offset)
+    if status not in {"linked", "not_linked"}:
+        raise HTTPException(status_code=400, detail="status must be 'linked' or 'not_linked'")
+
+    class_uri = resolve_class_uri(class_name)
+    _, obj_prop_uris, _, _ = _interlinking_metadata()
+    if status == "linked":
+        status_body = _linked_body(obj_prop_uris)
+    else:
+        status_body = _not_linked_filters(obj_prop_uris)
+
+    page_q = f"""
+        {PREFIXES}
+        SELECT DISTINCT ?e WHERE {{
+            ?e a <{class_uri}> .
+            {status_body}
+        }}
+        ORDER BY ?e
+        LIMIT {limit}
+        OFFSET {offset}
+    """
+    count_q = f"""
+        {PREFIXES}
+        SELECT (COUNT(DISTINCT ?e) AS ?total) WHERE {{
+            ?e a <{class_uri}> .
+            {status_body}
+        }}
+    """
+
+    try:
+        if include_total:
+            page_raw, total_raw = await asyncio.gather(
+                execute_sparql(page_q),
+                execute_sparql(count_q),
+            )
+            total = _count_binding(total_raw, "total")
+        else:
+            page_raw = await execute_sparql(page_q)
+            total = None
+        entity_uris = [
+            b["e"]["value"]
+            for b in page_raw.get("results", {}).get("bindings", [])
+        ]
+        labels = await _labels_for_entities(class_name, class_uri, entity_uris)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+
+    return {
+        "class": class_name,
+        "status": status,
+        "entities": [
+            {"uri": uri, "label": labels.get(uri)}
+            for uri in entity_uris
+        ],
+        "pagination": {
+            "limit": limit,
+            "offset": offset,
+            "count": len(entity_uris),
+            "total": total,
+        },
     }
 
 

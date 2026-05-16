@@ -834,7 +834,9 @@ async def undefined_objects(
         if p.get("type") == "object"
     ]
 
-    async def _count_for_property(prop: dict) -> dict:
+    entries = []
+    ranged_props = []
+    for prop in object_props:
         prop_uri = prop["uri"]
         range_uri = prop.get("range")
         entry = {
@@ -847,45 +849,82 @@ async def undefined_objects(
             "ratio": 0.0,
             "status": "not_applicable" if not range_uri else "ok",
         }
-        if not range_uri:
-            return entry
+        entries.append(entry)
+        if range_uri:
+            ranged_props.append(prop)
 
-        total_q = f"""
-            {PREFIXES}
-            SELECT (COUNT(DISTINCT ?obj) AS ?total) WHERE {{
-                ?entity a <{class_uri}> .
-                ?entity <{prop_uri}> ?obj .
-            }}
-        """
-        undefined_q = f"""
-            {PREFIXES}
-            SELECT (COUNT(DISTINCT ?obj) AS ?undefined) WHERE {{
-                ?entity a <{class_uri}> .
-                ?entity <{prop_uri}> ?obj .
-                FILTER NOT EXISTS {{ ?obj a <{range_uri}> }}
-            }}
-        """
-
-        total_raw, undefined_raw = await asyncio.gather(
-            execute_sparql(total_q),
-            execute_sparql(undefined_q),
+    def _total_branch(prop: dict) -> str:
+        return (
+            "{\n"
+            f"  ?entity a <{class_uri}> .\n"
+            f"  ?entity <{prop['uri']}> ?obj .\n"
+            f"  BIND(<{prop['uri']}> AS ?prop)\n"
+            "}"
         )
-        total_bindings = total_raw.get("results", {}).get("bindings", [])
-        undefined_bindings = undefined_raw.get("results", {}).get("bindings", [])
-        total = int(total_bindings[0]["total"]["value"]) if total_bindings else 0
-        undefined = int(undefined_bindings[0]["undefined"]["value"]) if undefined_bindings else 0
-        ratio = round((undefined / total) * 100, 2) if total else 0.0
 
-        entry.update({
-            "total_objects": total,
-            "undefined_objects": undefined,
-            "ratio": ratio,
-            "status": "warning" if undefined else "ok",
-        })
-        return entry
+    def _undefined_branch(prop: dict) -> str:
+        return (
+            "{\n"
+            f"  ?entity a <{class_uri}> .\n"
+            f"  ?entity <{prop['uri']}> ?obj .\n"
+            f"  FILTER NOT EXISTS {{ ?obj a <{prop['range']}> }}\n"
+            f"  BIND(<{prop['uri']}> AS ?prop)\n"
+            "}"
+        )
 
     try:
-        results = list(await asyncio.gather(*[_count_for_property(p) for p in object_props]))
+        totals = {p["uri"]: 0 for p in ranged_props}
+        undefined_counts = {p["uri"]: 0 for p in ranged_props}
+        if ranged_props:
+            total_q = f"""
+                {PREFIXES}
+                SELECT ?prop (COUNT(DISTINCT ?obj) AS ?total) WHERE {{
+                    {" UNION ".join(_total_branch(p) for p in ranged_props)}
+                }}
+                GROUP BY ?prop
+            """
+            undefined_q = f"""
+                {PREFIXES}
+                SELECT ?prop (COUNT(DISTINCT ?obj) AS ?undefined) WHERE {{
+                    {" UNION ".join(_undefined_branch(p) for p in ranged_props)}
+                }}
+                GROUP BY ?prop
+            """
+            total_raw, undefined_raw = await asyncio.gather(
+                execute_sparql(total_q),
+                execute_sparql(undefined_q),
+            )
+            total_bindings = total_raw.get("results", {}).get("bindings", [])
+            undefined_bindings = undefined_raw.get("results", {}).get("bindings", [])
+            if total_bindings and "prop" not in total_bindings[0]:
+                totals[ranged_props[0]["uri"]] = int(total_bindings[0]["total"]["value"])
+            else:
+                for row in total_bindings:
+                    prop_uri = row.get("prop", {}).get("value")
+                    if prop_uri in totals:
+                        totals[prop_uri] = int(row["total"]["value"])
+            if undefined_bindings and "prop" not in undefined_bindings[0]:
+                undefined_counts[ranged_props[0]["uri"]] = int(undefined_bindings[0]["undefined"]["value"])
+            else:
+                for row in undefined_bindings:
+                    prop_uri = row.get("prop", {}).get("value")
+                    if prop_uri in undefined_counts:
+                        undefined_counts[prop_uri] = int(row["undefined"]["value"])
+
+        results = []
+        for entry in entries:
+            prop_uri = entry["property_uri"]
+            if prop_uri in totals:
+                total = totals[prop_uri]
+                undefined = undefined_counts[prop_uri]
+                ratio = round((undefined / total) * 100, 2) if total else 0.0
+                entry.update({
+                    "total_objects": total,
+                    "undefined_objects": undefined,
+                    "ratio": ratio,
+                    "status": "warning" if undefined else "ok",
+                })
+            results.append(entry)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
 

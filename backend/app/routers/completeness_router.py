@@ -285,16 +285,14 @@ def build_filter_clause(
     return f"?entity <{prop_uri}> {value_str} ."
 
 
-def build_optional_blocks(prop_uris: list[str]) -> tuple[str, list[str]]:
+def build_exists_bindings(prop_uris: list[str]) -> tuple[str, list[str]]:
     blocks = []
     var_names = []
     for i, uri in enumerate(prop_uris):
-        val_var = f"prop{i}Val"
         exists_var = f"prop{i}Exists"
         var_names.append(exists_var)
         blocks.append(
-            f'  OPTIONAL {{ ?entity <{uri}> ?{val_var} }}\n'
-            f'  BIND(IF(BOUND(?{val_var}), "TRUE", "FALSE") AS ?{exists_var})'
+            f'  BIND(IF(EXISTS {{ ?entity <{uri}> ?prop{i}Val }}, "TRUE", "FALSE") AS ?{exists_var})'
         )
     return "\n".join(blocks), var_names
 
@@ -305,7 +303,11 @@ async def completeness_by_entity(
     properties: str = Query(..., description="Comma-separated property localNames, e.g. firstName,lastName,teaches"),
     filter_property: Optional[str] = Query(None, description="Facet property to filter by, e.g. isGivenAt"),
     filter_value:    Optional[str] = Query(None, description="Facet value URI or localName, e.g. http://example.org/voc#uni1/university"),
+    limit: int = DEFAULT_PAGE_LIMIT,
+    offset: int = 0,
+    include_total: bool = True,
 ):
+    limit, offset = _validate_pagination(limit, offset)
     prop_list = [p.strip() for p in properties.split(",") if p.strip()]
     if not prop_list:
         raise HTTPException(status_code=400, detail="At least one property required")
@@ -313,25 +315,45 @@ async def completeness_by_entity(
     prop_uris  = [resolve_property_uri(p, class_name) for p in prop_list]
     class_uri  = resolve_class_uri(class_name)
     filter_clause = build_filter_clause(filter_property, filter_value, class_name)
-    optional_blocks, var_names = build_optional_blocks(prop_uris)
+    exists_bindings, var_names = build_exists_bindings(prop_uris)
 
     var_list = " ".join(f"?{v}" for v in var_names)
 
     query = f"""
         {PREFIXES}
-        SELECT DISTINCT ?entity {var_list} WHERE {{
+        SELECT ?entity {var_list} WHERE {{
           {{
             SELECT DISTINCT ?entity WHERE {{
               ?entity a <{class_uri}> .
               {filter_clause}
             }}
+            ORDER BY ?entity
+            LIMIT {limit}
+            OFFSET {offset}
           }}
-          {optional_blocks}
+          {exists_bindings}
+        }}
+        ORDER BY ?entity
+    """
+
+    count_query = f"""
+        {PREFIXES}
+        SELECT (COUNT(DISTINCT ?entity) AS ?total) WHERE {{
+            ?entity a <{class_uri}> .
+            {filter_clause}
         }}
     """
 
     try:
-        raw = await execute_sparql(query)
+        if include_total:
+            raw, total_raw = await asyncio.gather(
+                execute_sparql(query),
+                execute_sparql(count_query),
+            )
+            total_entities = _count_binding(total_raw, "total")
+        else:
+            raw = await execute_sparql(query)
+            total_entities = None
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
 
@@ -368,7 +390,13 @@ async def completeness_by_entity(
         "class":      class_name,
         "properties": prop_list,
         "property_info": property_info,
-        "total":      len(entities),
+        "total":      total_entities if total_entities is not None else len(entities),
+        "pagination": {
+            "limit": limit,
+            "offset": offset,
+            "count": len(entities),
+            "total": total_entities,
+        },
         "entities":   entities
     }
 
@@ -452,13 +480,20 @@ async def completeness_matrix(
     properties: str = Query(..., description="Comma-separated property localNames"),
     filter_property: Optional[str] = Query(None),
     filter_value:    Optional[str] = Query(None),
+    limit: int = DEFAULT_PAGE_LIMIT,
+    offset: int = 0,
+    include_total: bool = True,
 ):
+    limit, offset = _validate_pagination(limit, offset)
     entity_result, property_result = await asyncio.gather(
         completeness_by_entity(
             class_name=class_name,
             properties=properties,
             filter_property=filter_property,
             filter_value=filter_value,
+            limit=limit,
+            offset=offset,
+            include_total=include_total,
         ),
         completeness_by_property(
             class_name=class_name,
@@ -485,6 +520,7 @@ async def completeness_matrix(
             "by_property":          by_prop,
             "overall_completeness": overall
         },
+        "pagination": entity_result.get("pagination"),
         "entities": entity_result["entities"]
     }
 

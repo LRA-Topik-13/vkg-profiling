@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import completeness_router, metadata_router
+from app.routers import completeness_router, conciseness_router, metadata_router
 
 app = FastAPI(
     title="VKG Profiling Backend",
@@ -31,3 +31,4 @@ def health_check():
 
 app.include_router(metadata_router.router)
 app.include_router(completeness_router.router)
+app.include_router(conciseness_router.router)

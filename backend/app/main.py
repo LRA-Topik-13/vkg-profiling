@@ -1,12 +1,23 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.dependencies import close_sparql_client
 from app.routers import completeness_router, conciseness_router, metadata_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await close_sparql_client()
+
 
 app = FastAPI(
     title="VKG Profiling Backend",
     description="Backend API for completeness profiling of a Virtual Knowledge Graph.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 origins = [

@@ -111,7 +111,8 @@ async def test_entity_completeness_is_paginated(monkeypatch):
             return {"results": {"bindings": [_binding("total", "12")]}}
         assert "LIMIT 1" in query
         assert "OFFSET 5" in query
-        assert "EXISTS" in query
+        assert "OPTIONAL" in query
+        assert "GROUP BY ?entity" in query
         return {
             "results": {
                 "bindings": [

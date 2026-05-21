@@ -285,16 +285,23 @@ def build_filter_clause(
     return f"?entity <{prop_uri}> {value_str} ."
 
 
-def build_exists_bindings(prop_uris: list[str]) -> tuple[str, list[str]]:
-    blocks = []
-    var_names = []
+def build_exists_bindings(prop_uris: list[str]) -> tuple[str, list[str], list[str]]:
+    # Ontop refuses EXISTS-inside-BIND, so we lift each property check into an
+    # OPTIONAL pattern at the WHERE level and aggregate per entity. The caller
+    # combines the OPTIONAL blocks with the rest of the WHERE, and projects the
+    # COUNT-based existence flags in the SELECT.
+    optional_blocks: list[str] = []
+    select_exprs: list[str] = []
+    var_names: list[str] = []
     for i, uri in enumerate(prop_uris):
+        val_var = f"prop{i}Val"
         exists_var = f"prop{i}Exists"
         var_names.append(exists_var)
-        blocks.append(
-            f'  BIND(IF(EXISTS {{ ?entity <{uri}> ?prop{i}Val }}, "TRUE", "FALSE") AS ?{exists_var})'
+        optional_blocks.append(f"  OPTIONAL {{ ?entity <{uri}> ?{val_var} }}")
+        select_exprs.append(
+            f'(IF(COUNT(DISTINCT ?{val_var}) > 0, "TRUE", "FALSE") AS ?{exists_var})'
         )
-    return "\n".join(blocks), var_names
+    return "\n".join(optional_blocks), select_exprs, var_names
 
 
 @router.get("/by-entity")
@@ -315,25 +322,21 @@ async def completeness_by_entity(
     prop_uris  = [resolve_property_uri(p, class_name) for p in prop_list]
     class_uri  = resolve_class_uri(class_name)
     filter_clause = build_filter_clause(filter_property, filter_value, class_name)
-    exists_bindings, var_names = build_exists_bindings(prop_uris)
+    optional_block, select_exprs, var_names = build_exists_bindings(prop_uris)
 
-    var_list = " ".join(f"?{v}" for v in var_names)
+    var_list = " ".join(select_exprs)
 
     query = f"""
         {PREFIXES}
         SELECT ?entity {var_list} WHERE {{
-          {{
-            SELECT DISTINCT ?entity WHERE {{
-              ?entity a <{class_uri}> .
-              {filter_clause}
-            }}
-            ORDER BY ?entity
-            LIMIT {limit}
-            OFFSET {offset}
-          }}
-          {exists_bindings}
+          ?entity a <{class_uri}> .
+          {filter_clause}
+          {optional_block}
         }}
+        GROUP BY ?entity
         ORDER BY ?entity
+        LIMIT {limit}
+        OFFSET {offset}
     """
 
     count_query = f"""

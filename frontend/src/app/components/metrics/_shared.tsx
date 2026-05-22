@@ -2,9 +2,6 @@ import { ReactNode } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { statusColor } from '../../lib/api';
 
-// Headline: large aggregate number as primary entry point.
-// Justification: Bach et al. (2023) data-information pattern "headlines";
-// Gürdür et al. (2019) use large typography for top-level data-quality scores.
 export function Headline({
   value,
   label,
@@ -37,9 +34,6 @@ export function Headline({
   );
 }
 
-// Status badge: semaphore color coding (good/warn/bad).
-// Justification: Bach et al. (2023) "color and annotation" — green/amber/red
-// instantiation for quality thresholds.
 export function StatusBadge({ percent }: { percent: number }) {
   const c = statusColor(percent);
   return (
@@ -88,8 +82,6 @@ export function Section({
   );
 }
 
-// Score donut: Recharts donut (same visual as DonutCard in SchemaCompleteness)
-// but driven by a single percentage value instead of mapped/unmapped counts.
 export function ScoreDonut({
   title,
   percentage,

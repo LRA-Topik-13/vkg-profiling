@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
-import { Search, FileText } from 'lucide-react';
-import { Headline, ScoreDonut, Section, LoadingState, ErrorState } from './_shared';
+import { useEffect, useState, useCallback } from 'react';
+import { Search, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ScoreDonut, Section, LoadingState, ErrorState } from './_shared';
 import {
   metadataApi,
   concisenessApi,
   ClassMeta,
   PropertyMeta,
   IntraSourceResult,
+  IntraDuplicateGroup,
+  PaginationInfo,
 } from '../../lib/api';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -16,6 +18,8 @@ const SOURCE_OPTIONS = [
   { value: 'http://example.org/voc#uni2/', label: 'uni2 (PostgreSQL)' },
   { value: 'http://example.org/voc#uni3/', label: 'uni3 (MSSQL)' },
 ];
+
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -53,8 +57,48 @@ function FormulaCard({ title, formula, description }: { title: string; formula: 
   );
 }
 
-function DuplicateGroupsTable({ groups }: { groups: IntraSourceResult['duplicate_groups'] }) {
-  if (!groups || groups.length === 0) {
+function HeadlineCard({ value, label, sub, color }: { value: string; label: string; sub?: string; color?: string }) {
+  return (
+    <div
+      className="p-6 border flex flex-col justify-center"
+      style={{
+        backgroundColor: 'var(--card)',
+        borderColor: 'var(--border)',
+        borderRadius: 'var(--radius)',
+        minHeight: 260,
+      }}
+    >
+      <div className="text-sm mb-2" style={{ color: 'var(--muted-foreground)' }}>{label}</div>
+      <div className="text-5xl" style={{ color: color ?? 'var(--navy)', lineHeight: 1.1 }}>
+        {value}
+      </div>
+      {sub && (
+        <div className="mt-2 text-sm" style={{ color: 'var(--muted-foreground)' }}>{sub}</div>
+      )}
+    </div>
+  );
+}
+
+function DuplicateGroupsTable({
+  items,
+  pagination,
+  pageSize,
+  onPageSizeChange,
+  onPrev,
+  onNext,
+  loading,
+}: {
+  items: IntraDuplicateGroup[];
+  pagination: PaginationInfo | null;
+  pageSize: number;
+  onPageSizeChange: (size: number) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  loading: boolean;
+}) {
+  if (!pagination) return null;
+
+  if (pagination.total === 0) {
     return (
       <div
         className="px-4 py-3 text-sm border"
@@ -65,6 +109,11 @@ function DuplicateGroupsTable({ groups }: { groups: IntraSourceResult['duplicate
     );
   }
 
+  const currentPage = Math.floor(pagination.offset / pageSize) + 1;
+  const totalPages = pagination.total != null ? Math.ceil(pagination.total / pageSize) : null;
+  const hasPrev = pagination.offset > 0;
+  const hasNext = pagination.total != null ? pagination.offset + pageSize < pagination.total : pagination.count === pageSize;
+
   return (
     <div className="border overflow-hidden" style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius)' }}>
       <div className="px-5 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -73,17 +122,17 @@ function DuplicateGroupsTable({ groups }: { groups: IntraSourceResult['duplicate
           Instances sharing identical identity property values
         </p>
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.15s' }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ backgroundColor: 'var(--muted)' }}>
               <th className="px-4 py-2 text-left text-xs font-semibold" style={{ color: 'var(--muted-foreground)' }}>Identity Values</th>
-              <th className="px-4 py-2 text-left text-xs font-semibold" style={{ color: 'var(--muted-foreground)' }}>Duplicate URIs</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold" style={{ color: 'var(--muted-foreground)' }}>Matching Entities</th>
               <th className="px-4 py-2 text-center text-xs font-semibold" style={{ color: 'var(--muted-foreground)' }}>Count</th>
             </tr>
           </thead>
           <tbody>
-            {groups.map((g, i) => (
+            {items.map((g, i) => (
               <tr key={i} style={{ borderTop: i > 0 ? '1px solid var(--border)' : undefined }}>
                 <td className="px-4 py-2">
                   <div className="space-y-0.5">
@@ -120,6 +169,49 @@ function DuplicateGroupsTable({ groups }: { groups: IntraSourceResult['duplicate
           </tbody>
         </table>
       </div>
+
+      {/* Pagination controls */}
+      <div
+        className="flex items-center justify-between px-5 py-3"
+        style={{ borderTop: '1px solid var(--border)' }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Rows per page:</span>
+          <select
+            value={pageSize}
+            onChange={(e) => onPageSizeChange(Number(e.target.value))}
+            className="px-2 py-1 text-xs border"
+            style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}
+          >
+            {PAGE_SIZE_OPTIONS.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+            {totalPages != null ? `Page ${currentPage} of ${totalPages}` : `Page ${currentPage}`}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onPrev}
+              disabled={!hasPrev || loading}
+              className="p-1.5 border transition-colors disabled:opacity-30"
+              style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onNext}
+              disabled={!hasNext || loading}
+              className="p-1.5 border transition-colors disabled:opacity-30"
+              style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -142,6 +234,13 @@ export default function IntrasourceConciseness() {
   const [error, setError] = useState<string | null>(null);
   const [metaLoading, setMetaLoading] = useState(false);
 
+  // Pagination
+  const [dupItems, setDupItems] = useState<IntraDuplicateGroup[]>([]);
+  const [dupPagination, setDupPagination] = useState<PaginationInfo | null>(null);
+  const [dupPageSize, setDupPageSize] = useState(10);
+  const [dupOffset, setDupOffset] = useState(0);
+  const [dupLoading, setDupLoading] = useState(false);
+
   // Fetch classes on mount
   useEffect(() => {
     metadataApi.mappedClasses()
@@ -155,6 +254,8 @@ export default function IntrasourceConciseness() {
       setAllProperties([]);
       setSelectedProps([]);
       setResult(null);
+      setDupItems([]);
+      setDupPagination(null);
       return;
     }
     setMetaLoading(true);
@@ -167,22 +268,60 @@ export default function IntrasourceConciseness() {
       .catch(() => { setAllProperties([]); setSelectedProps([]); })
       .finally(() => setMetaLoading(false));
     setResult(null);
+    setDupItems([]);
+    setDupPagination(null);
   }, [selectedClass]);
 
   const selectedClassObj = classes.find((c) => c.localName === selectedClass);
+
+  const fetchDuplicates = useCallback(async (offset: number, limit: number) => {
+    if (!selectedClassObj) return;
+    setDupLoading(true);
+    try {
+      const data = await concisenessApi.intraSourceDuplicates({
+        class_uri: selectedClassObj.uri,
+        identity_props: selectedProps.join(','),
+        source_prefix: sourcePrefix,
+        limit,
+        offset,
+      });
+      setDupItems(data.items);
+      setDupPagination(data.pagination);
+      setDupOffset(offset);
+    } catch {
+      // silently fail for pagination — scores are already shown
+    } finally {
+      setDupLoading(false);
+    }
+  }, [selectedClassObj, selectedProps, sourcePrefix]);
 
   const handleAnalyze = async () => {
     if (!selectedClassObj || selectedProps.length === 0) return;
     setLoading(true);
     setError(null);
     setResult(null);
+    setDupItems([]);
+    setDupPagination(null);
+    setDupOffset(0);
     try {
-      const data = await concisenessApi.intraSource({
+      const [data] = await Promise.all([
+        concisenessApi.intraSource({
+          class_uri: selectedClassObj.uri,
+          identity_props: selectedProps.join(','),
+          source_prefix: sourcePrefix,
+        }),
+      ]);
+      setResult(data);
+      // Fetch first page of duplicates
+      const dupData = await concisenessApi.intraSourceDuplicates({
         class_uri: selectedClassObj.uri,
         identity_props: selectedProps.join(','),
         source_prefix: sourcePrefix,
+        limit: dupPageSize,
+        offset: 0,
       });
-      setResult(data);
+      setDupItems(dupData.items);
+      setDupPagination(dupData.pagination);
     } catch (e: any) {
       setError(e?.message ?? 'Request failed');
     } finally {
@@ -355,10 +494,10 @@ export default function IntrasourceConciseness() {
       {/* Results */}
       {result && !loading && (
         <>
-          {/* Count cards (Headline style) + Ring cards (DonutCard style) */}
+          {/* Score cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Headline value={String(result.total_representations)} label="Total Representations" sub="In selected source" color="var(--navy)" />
-            <Headline value={String(result.unique_instances)} label="Unique Instances" sub="Distinct entities" color="var(--navy)" />
+            <HeadlineCard value={String(result.total_representations)} label="Total Representations" sub="In selected source" color="var(--navy)" />
+            <HeadlineCard value={String(result.unique_instances)} label="Unique Instances" sub="Distinct entities" color="var(--navy)" />
             <ScoreDonut title="Score F1" percentage={result.score_f1} sub="unique / total" />
             <ScoreDonut title="Score F2" percentage={result.score_f2} sub="1 - (violations / total)" />
           </div>
@@ -378,7 +517,18 @@ export default function IntrasourceConciseness() {
               : `Failed -- ${result.violating_instances} instance(s) violate the uniqueness rule.`}
           </div>
 
-          <DuplicateGroupsTable groups={result.duplicate_groups} />
+          <DuplicateGroupsTable
+            items={dupItems}
+            pagination={dupPagination}
+            pageSize={dupPageSize}
+            onPageSizeChange={(size) => {
+              setDupPageSize(size);
+              fetchDuplicates(0, size);
+            }}
+            onPrev={() => fetchDuplicates(Math.max(0, dupOffset - dupPageSize), dupPageSize)}
+            onNext={() => fetchDuplicates(dupOffset + dupPageSize, dupPageSize)}
+            loading={dupLoading}
+          />
         </>
       )}
 

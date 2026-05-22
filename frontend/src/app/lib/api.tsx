@@ -37,31 +37,54 @@ export interface IntraSourceResult {
   score_f1: number;
   score_f2: number;
   passed: boolean;
-  duplicate_groups: {
-    identity_values: Record<string, string>;
-    uris: string[];
-    count: number;
-  }[];
 }
 
 export interface CrossSourceResult {
   total_entities: number;
   ambiguous_instances: number;
   cn3_score: number;
-  sample_size: number;
   sources: string[];
   note?: string;
-  ambiguous_groups: {
-    identity_values: Record<string, string>;
-    entities: { source: string; uri: string }[];
-  }[];
+}
+
+export interface PaginationInfo {
+  limit: number;
+  offset: number;
+  count: number;
+  total: number | null;
+}
+
+export interface IntraDuplicateGroup {
+  identity_values: Record<string, string>;
+  uris: string[];
+  count: number;
+}
+
+export interface CrossDuplicateGroup {
+  identity_values: Record<string, string>;
+  entities: { source: string; uri: string }[];
+  count: number;
+}
+
+export interface PaginatedIntraDuplicates {
+  pagination: PaginationInfo;
+  items: IntraDuplicateGroup[];
+}
+
+export interface PaginatedCrossDuplicates {
+  pagination: PaginationInfo;
+  items: CrossDuplicateGroup[];
 }
 
 export const concisenessApi = {
-  intraSource: (params: { class_uri: string; identity_props: string; source_prefix: string; sample_limit?: number }) =>
+  intraSource: (params: { class_uri: string; identity_props: string; source_prefix: string }) =>
     get<IntraSourceResult>('/conciseness/intra-source', params),
-  crossSource: (params: { class_uri: string; identity_props: string; sources: string; sample_limit?: number }) =>
+  crossSource: (params: { class_uri: string; identity_props: string; sources: string }) =>
     get<CrossSourceResult>('/conciseness/cross-source', params),
+  intraSourceDuplicates: (params: { class_uri: string; identity_props: string; source_prefix: string; limit?: number; offset?: number; include_total?: boolean }) =>
+    get<PaginatedIntraDuplicates>('/conciseness/intra-source/duplicates', params),
+  crossSourceDuplicates: (params: { class_uri: string; identity_props: string; sources: string; limit?: number; offset?: number; include_total?: boolean }) =>
+    get<PaginatedCrossDuplicates>('/conciseness/cross-source/duplicates', params),
 };
 
 export function statusFor(percent: number): 'good' | 'warn' | 'bad' {

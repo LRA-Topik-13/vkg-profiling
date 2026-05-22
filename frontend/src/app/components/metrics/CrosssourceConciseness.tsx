@@ -115,30 +115,47 @@ function AmbiguousGroupsTable({
   const hasNext = pagination.total != null ? pagination.offset + pageSize < pagination.total : pagination.count === pageSize;
 
   return (
-    <div className="border overflow-hidden" style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius)' }}>
-      <div className="px-5 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
-        <h3 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Ambiguous Instance Groups</h3>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--muted-foreground)' }}>
-          Entities with identical identity values across sources without owl:sameAs links
-        </p>
-      </div>
-      <div className="overflow-x-auto" style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.15s' }}>
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ backgroundColor: 'var(--muted)' }}>
-              <th className="px-4 py-2 text-left text-xs font-semibold" style={{ color: 'var(--muted-foreground)' }}>Identity Values</th>
-              <th className="px-4 py-2 text-left text-xs font-semibold" style={{ color: 'var(--muted-foreground)' }}>Matching Entities</th>
+    <div
+      className="p-6 border"
+      style={{
+        backgroundColor: 'var(--card)',
+        borderColor: 'var(--border)',
+        borderRadius: 'var(--radius)',
+      }}
+    >
+      <h3 className="text-xl mb-4" style={{ color: 'var(--navy)' }}>Ambiguous Instance Groups</h3>
+
+      <div
+        className="border overflow-hidden"
+        style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-md)' }}
+      >
+        <table className="w-full" style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.15s' }}>
+          <thead
+            style={{
+              backgroundColor: 'var(--navy)',
+              borderBottom: '1px solid var(--border)',
+            }}
+          >
+            <tr>
+              <th className="px-4 py-3 text-left" style={{ color: 'var(--text-on-dark)' }}>Identity Values</th>
+              <th className="px-4 py-3 text-left" style={{ color: 'var(--text-on-dark)' }}>Matching Entities</th>
             </tr>
           </thead>
           <tbody>
             {items.map((g, i) => (
-              <tr key={i} style={{ borderTop: i > 0 ? '1px solid var(--border)' : undefined }}>
-                <td className="px-4 py-2">
-                  <div className="space-y-0.5">
+              <tr
+                key={i}
+                style={{
+                  backgroundColor: 'var(--card)',
+                  borderBottom: '1px solid var(--border)',
+                }}
+              >
+                <td className="px-4 py-3">
+                  <div className="space-y-1">
                     {Object.entries(g.identity_values).map(([k, v]) => (
                       <span
                         key={k}
-                        className="inline-block mr-2 text-xs px-1.5 py-0.5"
+                        className="inline-block mr-2 text-sm px-1.5 py-0.5"
                         style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 'var(--radius-sm)' }}
                       >
                         {k}: <span className="font-medium" style={{ color: 'var(--text)' }}>{v}</span>
@@ -146,17 +163,17 @@ function AmbiguousGroupsTable({
                     ))}
                   </div>
                 </td>
-                <td className="px-4 py-2">
+                <td className="px-4 py-3">
                   <div className="space-y-1">
                     {g.entities.map((e, j) => (
                       <div key={j} className="flex items-center gap-2">
                         <span
-                          className="text-xs font-mono whitespace-nowrap px-1.5 py-0.5"
+                          className="text-sm font-mono whitespace-nowrap px-1.5 py-0.5"
                           style={{ backgroundColor: 'var(--info-soft)', color: 'var(--navy)', borderRadius: 'var(--radius-sm)' }}
                         >
                           {shortUri(e.source)}
                         </span>
-                        <p className="text-xs font-mono truncate max-w-[250px]" style={{ color: 'var(--muted-foreground)' }} title={e.uri}>
+                        <p className="text-sm font-mono truncate max-w-[250px]" style={{ color: 'var(--navy)' }} title={e.uri}>
                           {shortUri(e.uri)}
                         </p>
                       </div>
@@ -166,50 +183,66 @@ function AmbiguousGroupsTable({
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={2} className="px-4 py-3" style={{ backgroundColor: 'var(--card)' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm" style={{ color: 'var(--text)' }}>Rows per page:</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => onPageSizeChange(Number(e.target.value))}
+                      className="px-3 py-1 border"
+                      style={{
+                        backgroundColor: 'var(--card)',
+                        borderColor: 'var(--border)',
+                        borderRadius: 'var(--radius-sm)',
+                        color: 'var(--text)',
+                      }}
+                    >
+                      {PAGE_SIZE_OPTIONS.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm" style={{ color: 'var(--text)' }}>
+                      {totalPages != null ? `Page ${currentPage} of ${totalPages}` : `Page ${currentPage}`}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={onPrev}
+                        disabled={!hasPrev || loading}
+                        className="p-2 border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: 'var(--card)',
+                          borderColor: 'var(--border)',
+                          borderRadius: 'var(--radius-sm)',
+                          color: 'var(--navy)',
+                        }}
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={onNext}
+                        disabled={!hasNext || loading}
+                        className="p-2 border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: 'var(--card)',
+                          borderColor: 'var(--border)',
+                          borderRadius: 'var(--radius-sm)',
+                          color: 'var(--navy)',
+                        }}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </tfoot>
         </table>
-      </div>
-
-      {/* Pagination controls */}
-      <div
-        className="flex items-center justify-between px-5 py-3"
-        style={{ borderTop: '1px solid var(--border)' }}
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Rows per page:</span>
-          <select
-            value={pageSize}
-            onChange={(e) => onPageSizeChange(Number(e.target.value))}
-            className="px-2 py-1 text-xs border"
-            style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}
-          >
-            {PAGE_SIZE_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-            {totalPages != null ? `Page ${currentPage} of ${totalPages}` : `Page ${currentPage}`}
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={onPrev}
-              disabled={!hasPrev || loading}
-              className="p-1.5 border transition-colors disabled:opacity-30"
-              style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              onClick={onNext}
-              disabled={!hasNext || loading}
-              className="p-1.5 border transition-colors disabled:opacity-30"
-              style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

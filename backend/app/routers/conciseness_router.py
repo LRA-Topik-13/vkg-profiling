@@ -129,24 +129,12 @@ def _parse_sources(sources_param: str | None) -> list[str]:
     return source_list
 
 
-VOC_BASE = "http://example.org/voc#"
-
-
-def _resolve_uri(value: str) -> str:
-    """Resolve a URI that may be shorthand (e.g. ':teaches') to a full URI."""
-    if value.startswith("http"):
-        return value
-    if value.startswith(":"):
-        return f"{VOC_BASE}{value[1:]}"
-    return f"{VOC_BASE}{value}"
-
-
 def _parse_facets(filter_facets: Optional[str]) -> list[tuple[str, str]]:
     """
     Parse the filter_facets query parameter into a list of (predicate_uri, object_uri) pairs.
 
-    Format: comma-separated "predicate::object" pairs.
-    Example: ":teaches::http://example.org/voc#uni1/course/1,:worksFor:::uni1/department/1"
+    Format: comma-separated "predicate::object" pairs. Both must be full URIs.
+    Example: "http://example.org/voc#teaches::http://example.org/voc#uni1/course/1"
     """
     if not filter_facets:
         return []
@@ -158,8 +146,8 @@ def _parse_facets(filter_facets: Optional[str]) -> list[tuple[str, str]]:
         if "::" not in token:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid facet format '{token}'. Expected 'predicate::object', "
-                       f"e.g. ':teaches::http://example.org/voc#uni1/course/1'",
+                detail=f"Invalid facet format '{token}'. Expected 'predicate::object' "
+                       f"with full URIs, e.g. 'http://example.org/voc#teaches::http://example.org/voc#uni1/course/1'",
             )
         pred, obj = token.split("::", 1)
         pred = pred.strip()
@@ -169,7 +157,7 @@ def _parse_facets(filter_facets: Optional[str]) -> list[tuple[str, str]]:
                 status_code=400,
                 detail=f"Invalid facet '{token}'. Both predicate and object are required.",
             )
-        pairs.append((_resolve_uri(pred), _resolve_uri(obj)))
+        pairs.append((pred, obj))
     return pairs
 
 

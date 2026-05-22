@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react';
-import { Search, FileText } from 'lucide-react';
-import { Headline, ScoreDonut, Section, LoadingState, ErrorState } from './_shared';
+import { useEffect, useState, useCallback } from 'react';
+import { Search, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ScoreDonut, Section, LoadingState, ErrorState } from './_shared';
 import {
   metadataApi,
   concisenessApi,
-  statusColor,
   ClassMeta,
   PropertyMeta,
-  IntraSourceResult,
   CrossSourceResult,
+  CrossDuplicateGroup,
+  PaginationInfo,
 } from '../../lib/api';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -18,6 +18,8 @@ const SOURCE_OPTIONS = [
   { value: 'http://example.org/voc#uni2/', label: 'uni2 (PostgreSQL)' },
   { value: 'http://example.org/voc#uni3/', label: 'uni3 (MSSQL)' },
 ];
+
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,8 +57,48 @@ function FormulaCard({ title, formula, description }: { title: string; formula: 
   );
 }
 
-function AmbiguousGroupsTable({ groups }: { groups: CrossSourceResult['ambiguous_groups'] }) {
-  if (!groups || groups.length === 0) {
+function HeadlineCard({ value, label, sub, color }: { value: string; label: string; sub?: string; color?: string }) {
+  return (
+    <div
+      className="p-6 border flex flex-col justify-center"
+      style={{
+        backgroundColor: 'var(--card)',
+        borderColor: 'var(--border)',
+        borderRadius: 'var(--radius)',
+        minHeight: 260,
+      }}
+    >
+      <div className="text-sm mb-2" style={{ color: 'var(--muted-foreground)' }}>{label}</div>
+      <div className="text-5xl" style={{ color: color ?? 'var(--navy)', lineHeight: 1.1 }}>
+        {value}
+      </div>
+      {sub && (
+        <div className="mt-2 text-sm" style={{ color: 'var(--muted-foreground)' }}>{sub}</div>
+      )}
+    </div>
+  );
+}
+
+function AmbiguousGroupsTable({
+  items,
+  pagination,
+  pageSize,
+  onPageSizeChange,
+  onPrev,
+  onNext,
+  loading,
+}: {
+  items: CrossDuplicateGroup[];
+  pagination: PaginationInfo | null;
+  pageSize: number;
+  onPageSizeChange: (size: number) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  loading: boolean;
+}) {
+  if (!pagination) return null;
+
+  if (pagination.total === 0) {
     return (
       <div
         className="px-4 py-3 text-sm border"
@@ -67,6 +109,11 @@ function AmbiguousGroupsTable({ groups }: { groups: CrossSourceResult['ambiguous
     );
   }
 
+  const currentPage = Math.floor(pagination.offset / pageSize) + 1;
+  const totalPages = pagination.total != null ? Math.ceil(pagination.total / pageSize) : null;
+  const hasPrev = pagination.offset > 0;
+  const hasNext = pagination.total != null ? pagination.offset + pageSize < pagination.total : pagination.count === pageSize;
+
   return (
     <div className="border overflow-hidden" style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius)' }}>
       <div className="px-5 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -75,7 +122,7 @@ function AmbiguousGroupsTable({ groups }: { groups: CrossSourceResult['ambiguous
           Entities with identical identity values across sources without owl:sameAs links
         </p>
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.15s' }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ backgroundColor: 'var(--muted)' }}>
@@ -84,7 +131,7 @@ function AmbiguousGroupsTable({ groups }: { groups: CrossSourceResult['ambiguous
             </tr>
           </thead>
           <tbody>
-            {groups.map((g, i) => (
+            {items.map((g, i) => (
               <tr key={i} style={{ borderTop: i > 0 ? '1px solid var(--border)' : undefined }}>
                 <td className="px-4 py-2">
                   <div className="space-y-0.5">
@@ -121,15 +168,54 @@ function AmbiguousGroupsTable({ groups }: { groups: CrossSourceResult['ambiguous
           </tbody>
         </table>
       </div>
+
+      {/* Pagination controls */}
+      <div
+        className="flex items-center justify-between px-5 py-3"
+        style={{ borderTop: '1px solid var(--border)' }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>Rows per page:</span>
+          <select
+            value={pageSize}
+            onChange={(e) => onPageSizeChange(Number(e.target.value))}
+            className="px-2 py-1 text-xs border"
+            style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}
+          >
+            {PAGE_SIZE_OPTIONS.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+            {totalPages != null ? `Page ${currentPage} of ${totalPages}` : `Page ${currentPage}`}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onPrev}
+              disabled={!hasPrev || loading}
+              className="p-1.5 border transition-colors disabled:opacity-30"
+              style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onNext}
+              disabled={!hasNext || loading}
+              className="p-1.5 border transition-colors disabled:opacity-30"
+              style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
-
-interface IntraWithSource extends IntraSourceResult {
-  source: string;
-}
 
 export default function CrosssourceConciseness() {
   // Metadata
@@ -146,10 +232,16 @@ export default function CrosssourceConciseness() {
 
   // Results
   const [crossResult, setCrossResult] = useState<CrossSourceResult | null>(null);
-  const [intraResults, setIntraResults] = useState<IntraWithSource[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [metaLoading, setMetaLoading] = useState(false);
+
+  // Pagination
+  const [dupItems, setDupItems] = useState<CrossDuplicateGroup[]>([]);
+  const [dupPagination, setDupPagination] = useState<PaginationInfo | null>(null);
+  const [dupPageSize, setDupPageSize] = useState(10);
+  const [dupOffset, setDupOffset] = useState(0);
+  const [dupLoading, setDupLoading] = useState(false);
 
   // Fetch classes on mount
   useEffect(() => {
@@ -164,7 +256,8 @@ export default function CrosssourceConciseness() {
       setAllProperties([]);
       setSelectedProps([]);
       setCrossResult(null);
-      setIntraResults([]);
+      setDupItems([]);
+      setDupPagination(null);
       return;
     }
     setMetaLoading(true);
@@ -177,10 +270,32 @@ export default function CrosssourceConciseness() {
       .catch(() => { setAllProperties([]); setSelectedProps([]); })
       .finally(() => setMetaLoading(false));
     setCrossResult(null);
-    setIntraResults([]);
+    setDupItems([]);
+    setDupPagination(null);
   }, [selectedClass]);
 
   const selectedClassObj = classes.find((c) => c.localName === selectedClass);
+
+  const fetchDuplicates = useCallback(async (offset: number, limit: number) => {
+    if (!selectedClassObj) return;
+    setDupLoading(true);
+    try {
+      const data = await concisenessApi.crossSourceDuplicates({
+        class_uri: selectedClassObj.uri,
+        identity_props: selectedProps.join(','),
+        sources: selectedSources.join(','),
+        limit,
+        offset,
+      });
+      setDupItems(data.items);
+      setDupPagination(data.pagination);
+      setDupOffset(offset);
+    } catch {
+      // silently fail for pagination
+    } finally {
+      setDupLoading(false);
+    }
+  }, [selectedClassObj, selectedProps, selectedSources]);
 
   const toggleSource = (src: string) => {
     setSelectedSources((prev) =>
@@ -207,30 +322,30 @@ export default function CrosssourceConciseness() {
     setLoading(true);
     setError(null);
     setCrossResult(null);
-    setIntraResults([]);
+    setDupItems([]);
+    setDupPagination(null);
+    setDupOffset(0);
     try {
       const identityProps = selectedProps.join(',');
       const sourcesParam = selectedSources.join(',');
 
-      // Run cross-source and all intra-source requests in parallel
-      const intraPromises = selectedSources.map((src) =>
-        concisenessApi.intraSource({
-          class_uri: selectedClassObj.uri,
-          identity_props: identityProps,
-          source_prefix: src,
-        }).then((r) => ({ source: src, ...r }))
-      );
-
-      const [cross, ...intras] = await Promise.all([
-        concisenessApi.crossSource({
-          class_uri: selectedClassObj.uri,
-          identity_props: identityProps,
-          sources: sourcesParam,
-        }),
-        ...intraPromises,
-      ]);
+      const cross = await concisenessApi.crossSource({
+        class_uri: selectedClassObj.uri,
+        identity_props: identityProps,
+        sources: sourcesParam,
+      });
       setCrossResult(cross);
-      setIntraResults(intras);
+
+      // Fetch first page of duplicates
+      const dupData = await concisenessApi.crossSourceDuplicates({
+        class_uri: selectedClassObj.uri,
+        identity_props: identityProps,
+        sources: sourcesParam,
+        limit: dupPageSize,
+        offset: 0,
+      });
+      setDupItems(dupData.items);
+      setDupPagination(dupData.pagination);
     } catch (e: any) {
       setError(e?.message ?? 'Request failed');
     } finally {
@@ -242,18 +357,11 @@ export default function CrosssourceConciseness() {
     <div className="space-y-6">
       {/* Formulas */}
       <Section title="CN3 -- Ambiguous Instance Detection (Cross-Source)" subtitle="Detect ambiguous instances across multiple data sources.">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <FormulaCard
-            title="CN3 Formula"
-            formula="1 - (ambiguous_instances / total_in_semantic_metadata_set)"
-            description="Detects unresolved cross-source identity overlaps across all pairwise source combinations"
-          />
-          <FormulaCard
-            title="CN2-F2 -- Per Source"
-            formula="1 - (violating_instances / total)"
-            description="Intra-source uniqueness computed for each selected source"
-          />
-        </div>
+        <FormulaCard
+          title="CN3 Formula"
+          formula="1 - (ambiguous_instances / total_in_semantic_metadata_set)"
+          description="Detects unresolved cross-source identity overlaps across all pairwise source combinations"
+        />
       </Section>
 
       {/* Configuration */}
@@ -399,64 +507,26 @@ export default function CrosssourceConciseness() {
       {/* Results */}
       {crossResult && !loading && (
         <>
-          {/* Count cards (Headline style) + Ring card (DonutCard style) */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Headline
+          {/* Score cards: 3 columns — headline, donut (wide), headline */}
+          <div className="grid grid-cols-3 gap-4">
+            <HeadlineCard
               value={String(crossResult.total_entities)}
               label="Total Entities"
               sub={`Across ${crossResult.sources?.length || 0} sources`}
               color="var(--navy)"
-            />
-            <Headline
-              value={String(crossResult.ambiguous_instances)}
-              label="Ambiguous Instances"
-              sub="Overlapping identities"
-              color={crossResult.ambiguous_instances > 0 ? '#9E2B0A' : '#1F8A4C'}
             />
             <ScoreDonut
               title="CN3 Score"
               percentage={crossResult.cn3_score}
               sub="Cross-source conciseness"
             />
-            <Headline
-              value={String(crossResult.sample_size)}
-              label="Sample Size"
-              sub="Groups shown below"
-              color="var(--navy)"
+            <HeadlineCard
+              value={String(crossResult.ambiguous_instances)}
+              label="Ambiguous Instances"
+              sub="Overlapping identities"
+              color={crossResult.ambiguous_instances > 0 ? '#9E2B0A' : '#1F8A4C'}
             />
           </div>
-
-          {/* CN2-F2 per source */}
-          {intraResults.length > 0 && (
-            <Section title="CN2-F2 -- Intra-Source Uniqueness per Source">
-              <div className={`grid grid-cols-1 gap-4 ${intraResults.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
-                {intraResults.map((intra, idx) => {
-                  const scoreC = statusColor(intra.score_f2);
-                  return (
-                    <div
-                      key={idx}
-                      className="p-4 border"
-                      style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)' }}
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
-                        {shortUri(intra.source)}
-                      </p>
-                      <p className="text-xs truncate mb-2" style={{ color: 'var(--muted-foreground)' }} title={intra.source}>
-                        {intra.source}
-                      </p>
-                      <p className="text-2xl font-bold" style={{ color: scoreC }}>
-                        {intra.score_f2}%
-                      </p>
-                      <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
-                        {intra.unique_instances} unique / {intra.total_representations} total
-                        {intra.violating_instances > 0 && ` · ${intra.violating_instances} violations`}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </Section>
-          )}
 
           {/* Note */}
           {crossResult.note && (
@@ -468,7 +538,18 @@ export default function CrosssourceConciseness() {
             </div>
           )}
 
-          <AmbiguousGroupsTable groups={crossResult.ambiguous_groups} />
+          <AmbiguousGroupsTable
+            items={dupItems}
+            pagination={dupPagination}
+            pageSize={dupPageSize}
+            onPageSizeChange={(size) => {
+              setDupPageSize(size);
+              fetchDuplicates(0, size);
+            }}
+            onPrev={() => fetchDuplicates(Math.max(0, dupOffset - dupPageSize), dupPageSize)}
+            onNext={() => fetchDuplicates(dupOffset + dupPageSize, dupPageSize)}
+            loading={dupLoading}
+          />
         </>
       )}
 

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import {
   Target,
@@ -9,9 +8,17 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
-export default function Sidebar() {
+export const SIDEBAR_WIDTH = '16rem';
+export const SIDEBAR_COLLAPSED_WIDTH = '5rem';
+
+export default function Sidebar({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   const location = useLocation();
-  const [collapsed, setCollapsed] = useState(false);
 
   const dimensions = [
     {
@@ -36,8 +43,15 @@ export default function Sidebar() {
 
   return (
     <div
-      className="min-h-screen flex flex-col transition-all duration-300"
-      style={{ width: collapsed ? '5rem' : '16rem' }}
+      className="flex flex-col shrink-0 transition-all duration-300 overflow-hidden"
+      style={{
+        width: collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH,
+        height: '100vh',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        zIndex: 40,
+      }}
     >
       {/* Logo/Title */}
       <div
@@ -77,7 +91,7 @@ export default function Sidebar() {
 
         {/* Collapse toggle */}
         <button
-          onClick={() => setCollapsed(!collapsed)}
+          onClick={onToggle}
           className="absolute top-2 right-2 p-1 rounded transition-colors hover:bg-white/20"
           style={{ color: 'var(--text-on-dark)' }}
         >

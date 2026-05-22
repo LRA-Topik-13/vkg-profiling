@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 from app.dependencies import execute_sparql
@@ -14,7 +15,9 @@ PREFIXES = """
     PREFIX owl: <http://www.w3.org/2002/07/owl#>
 """
 
-SAMPLE_LIMIT = 20
+MAX_PAGE_LIMIT = 500
+DEFAULT_DUPLICATES_LIMIT = 10
+GROUP_CONCAT_SEP = "|||"
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -54,6 +57,15 @@ def _different_source_filter(sources: list[str]) -> str:
     """FILTER ensuring ?e1 and ?e2 are from different sources."""
     same = " || ".join(
         f'(STRSTARTS(STR(?e1), "{s}") && STRSTARTS(STR(?e2), "{s}"))'
+        for s in sources
+    )
+    return f"FILTER(!({same}))"
+
+
+def _different_source_filter_vars(var1: str, var2: str, sources: list[str]) -> str:
+    """FILTER ensuring two arbitrary variables are from different sources."""
+    same = " || ".join(
+        f'(STRSTARTS(STR({var1}), "{s}") && STRSTARTS(STR({var2}), "{s}"))'
         for s in sources
     )
     return f"FILTER(!({same}))"
@@ -171,6 +183,28 @@ def _build_facet_clauses(subject_var: str, facets: list[tuple[str, str]]) -> str
     )
 
 
+def _validate_pagination(limit: int, offset: int) -> tuple[int, int]:
+    if limit < 1 or limit > MAX_PAGE_LIMIT:
+        raise HTTPException(status_code=400, detail=f"limit must be between 1 and {MAX_PAGE_LIMIT}")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be greater than or equal to 0")
+    return limit, offset
+
+
+def _count_binding(raw: dict, var_name: str, default: int = 0) -> int:
+    bindings = raw.get("results", {}).get("bindings", [])
+    if not bindings:
+        return default
+    return int(bindings[0].get(var_name, {}).get("value", str(default)))
+
+
+def _parse_identity_props(identity_props: str) -> list[str]:
+    prop_uris = [p.strip() for p in identity_props.split(",") if p.strip()]
+    if not prop_uris:
+        raise HTTPException(status_code=400, detail="At least one identity property required")
+    return prop_uris
+
+
 # ── CN2 — extensional conciseness, intra-source ───────────────────────────────
 
 @router.get("/intra-source")
@@ -179,10 +213,9 @@ async def conciseness_intra_source(
     identity_props: str = Query(..., description="Comma-separated full property URIs defining identity, e.g. http://xmlns.com/foaf/0.1/firstName,http://xmlns.com/foaf/0.1/lastName"),
     source_prefix:  str = Query(..., description="URI prefix scoping to one source, e.g. http://example.org/voc#uni1/"),
     filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters as predicate::object pairs, e.g. :teaches::http://example.org/voc#uni1/course/1,:worksFor:::uni1/department/1"),
-    sample_limit:   int = Query(SAMPLE_LIMIT),
 ):
     """
-    CN2 — Extensional conciseness, intra-source.
+    CN2 — Extensional conciseness, intra-source (scores only).
 
     Two formulas from the paper:
       F1: unique_instances / total_instance_representations
@@ -191,21 +224,14 @@ async def conciseness_intra_source(
     A violation = two different URIs within source_prefix that share
     identical values for ALL identity_props.
 
-    identity_props are fully caller-supplied — use /metadata/properties
-    to discover available properties for a class, then pass their URIs here.
-    This keeps the route decoupled from any hardcoded schema knowledge.
+    Use /conciseness/intra-source/duplicates for paginated duplicate groups.
     """
-    prop_uris = [p.strip() for p in identity_props.split(",") if p.strip()]
-    if not prop_uris:
-        raise HTTPException(status_code=400, detail="At least one identity property required")
+    prop_uris = _parse_identity_props(identity_props)
 
     id_block, id_vars = _build_identity_block("?e", prop_uris, "k")
     select_keys       = " ".join(f"?{v}" for v in id_vars)
     facets            = _parse_facets(filter_facets)
     facet_clause      = _build_facet_clauses("?e", facets)
-
-    # Map variable names to human-readable property names
-    var_to_prop = {id_vars[i]: _prop_local_name(prop_uris[i]) for i in range(len(prop_uris))}
 
     # Total instance representations within this source
     total_q = f"""
@@ -217,7 +243,7 @@ async def conciseness_intra_source(
         }}
     """
 
-    # Identity key combinations that appear on more than one URI → duplicates
+    # All duplicate groups (no LIMIT) for accurate score computation
     group_q = f"""
         {PREFIXES}
         SELECT {select_keys} (COUNT(DISTINCT ?e) AS ?cnt) WHERE {{
@@ -228,70 +254,28 @@ async def conciseness_intra_source(
         }}
         GROUP BY {select_keys}
         HAVING (COUNT(DISTINCT ?e) > 1)
-        LIMIT {sample_limit}
     """
 
     try:
-        total_raw = await execute_sparql(total_q)
-        group_raw = await execute_sparql(group_q)
+        total_raw, group_raw = await asyncio.gather(
+            execute_sparql(total_q),
+            execute_sparql(group_q),
+        )
     except Exception as ex:
         raise HTTPException(status_code=502, detail=f"SPARQL error: {ex}")
 
-    total_representations = int(
-        (total_raw.get("results", {}).get("bindings") or [{"n": {"value": "0"}}])[0]["n"]["value"]
-    )
+    total_representations = _count_binding(total_raw, "n")
     group_bindings = group_raw.get("results", {}).get("bindings", [])
 
-    # For each duplicate group, fetch the actual URIs involved
-    duplicate_groups      = []
-    all_violating_uris    = set()   # deduplicated across groups
-
-    for row in group_bindings:
-        # Use property local names instead of internal variable names
-        key_values     = {var_to_prop[v]: row[v]["value"] for v in id_vars if v in row}
-        key_values_raw = {v: row[v]["value"] for v in id_vars if v in row}
-        dup_count  = int(row["cnt"]["value"])
-
-        filter_triples = "\n".join(
-            f'    ?e <{prop_uris[i]}> "{key_values_raw[id_vars[i]]}" .'
-            for i in range(len(prop_uris))
-            if id_vars[i] in key_values_raw
-        )
-        uri_q = f"""
-            {PREFIXES}
-            SELECT DISTINCT ?e WHERE {{
-                ?e a <{class_uri}> .
-                FILTER(STRSTARTS(STR(?e), "{source_prefix}"))
-{facet_clause}
-{filter_triples}
-            }}
-        """
-        try:
-            uri_raw = await execute_sparql(uri_q)
-            uris    = [b["e"]["value"] for b in uri_raw.get("results", {}).get("bindings", [])]
-        except Exception:
-            uris = []
-
-        all_violating_uris.update(uris)
-
-        duplicate_groups.append({
-            "identity_values": key_values,
-            "uris":            uris,
-            "count":           dup_count,
-        })
-
     # CN2-F1: unique_instances / total
-    # Each duplicate group collapses to 1 representative; the rest are extras.
-    # "unique_instances" = number of distinct real-world identities.
-    extras           = sum(g["count"] - 1 for g in duplicate_groups)
+    extras           = sum(int(row["cnt"]["value"]) - 1 for row in group_bindings)
     unique_instances = total_representations - extras
     cn2_f1 = round(unique_instances / total_representations * 100, 2) if total_representations else 100.0
 
     # CN2-F2: 1 - violating / total
-    # "violating" = distinct entities involved in ANY duplicate group.
-    # Uses a set to safely deduplicate across groups.
-    total_violating_uris = len(all_violating_uris)
-    cn2_f2 = round((1 - total_violating_uris / total_representations) * 100, 2) if total_representations else 100.0
+    # violating = total entities involved in any duplicate group = sum of all counts
+    violating_instances = sum(int(row["cnt"]["value"]) for row in group_bindings)
+    cn2_f2 = round((1 - violating_instances / total_representations) * 100, 2) if total_representations else 100.0
 
     return {
         "formula_f1":            "unique_instances / total_representations",
@@ -299,11 +283,105 @@ async def conciseness_intra_source(
         "source_prefix":         source_prefix,
         "total_representations": total_representations,
         "unique_instances":      unique_instances,
-        "violating_instances":   total_violating_uris,
-        "duplicate_groups":      duplicate_groups,
+        "violating_instances":   violating_instances,
         "score_f1":              cn2_f1,
         "score_f2":              cn2_f2,
-        "passed":                len(duplicate_groups) == 0,
+        "passed":                len(group_bindings) == 0,
+    }
+
+
+# ── CN2 — paginated duplicate groups ────────────────────────────────────────
+
+@router.get("/intra-source/duplicates")
+async def intra_source_duplicates(
+    class_uri:      str = Query(..., description="Full URI of class to evaluate"),
+    identity_props: str = Query(..., description="Comma-separated full property URIs defining identity"),
+    source_prefix:  str = Query(..., description="URI prefix scoping to one source"),
+    filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters as predicate::object pairs"),
+    limit:          int = Query(DEFAULT_DUPLICATES_LIMIT, description="Page size (max 500)"),
+    offset:         int = Query(0, description="Number of groups to skip"),
+    include_total:  bool = Query(True, description="Include total count of duplicate groups"),
+):
+    """
+    Paginated duplicate groups for intra-source conciseness.
+
+    Each row = one identity-value combination that appears on more than one URI
+    within the source. Ordered by duplicate count DESC, then identity values.
+    """
+    limit, offset = _validate_pagination(limit, offset)
+    prop_uris = _parse_identity_props(identity_props)
+
+    id_block, id_vars = _build_identity_block("?e", prop_uris, "k")
+    select_keys       = " ".join(f"?{v}" for v in id_vars)
+    facets            = _parse_facets(filter_facets)
+    facet_clause      = _build_facet_clauses("?e", facets)
+    var_to_prop       = {id_vars[i]: _prop_local_name(prop_uris[i]) for i in range(len(prop_uris))}
+
+    body = f"""\
+            ?e a <{class_uri}> .
+            FILTER(STRSTARTS(STR(?e), "{source_prefix}"))
+{facet_clause}
+{id_block}"""
+
+    data_q = f"""
+        {PREFIXES}
+        SELECT {select_keys} (COUNT(DISTINCT ?e) AS ?cnt)
+               (GROUP_CONCAT(STR(?e); separator="{GROUP_CONCAT_SEP}") AS ?entities)
+        WHERE {{
+{body}
+        }}
+        GROUP BY {select_keys}
+        HAVING (COUNT(DISTINCT ?e) > 1)
+        ORDER BY DESC(?cnt) {select_keys}
+        LIMIT {limit}
+        OFFSET {offset}
+    """
+
+    count_q = f"""
+        {PREFIXES}
+        SELECT (COUNT(*) AS ?total) WHERE {{
+            SELECT {select_keys}
+            WHERE {{
+{body}
+            }}
+            GROUP BY {select_keys}
+            HAVING (COUNT(DISTINCT ?e) > 1)
+        }}
+    """
+
+    try:
+        if include_total:
+            data_raw, count_raw = await asyncio.gather(
+                execute_sparql(data_q),
+                execute_sparql(count_q),
+            )
+            total = _count_binding(count_raw, "total")
+        else:
+            data_raw = await execute_sparql(data_q)
+            total = None
+    except Exception as ex:
+        raise HTTPException(status_code=502, detail=f"SPARQL error: {ex}")
+
+    items = []
+    for row in data_raw.get("results", {}).get("bindings", []):
+        identity_values = {var_to_prop[v]: row[v]["value"] for v in id_vars if v in row}
+        cnt = int(row["cnt"]["value"])
+        entities_str = row.get("entities", {}).get("value", "")
+        uris = list(dict.fromkeys(u for u in entities_str.split(GROUP_CONCAT_SEP) if u)) if entities_str else []
+        items.append({
+            "identity_values": identity_values,
+            "uris":            uris,
+            "count":           cnt,
+        })
+
+    return {
+        "pagination": {
+            "limit":  limit,
+            "offset": offset,
+            "count":  len(items),
+            "total":  total,
+        },
+        "items": items,
     }
 
 
@@ -315,36 +393,20 @@ async def conciseness_cross_source(
     identity_props: str = Query(..., description="Comma-separated full property URIs defining identity"),
     sources:        str = Query(None, description="Comma-separated source URI prefixes. Default: first 2 registered sources. Max: all registered sources."),
     filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters as predicate::object pairs, e.g. :teaches::http://example.org/voc#uni1/course/1,:worksFor:::uni1/department/1"),
-    sample_limit:   int = Query(SAMPLE_LIMIT),
 ):
     """
-    CN3 — Ambiguous instance detection across multiple sources.
+    CN3 — Ambiguous instance detection across multiple sources (scores only).
 
     Formula: 1 - (ambiguous_instances / total_in_semantic_metadata_set)
 
     An ambiguous instance = entity in one source sharing all identity_prop values
     with an entity in a different source, with no owl:sameAs link between them.
 
-    Supports 2+ data sources (default: first 2 registered sources, max: all
-    registered sources). All pairwise source combinations are checked — even
-    partial ambiguity (e.g., duplicates between only 2 out of 3 sources)
-    contributes to the score.
-
-    The semantic metadata set = all entities of this class across selected sources.
-
-    Note on scoring with multiple sources:
-      - All entities involved in ANY cross-source match are counted as ambiguous,
-        regardless of which pair they appear in.
-      - Each entity is counted at most once (via DISTINCT), even if it matches
-        entities in multiple other sources.
-      - This is a symmetric count: if entity A in uni1 matches entity B in uni2,
-        BOTH A and B are counted as ambiguous.
+    Use /conciseness/cross-source/duplicates for paginated ambiguous groups.
     """
     source_list = _parse_sources(sources)
 
-    prop_uris = [p.strip() for p in identity_props.split(",") if p.strip()]
-    if not prop_uris:
-        raise HTTPException(status_code=400, detail="At least one identity property required")
+    prop_uris = _parse_identity_props(identity_props)
 
     # Build identity blocks using shared variables — e1 and e2 bind to the
     # same ?v0, ?v1, … so SPARQL enforces value equality without extra FILTERs
@@ -358,10 +420,6 @@ async def conciseness_cross_source(
         e2_patterns.append(f"    ?e2 <{uri}> ?{var} .")
     e1_block   = "\n".join(e1_patterns)
     e2_block   = "\n".join(e2_patterns)
-    select_vars = " ".join(f"?{v}" for v in var_names)
-
-    # Property name mapping for human-readable response
-    prop_names = [_prop_local_name(uri) for uri in prop_uris]
 
     # Facet filters — applied to ?e (total), ?e1 and ?e2 (match queries)
     facets   = _parse_facets(filter_facets)
@@ -401,65 +459,17 @@ async def conciseness_cross_source(
         }}
     """
 
-    # Sample of ambiguous pairs (STR ordering avoids showing each pair twice)
-    pairs_q = f"""
-        {PREFIXES}
-        SELECT DISTINCT {select_vars} ?e1 ?e2 WHERE {{
-            ?e1 a <{class_uri}> .
-            ?e2 a <{class_uri}> .
-            {membership_e1}
-            {membership_e2}
-            {diff_filter}
-            FILTER(STR(?e1) < STR(?e2))
-{facet_e1}
-{facet_e2}
-{e1_block}
-{e2_block}
-        }}
-        LIMIT {sample_limit}
-    """
-
     try:
-        total_raw = await execute_sparql(total_q)
-        count_raw = await execute_sparql(count_q)
-        pairs_raw = await execute_sparql(pairs_q)
+        total_raw, count_raw = await asyncio.gather(
+            execute_sparql(total_q),
+            execute_sparql(count_q),
+        )
     except Exception as ex:
         raise HTTPException(status_code=502, detail=f"SPARQL error: {ex}")
 
-    total_n = int(
-        (total_raw.get("results", {}).get("bindings") or [{"n": {"value": "0"}}])[0]["n"]["value"]
-    )
-    ambiguous_n = int(
-        (count_raw.get("results", {}).get("bindings") or [{"n": {"value": "0"}}])[0]["n"]["value"]
-    )
+    total_n = _count_binding(total_raw, "n")
+    ambiguous_n = _count_binding(count_raw, "n")
     cn3 = round((1 - ambiguous_n / total_n) * 100, 2) if total_n else 100.0
-
-    # Group sample results by identity values for a cleaner response
-    groups: dict[tuple, dict] = {}
-    for row in pairs_raw.get("results", {}).get("bindings", []):
-        key = tuple(row[v]["value"] for v in var_names if v in row)
-        if key not in groups:
-            identity = {
-                prop_names[i]: row[var_names[i]]["value"]
-                for i in range(len(var_names))
-                if var_names[i] in row
-            }
-            groups[key] = {"identity_values": identity, "entity_uris": set()}
-        groups[key]["entity_uris"].add(row["e1"]["value"])
-        groups[key]["entity_uris"].add(row["e2"]["value"])
-
-    ambiguous_groups = []
-    for group in groups.values():
-        entities = []
-        for uri in sorted(group["entity_uris"]):
-            entities.append({
-                "source": _find_source(uri, source_list),
-                "uri":    uri,
-            })
-        ambiguous_groups.append({
-            "identity_values": group["identity_values"],
-            "entities":        entities,
-        })
 
     return {
         "formula":             "1 - (ambiguous_instances / total_in_semantic_metadata_set)",
@@ -467,10 +477,128 @@ async def conciseness_cross_source(
         "total_entities":      total_n,
         "ambiguous_instances": ambiguous_n,
         "cn3_score":           cn3,
-        "sample_size":         len(ambiguous_groups),
-        "ambiguous_groups":    ambiguous_groups,
         "note": "Ambiguous = same identity values across different sources, no owl:sameAs. "
                 "All pairwise source combinations are checked. Partial ambiguity (duplicates "
                 "between a subset of sources) is included in the score."
     }
 
+
+# ── CN3 — paginated ambiguous groups ────────────────────────────────────────
+
+@router.get("/cross-source/duplicates")
+async def cross_source_duplicates(
+    class_uri:      str = Query(..., description="Full URI of class to evaluate"),
+    identity_props: str = Query(..., description="Comma-separated full property URIs defining identity"),
+    sources:        str = Query(None, description="Comma-separated source URI prefixes"),
+    filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters as predicate::object pairs"),
+    limit:          int = Query(DEFAULT_DUPLICATES_LIMIT, description="Page size (max 500)"),
+    offset:         int = Query(0, description="Number of groups to skip"),
+    include_total:  bool = Query(True, description="Include total count of ambiguous groups"),
+):
+    """
+    Paginated ambiguous groups for cross-source conciseness.
+
+    Each row = one identity-value combination shared by entities in different
+    sources. Ordered by entity count DESC, then identity values.
+    """
+    limit, offset = _validate_pagination(limit, offset)
+    source_list = _parse_sources(sources)
+    prop_uris   = _parse_identity_props(identity_props)
+
+    # Use a join-based approach: ?e and ?other share identity variables,
+    # so SPARQL enforces value equality. The different-source filter ensures
+    # cross-source matches. GROUP BY on identity vars + GROUP_CONCAT on ?e
+    # collects all matching entities (symmetric join captures both sides).
+    e_block, id_vars = _build_identity_block("?e", prop_uris, "v")
+    other_block = "\n".join(
+        f"    ?other <{prop_uris[i]}> ?{id_vars[i]} ."
+        for i in range(len(prop_uris))
+    )
+    select_vars = " ".join(f"?{v}" for v in id_vars)
+    prop_names  = [_prop_local_name(uri) for uri in prop_uris]
+
+    facets        = _parse_facets(filter_facets)
+    facet_e       = _build_facet_clauses("?e", facets)
+    facet_other   = _build_facet_clauses("?other", facets)
+    membership_e  = _source_membership_filter("?e", source_list)
+    membership_o  = _source_membership_filter("?other", source_list)
+    diff_filter   = _different_source_filter_vars("?e", "?other", source_list)
+
+    body = f"""\
+            ?e a <{class_uri}> .
+            ?other a <{class_uri}> .
+            {membership_e}
+            {membership_o}
+            {diff_filter}
+            FILTER(?e != ?other)
+{facet_e}
+{facet_other}
+{e_block}
+{other_block}"""
+
+    data_q = f"""
+        {PREFIXES}
+        SELECT {select_vars} (COUNT(DISTINCT ?e) AS ?cnt)
+               (GROUP_CONCAT(STR(?e); separator="{GROUP_CONCAT_SEP}") AS ?entities)
+        WHERE {{
+{body}
+        }}
+        GROUP BY {select_vars}
+        ORDER BY DESC(?cnt) {select_vars}
+        LIMIT {limit}
+        OFFSET {offset}
+    """
+
+    count_q = f"""
+        {PREFIXES}
+        SELECT (COUNT(*) AS ?total) WHERE {{
+            SELECT {select_vars}
+            WHERE {{
+{body}
+            }}
+            GROUP BY {select_vars}
+        }}
+    """
+
+    try:
+        if include_total:
+            data_raw, count_raw = await asyncio.gather(
+                execute_sparql(data_q),
+                execute_sparql(count_q),
+            )
+            total = _count_binding(count_raw, "total")
+        else:
+            data_raw = await execute_sparql(data_q)
+            total = None
+    except Exception as ex:
+        raise HTTPException(status_code=502, detail=f"SPARQL error: {ex}")
+
+    items = []
+    for row in data_raw.get("results", {}).get("bindings", []):
+        identity_values = {
+            prop_names[i]: row[id_vars[i]]["value"]
+            for i in range(len(id_vars))
+            if id_vars[i] in row
+        }
+        cnt = int(row["cnt"]["value"])
+        entities_str = row.get("entities", {}).get("value", "")
+        uris = list(dict.fromkeys(u for u in entities_str.split(GROUP_CONCAT_SEP) if u)) if entities_str else []
+        entities = sorted(
+            [{"source": _find_source(uri, source_list), "uri": uri} for uri in uris],
+            key=lambda e: (e["source"], e["uri"]),
+        )
+        items.append({
+            "identity_values": identity_values,
+            "entities":        entities,
+            "count":           cnt,
+        })
+
+    return {
+        "pagination": {
+            "limit":  limit,
+            "offset": offset,
+            "count":  len(items),
+            "total":  total,
+        },
+        "items": items,
+    }

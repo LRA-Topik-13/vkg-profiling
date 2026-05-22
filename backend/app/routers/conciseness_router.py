@@ -431,19 +431,23 @@ async def conciseness_cross_source(
         }}
     """
 
-    # Count of distinct entities involved in cross-source ambiguity (symmetric)
+    # Count of distinct entities involved in cross-source ambiguity (symmetric).
+    # NOTE: COUNT(DISTINCT ?e1) is mis-translated by Ontop/Teiid and over-counts.
+    # Wrapping SELECT DISTINCT in a subquery and using COUNT(*) gives the correct result.
     count_q = f"""
         {PREFIXES}
-        SELECT (COUNT(DISTINCT ?e1) AS ?n) WHERE {{
-            ?e1 a <{class_uri}> .
-            ?e2 a <{class_uri}> .
-            {membership_e1}
-            {membership_e2}
-            {diff_filter}
+        SELECT (COUNT(*) AS ?n) WHERE {{
+            SELECT DISTINCT ?e1 WHERE {{
+                ?e1 a <{class_uri}> .
+                ?e2 a <{class_uri}> .
+                {membership_e1}
+                {membership_e2}
+                {diff_filter}
 {facet_e1}
 {facet_e2}
 {e1_block}
 {e2_block}
+            }}
         }}
     """
 

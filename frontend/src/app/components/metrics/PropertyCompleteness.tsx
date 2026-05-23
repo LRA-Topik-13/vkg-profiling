@@ -55,7 +55,7 @@ export default function PropertyCompleteness() {
       return;
     }
     metadataApi
-      .mappedProperties(selectedClass.localName)
+      .mappedProperties(selectedClass.uri)
       .then((r) => setProps(r.properties))
       .catch((e) => setError(String(e)));
   }, [selectedClass]);
@@ -72,7 +72,7 @@ export default function PropertyCompleteness() {
       return;
     }
     metadataApi
-      .facets(selectedClass.localName, propEntry.localName)
+      .facets(selectedClass.uri, propEntry.uri)
       .then((r) => setDraftValues(r.values))
       .catch(() => setDraftValues([]));
   }, [selectedClass, draftPropUri, props]);

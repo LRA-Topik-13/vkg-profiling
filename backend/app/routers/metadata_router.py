@@ -256,7 +256,7 @@ def _build_metadata(ttl_path: str, obda_path: str):
         [{"localName": _ln(uri), "uri": uri, "mapped": uri in mapped_class_uris,
           "label": class_labels.get(uri)}
          for uri in all_class_uris],
-        key=lambda x: x["localName"],
+        key=lambda x: x["uri"],
     )
 
     ontology_properties = sorted(
@@ -272,13 +272,13 @@ def _build_metadata(ttl_path: str, obda_path: str):
             }
             for uri, d in prop_lookup.items()
         ],
-        key=lambda x: x["localName"],
+        key=lambda x: x["uri"],
     )
 
     known_classes = sorted(
         [{"localName": _ln(uri), "uri": uri, "label": class_labels.get(uri)}
          for uri in mapped_class_uris],
-        key=lambda x: x["localName"],
+        key=lambda x: x["uri"],
     )
 
     # ── KNOWN_PROPERTIES via ontology domain constraints (hybrid) ────────────
@@ -323,7 +323,7 @@ def _build_metadata(ttl_path: str, obda_path: str):
                     entry["rangeClass"] = _ln(d["range"])
             props.append(entry)
 
-        known_properties[cls_name] = props
+        known_properties[cls_uri] = props
 
     return known_classes, known_properties, ontology_classes, ontology_properties
 
@@ -376,6 +376,9 @@ KNOWN_CLASSES, KNOWN_PROPERTIES, ONTOLOGY_CLASSES, ONTOLOGY_PROPERTIES = (
 )
 KNOWN_SOURCES = _extract_source_prefixes(OBDA_FILE)
 
+# O(1) class lookup by URI — replaces linear scans of KNOWN_CLASSES list
+KNOWN_CLASSES_BY_URI: dict[str, dict] = {c["uri"]: c for c in KNOWN_CLASSES}
+
 
 @router.get("/mapped-classes")
 def get_mapped_classes():
@@ -383,12 +386,13 @@ def get_mapped_classes():
 
 
 @router.get("/mapped-properties")
-def get_mapped_properties(class_name: str = Query(None)):
-    if class_name:
-        props = KNOWN_PROPERTIES.get(class_name)
+def get_mapped_properties(class_uri: str = Query(None, description="Full URI of class, e.g. http://xmlns.com/foaf/0.1/Person")):
+    if class_uri:
+        props = KNOWN_PROPERTIES.get(class_uri)
         if props is None:
-            raise HTTPException(status_code=404, detail=f"Class '{class_name}' not found")
-        return {"class": class_name, "properties": props}
+            raise HTTPException(status_code=404, detail=f"Class '{class_uri}' not found")
+        cls = KNOWN_CLASSES_BY_URI.get(class_uri, {})
+        return {"uri": class_uri, "class": cls.get("localName", ""), "properties": props}
 
     seen = set()
     all_props = []
@@ -402,30 +406,26 @@ def get_mapped_properties(class_name: str = Query(None)):
 
 @router.get("/facets")
 async def get_facet_values(
-    class_name: str = Query(...),
-    property:   str = Query(...),
+    class_uri:    str = Query(..., description="Full URI of class"),
+    property_uri: str = Query(..., description="Full URI of object property"),
 ):
-    class_props = KNOWN_PROPERTIES.get(class_name)
+    class_props = KNOWN_PROPERTIES.get(class_uri)
     if class_props is None:
-        raise HTTPException(status_code=404, detail=f"Class '{class_name}' not found")
+        raise HTTPException(status_code=404, detail=f"Class '{class_uri}' not found")
 
-    prop_entry = next((p for p in class_props if p["localName"] == property), None)
+    prop_entry = next((p for p in class_props if p["uri"] == property_uri), None)
     if prop_entry is None:
-        raise HTTPException(status_code=404, detail=f"Property '{property}' not found on class '{class_name}'")
+        raise HTTPException(status_code=404, detail=f"Property '{property_uri}' not found on class '{class_uri}'")
     if prop_entry["type"] != "object":
-        raise HTTPException(status_code=400, detail=f"Property '{property}' is a data property")
+        raise HTTPException(status_code=400, detail=f"Property '{property_uri}' is a data property")
 
-    prop_uri  = prop_entry["uri"]
-    class_uri = next(
-        (c["uri"] for c in KNOWN_CLASSES if c["localName"] == class_name),
-        f"http://example.org/voc#{class_name}",
-    )
+    cls = KNOWN_CLASSES_BY_URI.get(class_uri, {})
 
     query = f"""
         {PREFIXES}
         SELECT DISTINCT ?value WHERE {{
             ?entity a <{class_uri}> .
-            ?entity <{prop_uri}> ?value .
+            ?entity <{property_uri}> ?value .
         }}
         ORDER BY ?value
     """
@@ -435,7 +435,13 @@ async def get_facet_values(
         raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
 
     bindings = raw.get("results", {}).get("bindings", [])
-    return {"class": class_name, "property": property, "values": [b["value"]["value"] for b in bindings]}
+    return {
+        "uri": class_uri,
+        "class": cls.get("localName", ""),
+        "property_uri": property_uri,
+        "property": prop_entry.get("localName", ""),
+        "values": [b["value"]["value"] for b in bindings],
+    }
 
 
 @router.get("/all-properties")

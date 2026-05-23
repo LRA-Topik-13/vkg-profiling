@@ -2,7 +2,7 @@ import asyncio
 from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 from app.dependencies import execute_sparql
-from app.routers.metadata_router import KNOWN_SOURCES
+from app.routers.metadata_router import KNOWN_SOURCES, KNOWN_PROPERTIES, KNOWN_CLASSES_BY_URI
 
 router = APIRouter(prefix="/conciseness", tags=["conciseness"])
 
@@ -129,46 +129,76 @@ def _parse_sources(sources_param: str | None) -> list[str]:
     return source_list
 
 
-def _parse_facets(filter_facets: Optional[str]) -> list[tuple[str, str]]:
-    """
-    Parse the filter_facets query parameter into a list of (predicate_uri, object_uri) pairs.
+def _validate_class_uri(class_uri: str) -> None:
+    """Validate class_uri exists in known classes."""
+    if class_uri not in KNOWN_CLASSES_BY_URI:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Class '{class_uri}' is not a known mapped class.",
+        )
 
-    Format: comma-separated "predicate::object" pairs. Both must be full URIs.
-    Example: "http://example.org/voc#teaches::http://example.org/voc#uni1/course/1"
+
+def _parse_facets(filter_facets: Optional[str], class_uri: str) -> list[tuple[str, str | None]]:
+    """
+    Parse the filter_facets query parameter into a list of (predicate_uri, object_uri | None).
+
+    Validates that each predicate exists for the given class and is an object property.
+
+    Supports two formats per entry:
+      - "predicate::object" — filter to entities where predicate = specific object
+      - "predicate"         — filter to entities that have any value for predicate
+
+    Entries are comma-separated. Both predicate and object must be full URIs.
+    Example: "http://example.org/voc#teaches,http://example.org/voc#worksFor::http://example.org/voc#uni1/department/1"
     """
     if not filter_facets:
         return []
-    pairs = []
+    class_props = {p["uri"]: p for p in KNOWN_PROPERTIES.get(class_uri, [])}
+    pairs: list[tuple[str, str | None]] = []
     for token in filter_facets.split(","):
         token = token.strip()
         if not token:
             continue
-        if "::" not in token:
+        if "::" in token:
+            pred, obj = token.split("::", 1)
+            pred = pred.strip()
+            obj = obj.strip()
+            if not pred or not obj:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid facet '{token}'. Both predicate and object are required when using '::' separator.",
+                )
+        else:
+            pred = token
+            obj = None
+        prop = class_props.get(pred)
+        if prop is None:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid facet format '{token}'. Expected 'predicate::object' "
-                       f"with full URIs, e.g. 'http://example.org/voc#teaches::http://example.org/voc#uni1/course/1'",
+                detail=f"Facet property '{pred}' is not a known property for class '{class_uri}'.",
             )
-        pred, obj = token.split("::", 1)
-        pred = pred.strip()
-        obj = obj.strip()
-        if not pred or not obj:
+        if prop["type"] != "object":
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid facet '{token}'. Both predicate and object are required.",
+                detail=f"Facet property '{pred}' is a data property. "
+                       f"Facet filters must use object properties.",
             )
         pairs.append((pred, obj))
     return pairs
 
 
-def _build_facet_clauses(subject_var: str, facets: list[tuple[str, str]]) -> str:
+def _build_facet_clauses(subject_var: str, facets: list[tuple[str, str | None]]) -> str:
     """Build SPARQL triple patterns for all facet filters."""
     if not facets:
         return ""
-    return "\n".join(
-        f"    {subject_var} <{pred}> <{obj}> ."
-        for pred, obj in facets
-    )
+    tag = subject_var.lstrip("?")
+    lines = []
+    for i, (pred, obj) in enumerate(facets):
+        if obj is not None:
+            lines.append(f"    {subject_var} <{pred}> <{obj}> .")
+        else:
+            lines.append(f"    {subject_var} <{pred}> ?_fac_{tag}_{i} .")
+    return "\n".join(lines)
 
 
 def _validate_pagination(limit: int, offset: int) -> tuple[int, int]:
@@ -186,10 +216,24 @@ def _count_binding(raw: dict, var_name: str, default: int = 0) -> int:
     return int(bindings[0].get(var_name, {}).get("value", str(default)))
 
 
-def _parse_identity_props(identity_props: str) -> list[str]:
+def _parse_identity_props(identity_props: str, class_uri: str) -> list[str]:
     prop_uris = [p.strip() for p in identity_props.split(",") if p.strip()]
     if not prop_uris:
         raise HTTPException(status_code=400, detail="At least one identity property required")
+    class_props = {p["uri"]: p for p in KNOWN_PROPERTIES.get(class_uri, [])}
+    for uri in prop_uris:
+        prop = class_props.get(uri)
+        if prop is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Property '{uri}' is not a known property for class '{class_uri}'.",
+            )
+        if prop["type"] != "data":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Property '{uri}' is an object property. "
+                       f"Identity properties must be data properties.",
+            )
     return prop_uris
 
 
@@ -200,7 +244,7 @@ async def conciseness_intra_source(
     class_uri:      str = Query(..., description="Full URI of class to evaluate, e.g. http://example.org/voc#FullProfessor"),
     identity_props: str = Query(..., description="Comma-separated full property URIs defining identity, e.g. http://xmlns.com/foaf/0.1/firstName,http://xmlns.com/foaf/0.1/lastName"),
     source_prefix:  str = Query(..., description="URI prefix scoping to one source, e.g. http://example.org/voc#uni1/"),
-    filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters as predicate::object pairs, e.g. :teaches::http://example.org/voc#uni1/course/1,:worksFor:::uni1/department/1"),
+    filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters. Use 'prop_uri' for existence or 'prop_uri::value_uri' for exact match, e.g. http://example.org/voc#teaches,http://example.org/voc#worksFor::http://example.org/voc#uni1/department/1"),
 ):
     """
     CN2 — Extensional conciseness, intra-source (scores only).
@@ -214,11 +258,12 @@ async def conciseness_intra_source(
 
     Use /conciseness/intra-source/duplicates for paginated duplicate groups.
     """
-    prop_uris = _parse_identity_props(identity_props)
+    _validate_class_uri(class_uri)
+    prop_uris = _parse_identity_props(identity_props, class_uri)
 
     id_block, id_vars = _build_identity_block("?e", prop_uris, "k")
     select_keys       = " ".join(f"?{v}" for v in id_vars)
-    facets            = _parse_facets(filter_facets)
+    facets            = _parse_facets(filter_facets, class_uri)
     facet_clause      = _build_facet_clauses("?e", facets)
 
     # Total instance representations within this source
@@ -285,7 +330,7 @@ async def intra_source_duplicates(
     class_uri:      str = Query(..., description="Full URI of class to evaluate"),
     identity_props: str = Query(..., description="Comma-separated full property URIs defining identity"),
     source_prefix:  str = Query(..., description="URI prefix scoping to one source"),
-    filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters as predicate::object pairs"),
+    filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters. Use 'prop_uri' for existence or 'prop_uri::value_uri' for exact match"),
     limit:          int = Query(DEFAULT_DUPLICATES_LIMIT, description="Page size (max 500)"),
     offset:         int = Query(0, description="Number of groups to skip"),
     include_total:  bool = Query(True, description="Include total count of duplicate groups"),
@@ -297,11 +342,12 @@ async def intra_source_duplicates(
     within the source. Ordered by duplicate count DESC, then identity values.
     """
     limit, offset = _validate_pagination(limit, offset)
-    prop_uris = _parse_identity_props(identity_props)
+    _validate_class_uri(class_uri)
+    prop_uris = _parse_identity_props(identity_props, class_uri)
 
     id_block, id_vars = _build_identity_block("?e", prop_uris, "k")
     select_keys       = " ".join(f"?{v}" for v in id_vars)
-    facets            = _parse_facets(filter_facets)
+    facets            = _parse_facets(filter_facets, class_uri)
     facet_clause      = _build_facet_clauses("?e", facets)
     var_to_prop       = {id_vars[i]: _prop_local_name(prop_uris[i]) for i in range(len(prop_uris))}
 
@@ -380,7 +426,7 @@ async def conciseness_cross_source(
     class_uri:      str = Query(..., description="Full URI of class to evaluate"),
     identity_props: str = Query(..., description="Comma-separated full property URIs defining identity"),
     sources:        str = Query(None, description="Comma-separated source URI prefixes. Default: first 2 registered sources. Max: all registered sources."),
-    filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters as predicate::object pairs, e.g. :teaches::http://example.org/voc#uni1/course/1,:worksFor:::uni1/department/1"),
+    filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters. Use 'prop_uri' for existence or 'prop_uri::value_uri' for exact match, e.g. http://example.org/voc#teaches,http://example.org/voc#worksFor::http://example.org/voc#uni1/department/1"),
 ):
     """
     CN3 — Ambiguous instance detection across multiple sources (scores only).
@@ -393,8 +439,9 @@ async def conciseness_cross_source(
     Use /conciseness/cross-source/duplicates for paginated ambiguous groups.
     """
     source_list = _parse_sources(sources)
+    _validate_class_uri(class_uri)
 
-    prop_uris = _parse_identity_props(identity_props)
+    prop_uris = _parse_identity_props(identity_props, class_uri)
 
     # Build identity blocks using shared variables — e1 and e2 bind to the
     # same ?v0, ?v1, … so SPARQL enforces value equality without extra FILTERs
@@ -410,7 +457,7 @@ async def conciseness_cross_source(
     e2_block   = "\n".join(e2_patterns)
 
     # Facet filters — applied to ?e (total), ?e1 and ?e2 (match queries)
-    facets   = _parse_facets(filter_facets)
+    facets   = _parse_facets(filter_facets, class_uri)
     facet_e  = _build_facet_clauses("?e", facets)
     facet_e1 = _build_facet_clauses("?e1", facets)
     facet_e2 = _build_facet_clauses("?e2", facets)
@@ -482,7 +529,7 @@ async def cross_source_duplicates(
     class_uri:      str = Query(..., description="Full URI of class to evaluate"),
     identity_props: str = Query(..., description="Comma-separated full property URIs defining identity"),
     sources:        str = Query(None, description="Comma-separated source URI prefixes"),
-    filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters as predicate::object pairs"),
+    filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters. Use 'prop_uri' for existence or 'prop_uri::value_uri' for exact match"),
     limit:          int = Query(DEFAULT_DUPLICATES_LIMIT, description="Page size (max 500)"),
     offset:         int = Query(0, description="Number of groups to skip"),
     include_total:  bool = Query(True, description="Include total count of ambiguous groups"),
@@ -495,7 +542,8 @@ async def cross_source_duplicates(
     """
     limit, offset = _validate_pagination(limit, offset)
     source_list = _parse_sources(sources)
-    prop_uris   = _parse_identity_props(identity_props)
+    _validate_class_uri(class_uri)
+    prop_uris   = _parse_identity_props(identity_props, class_uri)
 
     # Use a join-based approach: ?e and ?other share identity variables,
     # so SPARQL enforces value equality. The different-source filter ensures
@@ -509,7 +557,7 @@ async def cross_source_duplicates(
     select_vars = " ".join(f"?{v}" for v in id_vars)
     prop_names  = [_prop_local_name(uri) for uri in prop_uris]
 
-    facets        = _parse_facets(filter_facets)
+    facets        = _parse_facets(filter_facets, class_uri)
     facet_e       = _build_facet_clauses("?e", facets)
     facet_other   = _build_facet_clauses("?other", facets)
     membership_e  = _source_membership_filter("?e", source_list)

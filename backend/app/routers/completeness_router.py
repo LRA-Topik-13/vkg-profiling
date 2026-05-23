@@ -16,10 +16,8 @@ PREFIXES = """
     PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 """
 
-FOAF_BASE = "http://xmlns.com/foaf/0.1/"
 MAX_PAGE_LIMIT = 500
 DEFAULT_PAGE_LIMIT = 100
-_LOCAL_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 _HTTP_URI_RE = re.compile(r"^https?://[^\s<>{}|^`\"]+$")
 
 
@@ -27,12 +25,6 @@ def _validate_http_uri(uri: str, label: str = "URI") -> str:
     if not _HTTP_URI_RE.match(uri):
         raise HTTPException(status_code=400, detail=f"Invalid {label}: '{uri}'")
     return uri
-
-
-def _validate_local_name(value: str, label: str = "name") -> str:
-    if not _LOCAL_NAME_RE.match(value):
-        raise HTTPException(status_code=400, detail=f"Invalid {label}: '{value}'")
-    return value
 
 
 def _validate_pagination(limit: int, offset: int) -> tuple[int, int]:
@@ -100,19 +92,19 @@ def _property_count_union(
     return "\nUNION\n".join(branches)
 
 
-def _entity_label_config(class_name: str) -> list[dict]:
+def _entity_label_config(class_uri: str) -> list[dict]:
     from app.routers.metadata_router import KNOWN_PROPERTIES
 
     name_keywords = ("name", "title", "label", "topic")
     return [
-        p for p in KNOWN_PROPERTIES.get(class_name, [])
+        p for p in KNOWN_PROPERTIES.get(class_uri, [])
         if p.get("type") == "data"
         and any(kw in p["localName"].lower() for kw in name_keywords)
     ]
 
 
-async def _labels_for_entities(class_name: str, class_uri: str, entity_uris: list[str]) -> dict[str, str]:
-    label_props = _entity_label_config(class_name)
+async def _labels_for_entities(class_uri: str, entity_uris: list[str]) -> dict[str, str]:
+    label_props = _entity_label_config(class_uri)
     if not label_props or not entity_uris:
         return {}
 
@@ -218,27 +210,18 @@ def _not_linked_filters(obj_prop_uris: list[str]) -> str:
     """
 
 
-def _get_property_labels(class_name: str) -> dict[str, str | None]:
+def _get_property_labels(class_uri: str) -> dict[str, str | None]:
+    """Returns {property_uri: label} for all properties of the given class."""
     from app.routers.metadata_router import KNOWN_PROPERTIES
-    props = KNOWN_PROPERTIES.get(class_name, [])
-    return {p["localName"]: p.get("label") for p in props}
-
-
-def resolve_class_uri(class_name: str) -> str:
-    from app.routers.metadata_router import KNOWN_CLASSES
-
-    _validate_local_name(class_name, "class name")
-    entry = next((c for c in KNOWN_CLASSES if c["localName"] == class_name), None)
-    if entry is None:
-        raise HTTPException(status_code=404, detail=f"Class '{class_name}' not found")
-    return entry["uri"]
+    props = KNOWN_PROPERTIES.get(class_uri, [])
+    return {p["uri"]: p.get("label") for p in props}
 
 
 def validate_class_uri(class_uri: str) -> dict:
-    from app.routers.metadata_router import KNOWN_CLASSES
+    from app.routers.metadata_router import KNOWN_CLASSES_BY_URI
 
     _validate_http_uri(class_uri, "class URI")
-    entry = next((c for c in KNOWN_CLASSES if c["uri"] == class_uri), None)
+    entry = KNOWN_CLASSES_BY_URI.get(class_uri)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"Class '{class_uri}' not found")
     return entry
@@ -256,10 +239,10 @@ def parse_property_uris(properties: str) -> list[str]:
     return uris
 
 
-def _property_meta_for_uris(class_name: str, prop_uris: list[str]) -> list[dict]:
+def _property_meta_for_uris(class_uri: str, prop_uris: list[str]) -> list[dict]:
     from app.routers.metadata_router import KNOWN_PROPERTIES
 
-    by_uri = {p["uri"]: p for p in KNOWN_PROPERTIES.get(class_name, [])}
+    by_uri = {p["uri"]: p for p in KNOWN_PROPERTIES.get(class_uri, [])}
     info: list[dict] = []
     for uri in prop_uris:
         entry = by_uri.get(uri)
@@ -400,7 +383,7 @@ async def completeness_by_entity(
 
     bindings = raw.get("results", {}).get("bindings", [])
     total_props = len(prop_uris)
-    property_info = _property_meta_for_uris(class_entry["localName"], prop_uris)
+    property_info = _property_meta_for_uris(class_uri, prop_uris)
 
     entities = []
     for row in bindings:
@@ -420,7 +403,7 @@ async def completeness_by_entity(
         })
 
     return {
-        "class_uri":  class_uri,
+        "uri":        class_uri,
         "class":      class_entry["localName"],
         "properties": prop_uris,
         "property_info": property_info,
@@ -479,7 +462,7 @@ async def completeness_by_property(
                 if prop_uri in filled_by_uri:
                     filled_by_uri[prop_uri] = int(row["filled"]["value"])
 
-        property_info = _property_meta_for_uris(class_entry["localName"], prop_uris)
+        property_info = _property_meta_for_uris(class_uri, prop_uris)
         info_by_uri = {p["uri"]: p for p in property_info}
         prop_results = []
         for prop_uri in prop_uris:
@@ -501,7 +484,7 @@ async def completeness_by_property(
         raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
 
     return {
-        "class_uri":      class_uri,
+        "uri":            class_uri,
         "class":          class_entry["localName"],
         "total_entities": total_entities,
         "properties":     prop_results,
@@ -543,7 +526,7 @@ async def completeness_matrix(
     )
 
     return {
-        "class_uri":  class_uri,
+        "uri":        class_uri,
         "class":      entity_result["class"],
         "properties": prop_list,
         "property_info": entity_result.get("property_info", []),
@@ -559,12 +542,12 @@ async def completeness_matrix(
 
 @router.get("/entity-count")
 async def entity_count(
-    class_name: Optional[str] = Query(None, description="If given, return only this class. Otherwise all mapped classes."),
+    class_uri: Optional[str] = Query(None, description="Full class URI. If given, return only this class. Otherwise all mapped classes."),
 ):
     from app.routers.metadata_router import KNOWN_CLASSES
-    target_classes = [c for c in KNOWN_CLASSES if not class_name or c["localName"] == class_name]
+    target_classes = [c for c in KNOWN_CLASSES if not class_uri or c["uri"] == class_uri]
     if not target_classes:
-        raise HTTPException(status_code=404, detail=f"Class '{class_name}' not found")
+        raise HTTPException(status_code=404, detail=f"Class '{class_uri}' not found")
 
     try:
         q = f"""
@@ -585,7 +568,7 @@ async def entity_count(
                 if cls_uri in counts:
                     counts[cls_uri] = int(row["count"]["value"])
         results = [
-            {"class": cls["localName"], "uri": cls["uri"], "count": counts[cls["uri"]]}
+            {"uri": cls["uri"], "class": cls["localName"], "count": counts[cls["uri"]]}
             for cls in target_classes
         ]
     except Exception as e:
@@ -706,6 +689,7 @@ async def interlinking_completeness():
         not_linked = max(total - linked_any, 0)
         ratio = round((linked_any / total) * 100, 2) if total > 0 else 0.0
         results.append({
+            "uri": cls_uri,
             "class": cls["localName"],
             "label": cls.get("label"),
             "total_entities": total,
@@ -717,7 +701,7 @@ async def interlinking_completeness():
             "links": link_details[cls_uri],
             "linked_entities": [],
             "not_linked_entities": [],
-            "entity_drilldown": f"/completeness/interlinking/entities?class_name={cls['localName']}",
+            "entity_drilldown": f"/completeness/interlinking/entities?class_uri={cls_uri}",
         })
 
     total_entities = sum(r["total_entities"] for r in results)
@@ -732,7 +716,7 @@ async def interlinking_completeness():
 
 @router.get("/interlinking/entities")
 async def interlinking_entities(
-    class_name: str = Query(..., description="Class to inspect, e.g. Course"),
+    class_uri: str = Query(..., description="Full class URI, e.g. http://example.org/voc#Course"),
     status: str = Query("linked", description="linked or not_linked"),
     limit: int = DEFAULT_PAGE_LIMIT,
     offset: int = 0,
@@ -742,7 +726,7 @@ async def interlinking_entities(
     if status not in {"linked", "not_linked"}:
         raise HTTPException(status_code=400, detail="status must be 'linked' or 'not_linked'")
 
-    class_uri = resolve_class_uri(class_name)
+    class_entry = validate_class_uri(class_uri)
     _, obj_prop_uris, _, _ = _interlinking_metadata()
     if status == "linked":
         status_body = _linked_body(obj_prop_uris)
@@ -781,12 +765,13 @@ async def interlinking_entities(
             b["e"]["value"]
             for b in page_raw.get("results", {}).get("bindings", [])
         ]
-        labels = await _labels_for_entities(class_name, class_uri, entity_uris)
+        labels = await _labels_for_entities(class_uri, entity_uris)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
 
     return {
-        "class": class_name,
+        "uri": class_uri,
+        "class": class_entry["localName"],
         "status": status,
         "entities": [
             {"uri": uri, "label": labels.get(uri)}
@@ -803,12 +788,12 @@ async def interlinking_entities(
 
 @router.get("/distinct-properties")
 async def distinct_properties(
-    class_name: Optional[str] = Query(None, description="If given, count properties for this class only. Otherwise all mapped classes."),
+    class_uri: Optional[str] = Query(None, description="Full class URI. If given, count properties for this class only. Otherwise all mapped classes."),
 ):
     from app.routers.metadata_router import KNOWN_CLASSES
-    target_classes = [c for c in KNOWN_CLASSES if not class_name or c["localName"] == class_name]
+    target_classes = [c for c in KNOWN_CLASSES if not class_uri or c["uri"] == class_uri]
     if not target_classes:
-        raise HTTPException(status_code=404, detail=f"Class '{class_name}' not found")
+        raise HTTPException(status_code=404, detail=f"Class '{class_uri}' not found")
 
     try:
         q = f"""
@@ -830,8 +815,8 @@ async def distinct_properties(
                     counts[cls_uri] = int(row["count"]["value"])
         results = [
             {
-                "class": cls["localName"],
                 "uri": cls["uri"],
+                "class": cls["localName"],
                 "distinct_properties": counts[cls["uri"]],
             }
             for cls in target_classes
@@ -845,7 +830,7 @@ async def distinct_properties(
 
 @router.get("/undefined-objects")
 async def undefined_objects(
-    class_name: str = Query(..., description="Class to evaluate, e.g. Course"),
+    class_uri: str = Query(..., description="Full class URI, e.g. http://example.org/voc#Course"),
 ):
     """
     VKG-specific completeness support metric.
@@ -855,9 +840,9 @@ async def undefined_objects(
     """
     from app.routers.metadata_router import KNOWN_PROPERTIES
 
-    class_uri = resolve_class_uri(class_name)
+    class_entry = validate_class_uri(class_uri)
     object_props = [
-        p for p in KNOWN_PROPERTIES.get(class_name, [])
+        p for p in KNOWN_PROPERTIES.get(class_uri, [])
         if p.get("type") == "object"
     ]
 
@@ -960,7 +945,8 @@ async def undefined_objects(
     overall_ratio = round((total_undefined / total_objects) * 100, 2) if total_objects else 0.0
 
     return {
-        "class": class_name,
+        "uri": class_uri,
+        "class": class_entry["localName"],
         "properties": results,
         "summary": {
             "total_objects": total_objects,
@@ -987,7 +973,7 @@ def mapping_coverage():
     overall_coverage = round((len(mapped_classes) + len(mapped_props)) / (total_classes + total_props) * 100, 2)
 
     def _name_with_label(items):
-        return [{"name": i["localName"], "label": i.get("label")} for i in items]
+        return [{"uri": i["uri"], "name": i["localName"], "label": i.get("label")} for i in items]
 
     return {
         "classes": {
@@ -1017,7 +1003,7 @@ async def class_summary():
     prop_pairs = [
         (cls, prop)
         for cls in KNOWN_CLASSES
-        for prop in KNOWN_PROPERTIES.get(cls["localName"], [])
+        for prop in KNOWN_PROPERTIES.get(cls["uri"], [])
     ]
 
     total_q = f"""
@@ -1082,14 +1068,14 @@ async def class_summary():
     for cls in KNOWN_CLASSES:
         cls_name = cls["localName"]
         cls_uri = cls["uri"]
-        props = KNOWN_PROPERTIES.get(cls_name, [])
+        props = KNOWN_PROPERTIES.get(cls_uri, [])
         total = totals[cls_uri]
 
         if total == 0 or not props:
             results.append({
+                "uri": cls_uri,
                 "class": cls_name,
                 "label": cls.get("label"),
-                "uri": cls_uri,
                 "total_entities": total,
                 "properties_count": len(props),
                 "completeness": 0.0,
@@ -1097,27 +1083,28 @@ async def class_summary():
             })
             continue
 
-        labels = _get_property_labels(cls_name)
+        labels = _get_property_labels(cls_uri)
         by_property = []
         for prop in props:
             filled = filled_counts.get((cls_uri, prop["uri"]), 0)
             fill_rate = round((filled / total) * 100, 2)
             entry = {
+                "uri": prop["uri"],
                 "property": prop["localName"],
                 "filled": filled,
                 "missing": total - filled,
                 "completeness": fill_rate,
             }
-            label = labels.get(prop["localName"])
+            label = labels.get(prop["uri"])
             if label:
                 entry["label"] = label
             by_property.append(entry)
 
         overall = round(sum(bp["completeness"] for bp in by_property) / len(by_property), 2)
         results.append({
+            "uri": cls_uri,
             "class": cls_name,
             "label": cls.get("label"),
-            "uri": cls_uri,
             "total_entities": total,
             "properties_count": len(props),
             "completeness": overall,

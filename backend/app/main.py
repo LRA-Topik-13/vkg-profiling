@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.dependencies import close_sparql_client
-from app.routers import completeness_router, conciseness_router, metadata_router
+from app.routers import accuracy_router, completeness_router, conciseness_router, metadata_router
 
 
 @asynccontextmanager
@@ -41,5 +41,6 @@ def health_check():
 
 
 app.include_router(metadata_router.router)
+app.include_router(accuracy_router.router)
 app.include_router(completeness_router.router)
 app.include_router(conciseness_router.router)

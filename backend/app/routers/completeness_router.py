@@ -16,12 +16,10 @@ PREFIXES = """
     PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 """
 
-VOC_BASE = "http://example.org/voc#"
 FOAF_BASE = "http://xmlns.com/foaf/0.1/"
 MAX_PAGE_LIMIT = 500
 DEFAULT_PAGE_LIMIT = 100
 _LOCAL_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
-_LOCAL_URI_PART_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_./-]*$")
 _HTTP_URI_RE = re.compile(r"^https?://[^\s<>{}|^`\"]+$")
 
 
@@ -33,12 +31,6 @@ def _validate_http_uri(uri: str, label: str = "URI") -> str:
 
 def _validate_local_name(value: str, label: str = "name") -> str:
     if not _LOCAL_NAME_RE.match(value):
-        raise HTTPException(status_code=400, detail=f"Invalid {label}: '{value}'")
-    return value
-
-
-def _validate_local_uri_part(value: str, label: str = "value") -> str:
-    if not _LOCAL_URI_PART_RE.match(value):
         raise HTTPException(status_code=400, detail=f"Invalid {label}: '{value}'")
     return value
 
@@ -242,54 +234,104 @@ def resolve_class_uri(class_name: str) -> str:
     return entry["uri"]
 
 
-def resolve_property_uri(prop: str, class_name: Optional[str] = None) -> str:
+def validate_class_uri(class_uri: str) -> dict:
+    from app.routers.metadata_router import KNOWN_CLASSES
+
+    _validate_http_uri(class_uri, "class URI")
+    entry = next((c for c in KNOWN_CLASSES if c["uri"] == class_uri), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Class '{class_uri}' not found")
+    return entry
+
+
+def parse_property_uris(properties: str) -> list[str]:
+    uris = [p.strip() for p in properties.split(",") if p.strip()]
+    if not uris:
+        raise HTTPException(status_code=400, detail="At least one property required")
+    known = _all_known_property_uris()
+    for uri in uris:
+        _validate_http_uri(uri, "property URI")
+        if uri not in known:
+            raise HTTPException(status_code=404, detail=f"Property '{uri}' not found")
+    return uris
+
+
+def _property_meta_for_uris(class_name: str, prop_uris: list[str]) -> list[dict]:
     from app.routers.metadata_router import KNOWN_PROPERTIES
 
-    if prop.startswith("http"):
-        prop = _validate_http_uri(prop, "property URI")
-        if prop not in _all_known_property_uris():
-            raise HTTPException(status_code=404, detail=f"Property '{prop}' not found")
-        return prop
+    by_uri = {p["uri"]: p for p in KNOWN_PROPERTIES.get(class_name, [])}
+    info: list[dict] = []
+    for uri in prop_uris:
+        entry = by_uri.get(uri)
+        if entry is None:
+            for props in KNOWN_PROPERTIES.values():
+                entry = next((p for p in props if p["uri"] == uri), None)
+                if entry:
+                    break
+        item: dict = {"uri": uri}
+        if entry:
+            item["localName"] = entry["localName"]
+            if entry.get("label"):
+                item["label"] = entry["label"]
+        info.append(item)
+    return info
 
-    _validate_local_name(prop, "property name")
-    if class_name:
-        for entry in KNOWN_PROPERTIES.get(class_name, []):
-            if entry["localName"] == prop:
-                return entry["uri"]
+
+def parse_facets(filter_facets: Optional[str]) -> list[tuple[str, str]]:
+    if not filter_facets:
+        return []
+    pairs: list[tuple[str, str]] = []
+    for token in filter_facets.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if "::" not in token:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid facet format '{token}'. Expected 'predicateUri::objectUri'",
+            )
+        pred, obj = token.split("::", 1)
+        pred = pred.strip()
+        obj = obj.strip()
+        if not pred or not obj:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid facet '{token}'. Both predicate and object are required.",
+            )
+        _validate_http_uri(pred, "facet predicate URI")
+        _validate_http_uri(obj, "facet object URI")
+        prop_type = _property_type(pred)
+        if prop_type is None:
+            raise HTTPException(status_code=404, detail=f"Facet property '{pred}' not found")
+        if prop_type != "object":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Facet predicate '{pred}' is a data property; only object properties are allowed as facets",
+            )
+        pairs.append((pred, obj))
+    return pairs
+
+
+def _property_type(uri: str) -> Optional[str]:
+    from app.routers.metadata_router import KNOWN_PROPERTIES
 
     for props in KNOWN_PROPERTIES.values():
         for entry in props:
-            if entry["localName"] == prop:
-                return entry["uri"]
+            if entry["uri"] == uri:
+                return entry.get("type")
+    return None
 
-    raise HTTPException(status_code=404, detail=f"Property '{prop}' not found")
 
-
-def build_filter_clause(
-    filter_property: Optional[str],
-    filter_value: Optional[str],
-    class_name: Optional[str] = None,
-) -> str:
-    if not filter_property or not filter_value:
+def build_facet_clauses(facets: list[tuple[str, str]], subject_var: str = "entity") -> str:
+    if not facets:
         return ""
-    prop_uri = resolve_property_uri(filter_property, class_name)
-    if filter_value.startswith("http"):
-        value_uri = _validate_http_uri(filter_value, "filter value URI")
-    elif filter_value.startswith(":"):
-        local_value = _validate_local_uri_part(filter_value[1:], "filter value")
-        value_uri = f"{VOC_BASE}{local_value}"
-    else:
-        local_value = _validate_local_uri_part(filter_value, "filter value")
-        value_uri = f"{VOC_BASE}{local_value}"
-    value_str = f"<{value_uri}>"
-    return f"?entity <{prop_uri}> {value_str} ."
+    return "\n".join(
+        f"?{subject_var} <{pred}> <{obj}> ."
+        for pred, obj in facets
+    )
 
 
 def build_exists_bindings(prop_uris: list[str]) -> tuple[str, list[str], list[str]]:
-    # Ontop refuses EXISTS-inside-BIND, so we lift each property check into an
-    # OPTIONAL pattern at the WHERE level and aggregate per entity. The caller
-    # combines the OPTIONAL blocks with the rest of the WHERE, and projects the
-    # COUNT-based existence flags in the SELECT.
     optional_blocks: list[str] = []
     select_exprs: list[str] = []
     var_names: list[str] = []
@@ -306,22 +348,18 @@ def build_exists_bindings(prop_uris: list[str]) -> tuple[str, list[str], list[st
 
 @router.get("/by-entity")
 async def completeness_by_entity(
-    class_name: str = Query(..., description="Class to measure, e.g. FullProfessor"),
-    properties: str = Query(..., description="Comma-separated property localNames, e.g. firstName,lastName,teaches"),
-    filter_property: Optional[str] = Query(None, description="Facet property to filter by, e.g. isGivenAt"),
-    filter_value:    Optional[str] = Query(None, description="Facet value URI or localName, e.g. http://example.org/voc#uni1/university"),
+    class_uri: str = Query(..., description="Full class URI, e.g. http://example.org/voc#FullProfessor"),
+    properties: str = Query(..., description="Comma-separated property URIs, e.g. http://xmlns.com/foaf/0.1/firstName,http://example.org/voc#teaches"),
+    filter_facets: Optional[str] = Query(None, description="Comma-separated facet filters as predicateUri::objectUri pairs"),
     limit: int = DEFAULT_PAGE_LIMIT,
     offset: int = 0,
     include_total: bool = True,
 ):
     limit, offset = _validate_pagination(limit, offset)
-    prop_list = [p.strip() for p in properties.split(",") if p.strip()]
-    if not prop_list:
-        raise HTTPException(status_code=400, detail="At least one property required")
-
-    prop_uris  = [resolve_property_uri(p, class_name) for p in prop_list]
-    class_uri  = resolve_class_uri(class_name)
-    filter_clause = build_filter_clause(filter_property, filter_value, class_name)
+    class_entry = validate_class_uri(class_uri)
+    prop_uris = parse_property_uris(properties)
+    facets = parse_facets(filter_facets)
+    facet_clauses = build_facet_clauses(facets)
     optional_block, select_exprs, var_names = build_exists_bindings(prop_uris)
 
     var_list = " ".join(select_exprs)
@@ -330,7 +368,7 @@ async def completeness_by_entity(
         {PREFIXES}
         SELECT ?entity {var_list} WHERE {{
           ?entity a <{class_uri}> .
-          {filter_clause}
+          {facet_clauses}
           {optional_block}
         }}
         GROUP BY ?entity
@@ -343,7 +381,7 @@ async def completeness_by_entity(
         {PREFIXES}
         SELECT (COUNT(DISTINCT ?entity) AS ?total) WHERE {{
             ?entity a <{class_uri}> .
-            {filter_clause}
+            {facet_clauses}
         }}
     """
 
@@ -361,37 +399,30 @@ async def completeness_by_entity(
         raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
 
     bindings = raw.get("results", {}).get("bindings", [])
-    total_props = len(prop_list)
-    labels = _get_property_labels(class_name)
+    total_props = len(prop_uris)
+    property_info = _property_meta_for_uris(class_entry["localName"], prop_uris)
 
     entities = []
     for row in bindings:
         entity_uri = row["entity"]["value"]
-        scores = {}
+        scores: dict[str, bool] = {}
         filled = 0
-        for i, prop_name in enumerate(prop_list):
+        for i, prop_uri in enumerate(prop_uris):
             exists = var_names[i] in row and row[var_names[i]]["value"] == "TRUE"
-            scores[prop_name] = exists
+            scores[prop_uri] = exists
             if exists:
                 filled += 1
         completeness = round((filled / total_props) * 100, 2) if total_props > 0 else 0.0
         entities.append({
             "uri":          entity_uri,
             "scores":       scores,
-            "completeness": completeness
+            "completeness": completeness,
         })
 
-    property_info = []
-    for p in prop_list:
-        info = {"localName": p}
-        label = labels.get(p)
-        if label:
-            info["label"] = label
-        property_info.append(info)
-
     return {
-        "class":      class_name,
-        "properties": prop_list,
+        "class_uri":  class_uri,
+        "class":      class_entry["localName"],
+        "properties": prop_uris,
         "property_info": property_info,
         "total":      total_entities if total_entities is not None else len(entities),
         "pagination": {
@@ -400,34 +431,30 @@ async def completeness_by_entity(
             "count": len(entities),
             "total": total_entities,
         },
-        "entities":   entities
+        "entities":   entities,
     }
 
 
 @router.get("/by-property")
 async def completeness_by_property(
-    class_name: str = Query(..., description="Class to measure, e.g. FullProfessor"),
-    properties: str = Query(..., description="Comma-separated property localNames, e.g. firstName,lastName,teaches"),
-    filter_property: Optional[str] = Query(None),
-    filter_value:    Optional[str] = Query(None),
+    class_uri: str = Query(..., description="Full class URI"),
+    properties: str = Query(..., description="Comma-separated property URIs"),
+    filter_facets: Optional[str] = Query(None, description="Comma-separated facet filters as predicateUri::objectUri pairs"),
 ):
-    prop_list  = [p.strip() for p in properties.split(",") if p.strip()]
-    if not prop_list:
-        raise HTTPException(status_code=400, detail="At least one property required")
-
-    prop_uris  = [resolve_property_uri(p, class_name) for p in prop_list]
-    class_uri  = resolve_class_uri(class_name)
-    filter_clause = build_filter_clause(filter_property, filter_value, class_name)
+    class_entry = validate_class_uri(class_uri)
+    prop_uris = parse_property_uris(properties)
+    facets = parse_facets(filter_facets)
+    facet_clauses = build_facet_clauses(facets)
 
     count_query = f"""
         {PREFIXES}
         SELECT (COUNT(DISTINCT ?entity) AS ?total) WHERE {{
             ?entity a <{class_uri}> .
-            {filter_clause}
+            {facet_clauses}
         }}
     """
 
-    prop_union = _property_count_union(class_uri, prop_uris, filter_clause=filter_clause)
+    prop_union = _property_count_union(class_uri, prop_uris, filter_clause=facet_clauses)
     filled_query = f"""
         {PREFIXES}
         SELECT ?prop (COUNT(DISTINCT ?entity) AS ?filled) WHERE {{
@@ -452,19 +479,20 @@ async def completeness_by_property(
                 if prop_uri in filled_by_uri:
                     filled_by_uri[prop_uri] = int(row["filled"]["value"])
 
-        labels = _get_property_labels(class_name)
+        property_info = _property_meta_for_uris(class_entry["localName"], prop_uris)
+        info_by_uri = {p["uri"]: p for p in property_info}
         prop_results = []
-        for i, prop_name in enumerate(prop_list):
-            filled = filled_by_uri[prop_uris[i]]
+        for prop_uri in prop_uris:
+            filled = filled_by_uri[prop_uri]
             missing = total_entities - filled
             completeness = round((filled / total_entities) * 100, 2) if total_entities > 0 else 0.0
             entry = {
-                "property":     prop_name,
+                "property":     prop_uri,
                 "filled":       filled,
                 "missing":      missing,
-                "completeness": completeness
+                "completeness": completeness,
             }
-            label = labels.get(prop_name)
+            label = info_by_uri.get(prop_uri, {}).get("label")
             if label:
                 entry["label"] = label
             prop_results.append(entry)
@@ -473,18 +501,18 @@ async def completeness_by_property(
         raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
 
     return {
-        "class":            class_name,
-        "total_entities":   total_entities,
-        "properties":       prop_results
+        "class_uri":      class_uri,
+        "class":          class_entry["localName"],
+        "total_entities": total_entities,
+        "properties":     prop_results,
     }
 
 
 @router.get("/matrix")
 async def completeness_matrix(
-    class_name: str = Query(..., description="Class to measure, e.g. FullProfessor"),
-    properties: str = Query(..., description="Comma-separated property localNames"),
-    filter_property: Optional[str] = Query(None),
-    filter_value:    Optional[str] = Query(None),
+    class_uri: str = Query(..., description="Full class URI"),
+    properties: str = Query(..., description="Comma-separated property URIs"),
+    filter_facets: Optional[str] = Query(None, description="Comma-separated facet filters as predicateUri::objectUri pairs"),
     limit: int = DEFAULT_PAGE_LIMIT,
     offset: int = 0,
     include_total: bool = True,
@@ -492,19 +520,17 @@ async def completeness_matrix(
     limit, offset = _validate_pagination(limit, offset)
     entity_result, property_result = await asyncio.gather(
         completeness_by_entity(
-            class_name=class_name,
+            class_uri=class_uri,
             properties=properties,
-            filter_property=filter_property,
-            filter_value=filter_value,
+            filter_facets=filter_facets,
             limit=limit,
             offset=offset,
             include_total=include_total,
         ),
         completeness_by_property(
-            class_name=class_name,
+            class_uri=class_uri,
             properties=properties,
-            filter_property=filter_property,
-            filter_value=filter_value,
+            filter_facets=filter_facets,
         ),
     )
 
@@ -517,16 +543,17 @@ async def completeness_matrix(
     )
 
     return {
-        "class":      class_name,
+        "class_uri":  class_uri,
+        "class":      entity_result["class"],
         "properties": prop_list,
         "property_info": entity_result.get("property_info", []),
         "summary": {
             "total_entities":       property_result["total_entities"],
             "by_property":          by_prop,
-            "overall_completeness": overall
+            "overall_completeness": overall,
         },
         "pagination": entity_result.get("pagination"),
-        "entities": entity_result["entities"]
+        "entities": entity_result["entities"],
     }
 
 

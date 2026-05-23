@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Plus, X, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import {
   completenessApi,
@@ -13,65 +13,122 @@ import { Headline, Section, LoadingState, ErrorState, StatusBadge } from './_sha
 
 const PAGE = 25;
 
+interface Facet {
+  propUri: string;
+  propLabel: string;
+  valueUri: string;
+  valueLabel: string;
+}
+
 export default function PropertyCompleteness() {
   const [classes, setClasses] = useState<ClassMeta[]>([]);
   const [props, setProps] = useState<PropertyMeta[]>([]);
-  const [selectedClass, setSelectedClass] = useState<string>('');
-  const [selectedProps, setSelectedProps] = useState<string[]>([]);
-  const [facetProp, setFacetProp] = useState<string>('');
-  const [facetVal, setFacetVal] = useState<string>('');
-  const [facetValues, setFacetValues] = useState<string[]>([]);
+  const [selectedClassUri, setSelectedClassUri] = useState<string>('');
+  const [selectedPropUris, setSelectedPropUris] = useState<string[]>([]);
+  const [facets, setFacets] = useState<Facet[]>([]);
+  const [draftPropUri, setDraftPropUri] = useState<string>('');
+  const [draftValueUri, setDraftValueUri] = useState<string>('');
+  const [draftValues, setDraftValues] = useState<string[]>([]);
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<CompletenessMatrix | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const selectedClass = useMemo(
+    () => classes.find((c) => c.uri === selectedClassUri) || null,
+    [classes, selectedClassUri],
+  );
 
   useEffect(() => {
     metadataApi.mappedClasses().then((r) => setClasses(r.classes)).catch((e) => setError(String(e)));
   }, []);
 
   useEffect(() => {
-    setSelectedProps([]);
-    setFacetProp('');
-    setFacetVal('');
+    setSelectedPropUris([]);
+    setFacets([]);
+    setDraftPropUri('');
+    setDraftValueUri('');
+    setDraftValues([]);
     setData(null);
     if (!selectedClass) {
       setProps([]);
       return;
     }
-    metadataApi.mappedProperties(selectedClass).then((r) => setProps(r.properties)).catch((e) => setError(String(e)));
+    metadataApi
+      .mappedProperties(selectedClass.localName)
+      .then((r) => setProps(r.properties))
+      .catch((e) => setError(String(e)));
   }, [selectedClass]);
 
   useEffect(() => {
-    setFacetVal('');
-    if (!facetProp || !selectedClass) {
-      setFacetValues([]);
+    setDraftValueUri('');
+    if (!draftPropUri || !selectedClass) {
+      setDraftValues([]);
       return;
     }
-    metadataApi.facets(selectedClass, facetProp).then((r) => setFacetValues(r.values)).catch(() => setFacetValues([]));
-  }, [selectedClass, facetProp]);
+    const propEntry = props.find((p) => p.uri === draftPropUri);
+    if (!propEntry) {
+      setDraftValues([]);
+      return;
+    }
+    metadataApi
+      .facets(selectedClass.localName, propEntry.localName)
+      .then((r) => setDraftValues(r.values))
+      .catch(() => setDraftValues([]));
+  }, [selectedClass, draftPropUri, props]);
 
   const objectProps = useMemo(() => props.filter((p) => p.type === 'object'), [props]);
 
-  function toggleProp(name: string) {
-    setSelectedProps((prev) => (prev.includes(name) ? prev.filter((p) => p !== name) : [...prev, name]));
+  const overlappingProps = useMemo(() => {
+    const facetUris = new Set(facets.map((f) => f.propUri));
+    return selectedPropUris
+      .filter((uri) => facetUris.has(uri))
+      .map((uri) => {
+        const p = props.find((pp) => pp.uri === uri);
+        return p ? (p.label || p.localName) : uri;
+      });
+  }, [facets, selectedPropUris, props]);
+
+  function togglePropUri(uri: string) {
+    setSelectedPropUris((prev) => (prev.includes(uri) ? prev.filter((p) => p !== uri) : [...prev, uri]));
+  }
+
+  function addFacet() {
+    if (!draftPropUri || !draftValueUri) return;
+    const propEntry = props.find((p) => p.uri === draftPropUri);
+    if (!propEntry) return;
+    const duplicate = facets.some((f) => f.propUri === draftPropUri && f.valueUri === draftValueUri);
+    if (duplicate) return;
+    setFacets((prev) => [
+      ...prev,
+      {
+        propUri: draftPropUri,
+        propLabel: propEntry.label || propEntry.localName,
+        valueUri: draftValueUri,
+        valueLabel: shortenUri(draftValueUri),
+      },
+    ]);
+    setDraftValueUri('');
+  }
+
+  function removeFacet(index: number) {
+    setFacets((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function analyze(newOffset = 0) {
-    if (!selectedClass || selectedProps.length === 0) return;
+    if (!selectedClassUri || selectedPropUris.length === 0) return;
     setLoading(true);
     setError(null);
-    setOffset(newOffset);
     try {
       const r = await completenessApi.matrix({
-        class_name: selectedClass,
-        properties: selectedProps.join(','),
-        filter_property: facetProp || undefined,
-        filter_value: facetVal || undefined,
+        class_uri: selectedClassUri,
+        properties: selectedPropUris.join(','),
+        filter_facets: facets.length > 0 ? facets.map((f) => `${f.propUri}::${f.valueUri}`).join(',') : undefined,
         limit: PAGE,
         offset: newOffset,
       });
       setData(r);
+      setOffset(newOffset);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -83,52 +140,97 @@ export default function PropertyCompleteness() {
     <div className="space-y-6">
       <Section
         title="Configuration"
-        subtitle="Filter the analysis to one class and a subset of its properties. An optional facet narrows entities further (interaction → filtering)."
+        subtitle="Filter the analysis to one class and a subset of its properties. Optional facets (predicate + object) narrow entities further using AND semantics."
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Class">
             <select
-              value={selectedClass}
-              onChange={(e) => setSelectedClass(e.target.value)}
+              value={selectedClassUri}
+              onChange={(e) => setSelectedClassUri(e.target.value)}
               className="w-full px-3 py-2 border"
               style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
             >
               <option value="">Choose a class…</option>
               {classes.map((c) => (
-                <option key={c.localName} value={c.localName}>{c.label || c.localName}</option>
+                <option key={c.uri} value={c.uri}>{c.label || c.localName}</option>
               ))}
             </select>
           </Field>
 
-          <Field label="Facet filter (optional)">
+          <Field label="Add facet (optional)">
             <div className="flex gap-2">
               <select
-                disabled={!selectedClass}
-                value={facetProp}
-                onChange={(e) => setFacetProp(e.target.value)}
+                disabled={!selectedClassUri || objectProps.length === 0}
+                value={draftPropUri}
+                onChange={(e) => setDraftPropUri(e.target.value)}
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">— no facet —</option>
+                <option value="">— predicate —</option>
                 {objectProps.map((p) => (
-                  <option key={p.localName} value={p.localName}>{p.label || p.localName}</option>
+                  <option key={p.uri} value={p.uri}>{p.label || p.localName}</option>
                 ))}
               </select>
               <select
-                disabled={!facetProp}
-                value={facetVal}
-                onChange={(e) => setFacetVal(e.target.value)}
+                disabled={!draftPropUri || draftValues.length === 0}
+                value={draftValueUri}
+                onChange={(e) => setDraftValueUri(e.target.value)}
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">— any value —</option>
-                {facetValues.map((v) => (
+                <option value="">— object —</option>
+                {draftValues.map((v) => (
                   <option key={v} value={v}>{shortenUri(v)}</option>
                 ))}
               </select>
+              <button
+                onClick={addFacet}
+                disabled={!draftPropUri || !draftValueUri}
+                className="inline-flex items-center gap-1 px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
+                title="Add facet"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
             </div>
           </Field>
         </div>
+
+        {facets.length > 0 && (
+          <div className="mt-3">
+            <div className="mb-2 text-sm" style={{ color: 'var(--text)' }}>
+              Active facets <span style={{ color: 'var(--muted-foreground)' }}>(AND)</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {facets.map((f, i) => (
+                <span
+                  key={`${f.propUri}::${f.valueUri}`}
+                  className="inline-flex items-center gap-2 px-2 py-1 text-xs border"
+                  style={{
+                    backgroundColor: 'var(--accent-soft)',
+                    color: 'var(--accent)',
+                    borderColor: 'var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                  }}
+                >
+                  <span>
+                    <span style={{ color: 'var(--text)' }}>{f.propLabel}</span>
+                    <span style={{ color: 'var(--muted-foreground)' }}> = </span>
+                    <span>{f.valueLabel}</span>
+                  </span>
+                  <button
+                    onClick={() => removeFacet(i)}
+                    className="inline-flex items-center"
+                    style={{ color: 'var(--accent)' }}
+                    title="Remove facet"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mt-6">
           <div className="mb-2 text-sm" style={{ color: 'var(--text)' }}>Properties to evaluate</div>
@@ -137,10 +239,10 @@ export default function PropertyCompleteness() {
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {props.map((p) => {
-                const active = selectedProps.includes(p.localName);
+                const active = selectedPropUris.includes(p.uri);
                 return (
                   <label
-                    key={p.localName}
+                    key={p.uri}
                     className="flex items-center gap-2 px-3 py-2 border cursor-pointer"
                     style={{
                       backgroundColor: active ? 'var(--accent-soft)' : 'var(--card)',
@@ -148,7 +250,7 @@ export default function PropertyCompleteness() {
                       borderRadius: 'var(--radius-md)',
                     }}
                   >
-                    <input type="checkbox" checked={active} onChange={() => toggleProp(p.localName)} style={{ accentColor: 'var(--accent)' }} />
+                    <input type="checkbox" checked={active} onChange={() => togglePropUri(p.uri)} style={{ accentColor: 'var(--accent)' }} />
                     <span className="truncate" style={{ color: 'var(--text)' }} title={p.label || p.localName}>
                       {p.label || p.localName}
                     </span>
@@ -159,9 +261,33 @@ export default function PropertyCompleteness() {
           )}
         </div>
 
+        {overlappingProps.length > 0 && (
+          <div
+            className="mt-4 flex items-start gap-2 px-3 py-2 text-sm border"
+            style={{
+              backgroundColor: '#FEF7E6',
+              color: '#8A5A00',
+              borderColor: 'rgba(224,139,26,0.4)',
+              borderRadius: 'var(--radius-md)',
+            }}
+          >
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <div>
+              <div>
+                {overlappingProps.length === 1 ? 'Property' : 'Properties'}{' '}
+                <strong>{overlappingProps.join(', ')}</strong>{' '}
+                {overlappingProps.length === 1 ? 'is' : 'are'} used as both a facet predicate and an evaluated property.
+              </div>
+              <div className="text-xs mt-1" style={{ color: '#8A5A00' }}>
+                Its completeness will be 100% by construction (facet forces the predicate to exist).
+              </div>
+            </div>
+          </div>
+        )}
+
         <button
           onClick={() => analyze(0)}
-          disabled={!selectedClass || selectedProps.length === 0 || loading}
+          disabled={!selectedClassUri || selectedPropUris.length === 0 || loading}
           className="mt-6 inline-flex items-center gap-2 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
         >
@@ -179,8 +305,10 @@ export default function PropertyCompleteness() {
 }
 
 function ResultsView({ data, offset, onPage }: { data: CompletenessMatrix; offset: number; onPage: (o: number) => void }) {
-  const labelOf = (name: string) =>
-    data.property_info.find((p) => p.localName === name)?.label || name;
+  const labelOf = (uri: string) =>
+    data.property_info.find((p) => p.uri === uri)?.label ||
+    data.property_info.find((p) => p.uri === uri)?.localName ||
+    shortenUri(uri);
 
   const barData = data.summary.by_property.map((p) => ({
     name: labelOf(p.property),
@@ -201,7 +329,7 @@ function ResultsView({ data, offset, onPage }: { data: CompletenessMatrix; offse
 
       <Section
         title="Completeness per Property"
-        subtitle="Horizontal bar chart; each bar's length encodes the completeness percentage and color encodes status (encoding comparison – explicit encoding; color semaphore)."
+        subtitle="Horizontal bar chart; each bar's length encodes the completeness percentage and color encodes status."
       >
         <ResponsiveContainer width="100%" height={Math.max(220, barData.length * 48)}>
           <BarChart data={barData} layout="vertical" margin={{ left: 24, right: 24 }}>
@@ -241,7 +369,7 @@ function ResultsView({ data, offset, onPage }: { data: CompletenessMatrix; offse
 
       <Section
         title="Entity × Property Matrix"
-        subtitle="Schematic encoding of completeness: each row is an entity, each column a property. Filled cells use status color, missing cells stay muted. Lets the user spot row-wise (entity) and column-wise (property) gaps simultaneously."
+        subtitle="Each row is an entity, each column a property. Filled cells use status color, missing cells stay muted."
       >
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -325,10 +453,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function shortenUri(uri: string): string {
   if (!uri) return '';
-  const hashIdx = uri.lastIndexOf('#');
-  const slashIdx = uri.lastIndexOf('/');
-  const i = Math.max(hashIdx, slashIdx);
-  return i > 0 ? uri.slice(i + 1) : uri;
+  const hash = uri.lastIndexOf('#');
+  if (hash !== -1) {
+    const after = uri.slice(hash + 1);
+    if (after) return after;
+  }
+  try {
+    const u = new URL(uri);
+    return u.pathname.replace(/^\//, '') + u.hash;
+  } catch {
+    return uri;
+  }
 }
 
 function shortText(t: string, n = 14): string {

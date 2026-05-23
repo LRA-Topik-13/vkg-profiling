@@ -36,10 +36,12 @@ export interface MappingCoverage {
 
 export interface PropertyResult { property: string; label?: string; filled: number; missing: number; completeness: number }
 export interface EntityRow { uri: string; scores: Record<string, boolean>; completeness: number }
+export interface MatrixPropertyInfo { uri: string; localName?: string; label?: string | null }
 export interface CompletenessMatrix {
+  class_uri: string;
   class: string;
   properties: string[];
-  property_info: MetaItem[];
+  property_info: MatrixPropertyInfo[];
   summary: { total_entities: number; by_property: PropertyResult[]; overall_completeness: number };
   pagination?: { limit: number; offset: number; count: number; total: number | null };
   entities: EntityRow[];
@@ -91,9 +93,66 @@ export interface InterlinkingEntities {
   pagination: { limit: number; offset: number; count: number; total: number | null };
 }
 
+export interface IntraSourceResult {
+  total_representations: number;
+  unique_instances: number;
+  violating_instances: number;
+  score_f1: number;
+  score_f2: number;
+  passed: boolean;
+}
+
+export interface CrossSourceResult {
+  total_entities: number;
+  ambiguous_instances: number;
+  cn3_score: number;
+  sources: string[];
+  note?: string;
+}
+
+export interface PaginationInfo {
+  limit: number;
+  offset: number;
+  count: number;
+  total: number | null;
+}
+
+export interface IntraDuplicateGroup {
+  identity_values: Record<string, string>;
+  uris: string[];
+  count: number;
+}
+
+export interface CrossDuplicateGroup {
+  identity_values: Record<string, string>;
+  entities: { source: string; uri: string }[];
+  count: number;
+}
+
+export interface PaginatedIntraDuplicates {
+  pagination: PaginationInfo;
+  items: IntraDuplicateGroup[];
+}
+
+export interface PaginatedCrossDuplicates {
+  pagination: PaginationInfo;
+  items: CrossDuplicateGroup[];
+}
+
+export const concisenessApi = {
+  intraSource: (params: { class_uri: string; identity_props: string; source_prefix: string }) =>
+    get<IntraSourceResult>('/conciseness/intra-source', params),
+  crossSource: (params: { class_uri: string; identity_props: string; sources: string }) =>
+    get<CrossSourceResult>('/conciseness/cross-source', params),
+  intraSourceDuplicates: (params: { class_uri: string; identity_props: string; source_prefix: string; limit?: number; offset?: number; include_total?: boolean }) =>
+    get<PaginatedIntraDuplicates>('/conciseness/intra-source/duplicates', params),
+  crossSourceDuplicates: (params: { class_uri: string; identity_props: string; sources: string; limit?: number; offset?: number; include_total?: boolean }) =>
+    get<PaginatedCrossDuplicates>('/conciseness/cross-source/duplicates', params),
+};
+
 export const completenessApi = {
   mappingCoverage: () => get<MappingCoverage>('/completeness/mapping-coverage'),
-  matrix: (params: { class_name: string; properties: string; filter_property?: string; filter_value?: string; limit?: number; offset?: number }) =>
+  matrix: (params: { class_uri: string; properties: string; filter_facets?: string; limit?: number; offset?: number }) =>
     get<CompletenessMatrix>('/completeness/matrix', params),
   classSummary: () => get<ClassSummary>('/completeness/class-summary'),
   interlinking: () => get<Interlinking>('/completeness/interlinking'),

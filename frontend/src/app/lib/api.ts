@@ -21,6 +21,7 @@ export interface ClassMeta { localName: string; uri: string; label?: string | nu
 export interface PropertyMeta { localName: string; uri: string; type: 'data' | 'object'; label?: string | null; range?: string | null; rangeClass?: string | null }
 
 export const metadataApi = {
+  sources: () => get<{ sources: string[] }>('/metadata/sources'),
   mappedClasses: () => get<{ classes: ClassMeta[] }>('/metadata/mapped-classes'),
   mappedProperties: (classUri?: string) =>
     get<{ properties: PropertyMeta[]; class?: string }>('/metadata/mapped-properties', { class_uri: classUri }),

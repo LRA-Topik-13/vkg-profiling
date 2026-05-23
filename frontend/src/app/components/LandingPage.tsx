@@ -1,7 +1,18 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { CheckCircle, FileText, Target } from 'lucide-react';
+import { metadataApi } from '../lib/api';
 
 export default function LandingPage() {
+  const [sources, setSources] = useState<number | null>(null);
+  const [classes, setClasses] = useState<number | null>(null);
+  const [properties, setProperties] = useState<number | null>(null);
+
+  useEffect(() => {
+    metadataApi.sources().then((d) => setSources(d.sources.length));
+    metadataApi.mappedClasses().then((d) => setClasses(d.classes.length));
+    metadataApi.mappedProperties().then((d) => setProperties(d.properties.length));
+  }, []);
   const dimensions = [
     {
       id: 'accuracy',
@@ -92,9 +103,9 @@ export default function LandingPage() {
             }}
           >
             <div className="text-4xl mb-2" style={{ color: 'var(--navy)' }}>
-              94.2%
+              {sources ?? '—'}
             </div>
-            <div style={{ color: 'var(--text)' }}>Overall Quality Score</div>
+            <div style={{ color: 'var(--text)' }}>Data Sources</div>
           </div>
           <div
             className="p-6"
@@ -104,9 +115,9 @@ export default function LandingPage() {
             }}
           >
             <div className="text-4xl mb-2" style={{ color: 'var(--accent)' }}>
-              1,247
+              {classes ?? '—'}
             </div>
-            <div style={{ color: 'var(--text)' }}>Total Data Points</div>
+            <div style={{ color: 'var(--text)' }}>Mapped Classes</div>
           </div>
           <div
             className="p-6"
@@ -116,9 +127,9 @@ export default function LandingPage() {
             }}
           >
             <div className="text-4xl mb-2" style={{ color: 'var(--navy)' }}>
-              18
+              {properties ?? '—'}
             </div>
-            <div style={{ color: 'var(--text)' }}>Active Monitors</div>
+            <div style={{ color: 'var(--text)' }}>Mapped Properties</div>
           </div>
         </div>
       </section>

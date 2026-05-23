@@ -28,7 +28,70 @@ export const metadataApi = {
     get<{ values: string[] }>('/metadata/facets', { class_name: className, property }),
 };
 
-// Conciseness
+export interface MappingCoverage {
+  classes: { total: number; mapped: number; unmapped: number; coverage: number; mapped_list: MetaItem[]; unmapped_list: MetaItem[] };
+  properties: { total: number; mapped: number; unmapped: number; coverage: number; mapped_list: MetaItem[]; unmapped_list: MetaItem[] };
+  overall_coverage: number;
+}
+
+export interface PropertyResult { property: string; label?: string; filled: number; missing: number; completeness: number }
+export interface EntityRow { uri: string; scores: Record<string, boolean>; completeness: number }
+export interface MatrixPropertyInfo { uri: string; localName?: string; label?: string | null }
+export interface CompletenessMatrix {
+  class_uri: string;
+  class: string;
+  properties: string[];
+  property_info: MatrixPropertyInfo[];
+  summary: { total_entities: number; by_property: PropertyResult[]; overall_completeness: number };
+  pagination?: { limit: number; offset: number; count: number; total: number | null };
+  entities: EntityRow[];
+}
+
+export interface ClassSummaryEntry {
+  class: string;
+  label?: string | null;
+  uri: string;
+  total_entities: number;
+  properties_count: number;
+  completeness: number;
+  by_property: PropertyResult[];
+}
+export interface ClassSummary {
+  classes: ClassSummaryEntry[];
+  total_entities: number;
+  overall_completeness: number;
+}
+
+export interface LinkDetail {
+  direction: 'outgoing' | 'incoming';
+  property: string;
+  propertyLabel?: string | null;
+  targetClass?: string | null;
+  sourceClass?: string | null;
+  count: number;
+}
+export interface InterlinkingClass {
+  class: string;
+  label?: string | null;
+  total_entities: number;
+  linked: number;
+  not_linked: number;
+  outgoing: number;
+  incoming: number;
+  ratio: number;
+  links: LinkDetail[];
+  entity_drilldown: string;
+}
+export interface Interlinking {
+  classes: InterlinkingClass[];
+  overall_ratio: number;
+}
+export interface InterlinkingEntities {
+  class: string;
+  status: 'linked' | 'not_linked';
+  entities: { uri: string; label?: string | null }[];
+  pagination: { limit: number; offset: number; count: number; total: number | null };
+}
 
 export interface IntraSourceResult {
   total_representations: number;
@@ -87,6 +150,16 @@ export const concisenessApi = {
     get<PaginatedCrossDuplicates>('/conciseness/cross-source/duplicates', params),
 };
 
+export const completenessApi = {
+  mappingCoverage: () => get<MappingCoverage>('/completeness/mapping-coverage'),
+  matrix: (params: { class_uri: string; properties: string; filter_facets?: string; limit?: number; offset?: number }) =>
+    get<CompletenessMatrix>('/completeness/matrix', params),
+  classSummary: () => get<ClassSummary>('/completeness/class-summary'),
+  interlinking: () => get<Interlinking>('/completeness/interlinking'),
+  interlinkingEntities: (params: { class_name: string; status: 'linked' | 'not_linked'; limit?: number; offset?: number }) =>
+    get<InterlinkingEntities>('/completeness/interlinking/entities', params),
+};
+
 export function statusFor(percent: number): 'good' | 'warn' | 'bad' {
   if (percent >= 90) return 'good';
   if (percent >= 70) return 'warn';
@@ -95,7 +168,7 @@ export function statusFor(percent: number): 'good' | 'warn' | 'bad' {
 
 export function statusColor(percent: number): string {
   const s = statusFor(percent);
-  if (s === 'good') return '#1F8A4C'; // green
-  if (s === 'warn') return '#E08B1A'; // amber
-  return '#9E2B0A'; // accent red (matches theme)
+  if (s === 'good') return '#1F8A4C';
+  if (s === 'warn') return '#E08B1A';
+  return '#9E2B0A';
 }

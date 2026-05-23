@@ -3,6 +3,10 @@ import { TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import IntrasourceConciseness from './metrics/IntrasourceConciseness';
 import CrosssourceConciseness from './metrics/CrosssourceConciseness';
+import SchemaCompleteness from './metrics/SchemaCompleteness';
+import PropertyCompleteness from './metrics/PropertyCompleteness';
+import InterlinkingCompleteness from './metrics/InterlinkingCompleteness';
+import ClassCompleteness from './metrics/ClassCompleteness';
 
 interface DimensionPageProps {
   dimension: 'accuracy' | 'completeness' | 'conciseness';
@@ -25,7 +29,7 @@ const dimensionConfig = {
     score: 91.8,
     trend: '+1.5%',
     issues: 24,
-    tabs: ['Schema Completeness', 'Property Completeness', 'Interlinking Completeness', 'Population Completeness'],
+    tabs: ['Schema Completeness', 'Property Completeness', 'Interlinking Completeness', 'Class Completeness'],
   },
   conciseness: {
     title: 'Conciseness',
@@ -59,6 +63,18 @@ export default function DimensionPage({ dimension }: DimensionPageProps) {
   ];
 
   const renderTabContent = () => {
+    if (dimension === 'completeness') {
+      if (activeTab === 0) {
+        return <SchemaCompleteness />;
+      } else if (activeTab === 1) {
+        return <PropertyCompleteness />;
+      } else if (activeTab === 2) {
+        return <InterlinkingCompleteness />;
+      } else if (activeTab === 3) {
+        return <ClassCompleteness />;
+      }
+    }
+
     if (dimension === 'conciseness') {
       if (activeTab === 0) {
         return <IntrasourceConciseness />;
@@ -196,7 +212,7 @@ export default function DimensionPage({ dimension }: DimensionPageProps) {
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg)' }}>
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Key Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        {dimension !== 'completeness' && <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div
             className="p-6 border"
             style={{
@@ -256,7 +272,7 @@ export default function DimensionPage({ dimension }: DimensionPageProps) {
               Out of 450 total
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* Tabs */}
         <div className="mb-6">

@@ -47,7 +47,6 @@ export function StatusBadge({ percent }: { percent: number }) {
   );
 }
 
-// Section wrapper to satisfy "sectioning" page-and-screen pattern (Bach et al., 2023).
 export function Section({
   title,
   subtitle,

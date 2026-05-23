@@ -36,85 +36,42 @@ def _first_int(raw: dict, var: str, default: int = 0) -> int:
     return int(rows[0][var]["value"])
 
 
-def _get_class_uri(class_name: str) -> str:
-    """Look up the full URI for a class by localName. Raises 404 if not found."""
-    from app.routers.metadata_router import KNOWN_CLASSES
-    entry = next((c for c in KNOWN_CLASSES if c["localName"] == class_name), None)
+def _validate_class_uri(class_uri: str) -> dict:
+    """Look up a class by full URI. Returns the class dict. Raises 404 if not found."""
+    from app.routers.metadata_router import KNOWN_CLASSES_BY_URI
+    entry = KNOWN_CLASSES_BY_URI.get(class_uri)
     if entry is None:
-        raise HTTPException(status_code=404, detail=f"Class '{class_name}' not found")
-    return entry["uri"]
-
-
-def _get_class_name_by_uri(class_uri: str) -> str:
-    """Resolve a class URI back to its local name."""
-    from app.routers.metadata_router import KNOWN_CLASSES
-    entry = next((c for c in KNOWN_CLASSES if c["uri"] == class_uri), None)
-    if entry is None:
-        raise HTTPException(status_code=404, detail=f"Class URI '{class_uri}' not found")
-    return entry["localName"]
-
-
-def _get_class_props(class_name: str) -> list:
-    """Return the expected property list for a class. Raises 404 if not found."""
-    from app.routers.metadata_router import KNOWN_PROPERTIES
-    props = KNOWN_PROPERTIES.get(class_name)
-    if props is None:
-        raise HTTPException(status_code=404, detail=f"Class '{class_name}' not found")
-    return props
-
-
-def _resolve_prop_entry(
-    class_name: str,
-    prop_name: str,
-    expected_type: str | None = None,
-) -> dict:
-    """Resolve a property local name within a class and optionally validate its type."""
-    props = _get_class_props(class_name)
-    entry = next((p for p in props if p["localName"] == prop_name), None)
-    if entry is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Property '{prop_name}' not found on class '{class_name}'"
-        )
-    if expected_type and entry.get("type") != expected_type:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Property '{prop_name}' on class '{class_name}' must be a "
-                f"{expected_type} property."
-            ),
-        )
+        raise HTTPException(status_code=404, detail=f"Class '{class_uri}' not found")
     return entry
 
 
-def _resolve_prop_uri(
-    class_name: str,
-    prop_name: str,
-    expected_type: str | None = None,
-) -> str:
-    """Resolve a property local name to its full URI."""
-    entry = _resolve_prop_entry(class_name, prop_name, expected_type)
-    return entry["uri"]
+def _get_class_props(class_uri: str) -> list:
+    """Return the expected property list for a class. Raises 404 if not found."""
+    from app.routers.metadata_router import KNOWN_PROPERTIES
+    props = KNOWN_PROPERTIES.get(class_uri)
+    if props is None:
+        raise HTTPException(status_code=404, detail=f"Class '{class_uri}' not found")
+    return props
 
 
-def _resolve_class_prop_by_uri(
-    class_name: str,
+def _resolve_prop_by_uri(
+    class_uri: str,
     prop_uri: str,
     expected_type: str | None = None,
 ) -> dict:
     """Resolve a full property URI within a class and optionally validate its type."""
-    props = _get_class_props(class_name)
+    props = _get_class_props(class_uri)
     entry = next((p for p in props if p["uri"] == prop_uri), None)
     if entry is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Property URI '{prop_uri}' not found on class '{class_name}'",
+            detail=f"Property '{prop_uri}' not found on class '{class_uri}'",
         )
     if expected_type and entry.get("type") != expected_type:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Property URI '{prop_uri}' on class '{class_name}' must be a "
+                f"Property '{prop_uri}' on class '{class_uri}' must be a "
                 f"{expected_type} property."
             ),
         )
@@ -319,10 +276,12 @@ async def _fetch_property_entity_uris(
 # ── SA1: mode implementations ──────────────────────────────────────────────────
 
 async def _sa1_relationship_count(
-    class_name: str, class_uri: str, property_name: str
+    class_uri: str, class_name: str, property_uri: str
 ) -> dict:
     """Run SA1 relationship-count outlier profiling with Tukey fences."""
-    prop_uri = _resolve_prop_uri(class_name, property_name, expected_type="object")
+    prop_entry = _resolve_prop_by_uri(class_uri, property_uri, expected_type="object")
+    prop_uri = prop_entry["uri"]
+    property_name = prop_entry["localName"]
 
     query = f"""
         {PREFIXES}
@@ -340,7 +299,7 @@ async def _sa1_relationship_count(
     bindings = _bindings(raw)
     if not bindings:
         return {
-            "class": class_name, "property": property_name, "type": "relationship_count",
+            "uri": class_uri, "class": class_name, "property": property_name, "type": "relationship_count",
             "statistics": {}, "outlier_count": 0, "total": 0, "entities": [],
         }
 
@@ -380,6 +339,7 @@ async def _sa1_relationship_count(
         })
 
     return {
+        "uri": class_uri,
         "class": class_name,
         "property": property_name,
         "type": "relationship_count",
@@ -390,12 +350,12 @@ async def _sa1_relationship_count(
     }
 
 
-async def _sa1_property_presence_anomaly(class_name: str, class_uri: str) -> dict:
+async def _sa1_property_presence_anomaly(class_uri: str, class_name: str) -> dict:
     """Run SA1 property-presence anomaly profiling for all mapped class properties."""
-    props = _get_class_props(class_name)
+    props = _get_class_props(class_uri)
     if not props:
         return {
-            "class": class_name, "type": "property_presence_anomaly", "properties_checked": [],
+            "uri": class_uri, "class": class_name, "type": "property_presence_anomaly", "properties_checked": [],
             "property_stats": [], "outlier_count": 0, "total": 0, "entities": [],
         }
 
@@ -408,7 +368,7 @@ async def _sa1_property_presence_anomaly(class_name: str, class_uri: str) -> dic
 
     if not rows:
         return {
-            "class": class_name, "type": "property_presence_anomaly", "properties_checked": prop_names,
+            "uri": class_uri, "class": class_name, "type": "property_presence_anomaly", "properties_checked": prop_names,
             "property_stats": [], "outlier_count": 0, "total": 0, "entities": [],
         }
 
@@ -483,6 +443,7 @@ async def _sa1_property_presence_anomaly(class_name: str, class_uri: str) -> dic
         })
 
     return {
+        "uri":                class_uri,
         "class":              class_name,
         "type":               "property_presence_anomaly",
         "properties_checked": prop_names,
@@ -497,10 +458,10 @@ async def _sa1_property_presence_anomaly(class_name: str, class_uri: str) -> dic
 
 @router.get("/outliers")
 async def accuracy_outliers(
-    class_name: str = Query(..., description="Class to profile, e.g. GraduateStudent"),
-    property: Optional[str] = Query(
+    class_uri: str = Query(..., description="Full class URI, e.g. http://example.org/voc#GraduateStudent"),
+    property_uri: Optional[str] = Query(
         None,
-        description="Required for type=relationship_count: the object property to count per entity.",
+        description="Required for type=relationship_count: full URI of the object property to count per entity.",
     ),
     type: str = Query(
         "relationship_count",
@@ -524,18 +485,19 @@ async def accuracy_outliers(
           (criterion: has_rare_property).
         - fill_rate = 50%: no clear majority, no flag.
     """
-    class_uri = _get_class_uri(class_name)
+    class_entry = _validate_class_uri(class_uri)
+    class_name = class_entry["localName"]
 
     if type == "relationship_count":
-        if not property:
+        if not property_uri:
             raise HTTPException(
                 status_code=400,
-                detail="'property' is required when type=relationship_count"
+                detail="'property_uri' is required when type=relationship_count"
             )
-        return await _sa1_relationship_count(class_name, class_uri, property)
+        return await _sa1_relationship_count(class_uri, class_name, property_uri)
 
     if type in {"property_presence_anomaly", "completeness"}:
-        return await _sa1_property_presence_anomaly(class_name, class_uri)
+        return await _sa1_property_presence_anomaly(class_uri, class_name)
 
     raise HTTPException(
         status_code=400,
@@ -550,7 +512,7 @@ async def accuracy_outliers(
 
 
 def _sa2_identity_rule(
-    class_name: str,
+    class_uri: str,
     identity_props: str,
     target_prop: str,
 ) -> dict:
@@ -564,9 +526,9 @@ def _sa2_identity_rule(
             detail="Target property cannot also be an identity property.",
         )
 
-    target_entry = _resolve_class_prop_by_uri(class_name, target_prop, expected_type="data")
+    target_entry = _resolve_prop_by_uri(class_uri, target_prop, expected_type="data")
     identity_entries = [
-        _resolve_class_prop_by_uri(class_name, uri, expected_type="data")
+        _resolve_prop_by_uri(class_uri, uri, expected_type="data")
         for uri in prop_uris
     ]
 
@@ -645,18 +607,18 @@ def _sa2_pair_rows(ctx: dict, value_bindings: list[dict]) -> list[dict]:
 
 
 def _sa2_within_context(
-    class_name: str,
+    class_uri: str,
     identity_props: str,
     target_prop: str,
     sources: str | None,
 ) -> dict:
     """Build the context needed for an intra-source SA2 request."""
-    class_uri = _get_class_uri(class_name)
+    class_entry = _validate_class_uri(class_uri)
     source_list = _parse_source_list(sources, min_count=1)
-    rule = _sa2_identity_rule(class_name, identity_props, target_prop)
+    rule = _sa2_identity_rule(class_uri, identity_props, target_prop)
     return {
         **rule,
-        "class_name": class_name,
+        "class_name": class_entry["localName"],
         "class_uri": class_uri,
         "sources": source_list,
     }
@@ -749,8 +711,8 @@ async def _sa2_within_summary(ctx: dict) -> dict:
     sa2_score = round((1 - conflict_count / total_matched) * 100, 2) if total_matched else 100.0
 
     return {
+        "uri": ctx["class_uri"],
         "class": ctx["class_name"],
-        "class_uri": ctx["class_uri"],
         "target_property": ctx["target_property"],
         "target_prop_uri": ctx["target_prop"],
         "identity_props": ctx["identity_props"],
@@ -817,7 +779,7 @@ async def _sa2_within_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
 
 @router.get("/value-conflict/summary")
 async def accuracy_value_conflict_summary(
-    class_name: str = Query(..., description="Class to check, e.g. FullProfessor"),
+    class_uri: str = Query(..., description="Full class URI, e.g. http://example.org/voc#FullProfessor"),
     identity_props: str = Query(
         ...,
         description="Comma-separated full property URIs for identity matching.",
@@ -832,13 +794,13 @@ async def accuracy_value_conflict_summary(
     ),
 ):
     """SA2 intra-source population summary. Does not return table rows."""
-    ctx = _sa2_within_context(class_name, identity_props, target_prop, sources)
+    ctx = _sa2_within_context(class_uri, identity_props, target_prop, sources)
     return await _sa2_within_summary(ctx)
 
 
 @router.get("/value-conflict/rows")
 async def accuracy_value_conflict_rows(
-    class_name: str = Query(..., description="Class to check, e.g. FullProfessor"),
+    class_uri: str = Query(..., description="Full class URI, e.g. http://example.org/voc#FullProfessor"),
     identity_props: str = Query(
         ...,
         description="Comma-separated full property URIs for identity matching.",
@@ -855,7 +817,7 @@ async def accuracy_value_conflict_rows(
     offset: int = Query(0, ge=0, description="Conflict pair offset for pagination."),
 ):
     """SA2 intra-source conflict evidence rows only."""
-    ctx = _sa2_within_context(class_name, identity_props, target_prop, sources)
+    ctx = _sa2_within_context(class_uri, identity_props, target_prop, sources)
     return await _sa2_within_rows_offset(ctx, limit, offset)
 
 
@@ -901,13 +863,13 @@ def _sa2_cross_context(
 ) -> dict:
     """Build the context needed for a cross-source SA2 request."""
     source_list = _cs_parse_sources(sources)
-    class_name = _get_class_name_by_uri(class_uri)
-    rule = _sa2_identity_rule(class_name, identity_props, target_prop)
+    class_entry = _validate_class_uri(class_uri)
+    rule = _sa2_identity_rule(class_uri, identity_props, target_prop)
 
     return {
         **rule,
         "class_uri": class_uri,
-        "class_name": class_name,
+        "class_name": class_entry["localName"],
         "sources": source_list,
         "source_pairs": [
             (source_list[i], source_list[j])
@@ -1012,7 +974,8 @@ async def _sa2_cross_summary(ctx: dict) -> dict:
     sa2_score = round((1 - conflict_count / total_matched) * 100, 2) if total_matched else 100.0
 
     return {
-        "class_uri": ctx["class_uri"],
+        "uri": ctx["class_uri"],
+        "class": ctx["class_name"],
         "target_property": ctx["target_property"],
         "target_prop_uri": ctx["target_prop"],
         "identity_props": ctx["identity_props"],
@@ -1139,8 +1102,8 @@ async def accuracy_property_misuse_by_property(
 
     prop_entry = _resolve_any_mapped_prop_uri(property_uri)
     expected_for: set[str] = {
-        cls_name
-        for cls_name, props in KNOWN_PROPERTIES.items()
+        cls_uri
+        for cls_uri, props in KNOWN_PROPERTIES.items()
         for p in props
         if p["uri"] == property_uri
     }
@@ -1152,7 +1115,7 @@ async def accuracy_property_misuse_by_property(
         """Evaluate one class for expected or misused uses of the selected property."""
         cls_name = cls["localName"]
         cls_uri = cls["uri"]
-        is_expected = cls_name in expected_for
+        is_expected = cls_uri in expected_for
 
         count = await _count_distinct_property_entities(cls_uri, property_uri)
         if not is_expected and count == 0:
@@ -1166,8 +1129,8 @@ async def accuracy_property_misuse_by_property(
             )
 
         return {
+            "uri":                cls_uri,
             "class":              cls_name,
-            "class_uri":          cls_uri,
             "expected":           is_expected,
             "count":              count,
             "entity_uris":        entity_uris,

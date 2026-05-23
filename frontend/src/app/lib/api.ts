@@ -22,10 +22,10 @@ export interface PropertyMeta { localName: string; uri: string; type: 'data' | '
 
 export const metadataApi = {
   mappedClasses: () => get<{ classes: ClassMeta[] }>('/metadata/mapped-classes'),
-  mappedProperties: (className?: string) =>
-    get<{ properties: PropertyMeta[]; class?: string }>('/metadata/mapped-properties', { class_name: className }),
-  facets: (className: string, property: string) =>
-    get<{ values: string[] }>('/metadata/facets', { class_name: className, property }),
+  mappedProperties: (classUri?: string) =>
+    get<{ properties: PropertyMeta[]; class?: string }>('/metadata/mapped-properties', { class_uri: classUri }),
+  facets: (classUri: string, propertyUri: string) =>
+    get<{ values: string[] }>('/metadata/facets', { class_uri: classUri, property_uri: propertyUri }),
 };
 
 export interface MappingCoverage {
@@ -156,7 +156,7 @@ export const completenessApi = {
     get<CompletenessMatrix>('/completeness/matrix', params),
   classSummary: () => get<ClassSummary>('/completeness/class-summary'),
   interlinking: () => get<Interlinking>('/completeness/interlinking'),
-  interlinkingEntities: (params: { class_name: string; status: 'linked' | 'not_linked'; limit?: number; offset?: number }) =>
+  interlinkingEntities: (params: { class_uri: string; status: 'linked' | 'not_linked'; limit?: number; offset?: number }) =>
     get<InterlinkingEntities>('/completeness/interlinking/entities', params),
 };
 

@@ -293,8 +293,10 @@ export default function CrosssourceConciseness() {
       setDupPagination(null);
       return;
     }
+    const classObj = classes.find((c) => c.localName === selectedClass);
+    if (!classObj) return;
     setMetaLoading(true);
-    metadataApi.mappedProperties(selectedClass)
+    metadataApi.mappedProperties(classObj.uri)
       .then((d) => {
         const dp = d.properties.filter((p) => p.type === 'data');
         setAllProperties(dp);
@@ -305,7 +307,7 @@ export default function CrosssourceConciseness() {
     setCrossResult(null);
     setDupItems([]);
     setDupPagination(null);
-  }, [selectedClass]);
+  }, [selectedClass, classes]);
 
   const selectedClassObj = classes.find((c) => c.localName === selectedClass);
 

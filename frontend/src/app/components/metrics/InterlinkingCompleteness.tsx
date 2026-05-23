@@ -152,7 +152,7 @@ function ClassDetail({ entry, onClose }: { entry: InterlinkingClass; onClose: ()
         <LinkList title="Incoming properties" links={incoming} icon={<ArrowLeft className="w-4 h-4" />} />
       </div>
 
-      <EntityDrilldown className_={entry.class} />
+      <EntityDrilldown classUri={entry.uri} />
     </Section>
   );
 }
@@ -205,7 +205,7 @@ function LinkList({ title, links, icon }: { title: string; links: import('../../
   );
 }
 
-function EntityDrilldown({ className_ }: { className_: string }) {
+function EntityDrilldown({ classUri }: { classUri: string }) {
   const [status, setStatus] = useState<'linked' | 'not_linked'>('not_linked');
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<InterlinkingEntities | null>(null);
@@ -213,15 +213,15 @@ function EntityDrilldown({ className_ }: { className_: string }) {
 
   useEffect(() => {
     setOffset(0);
-  }, [className_, status]);
+  }, [classUri, status]);
 
   useEffect(() => {
     setLoading(true);
     completenessApi
-      .interlinkingEntities({ class_name: className_, status, limit: PAGE, offset })
+      .interlinkingEntities({ class_uri: classUri, status, limit: PAGE, offset })
       .then(setData)
       .finally(() => setLoading(false));
-  }, [className_, status, offset]);
+  }, [classUri, status, offset]);
 
   const total = data?.pagination.total ?? null;
 

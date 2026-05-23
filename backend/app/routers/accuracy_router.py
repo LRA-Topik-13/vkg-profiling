@@ -19,14 +19,17 @@ router = APIRouter(prefix="/accuracy", tags=["accuracy"])
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
 def _local_name(uri: str) -> str:
+    """Extract the local name from a URI for display and metadata matching."""
     return uri.split("#")[-1] if "#" in uri else uri.split("/")[-1]
 
 
 def _bindings(raw: dict) -> list[dict]:
+    """Return SPARQL result bindings with a safe empty-list fallback."""
     return raw.get("results", {}).get("bindings", [])
 
 
 def _first_int(raw: dict, var: str, default: int = 0) -> int:
+    """Read the first integer value from a SPARQL aggregate result."""
     rows = _bindings(raw)
     if not rows:
         return default
@@ -43,6 +46,7 @@ def _get_class_uri(class_name: str) -> str:
 
 
 def _get_class_name_by_uri(class_uri: str) -> str:
+    """Resolve a class URI back to its local name."""
     from app.routers.metadata_router import KNOWN_CLASSES
     entry = next((c for c in KNOWN_CLASSES if c["uri"] == class_uri), None)
     if entry is None:
@@ -64,7 +68,7 @@ def _resolve_prop_entry(
     prop_name: str,
     expected_type: str | None = None,
 ) -> dict:
-    """Look up the full URI of a property within a class. Raises 404 if not found."""
+    """Resolve a property local name within a class and optionally validate its type."""
     props = _get_class_props(class_name)
     entry = next((p for p in props if p["localName"] == prop_name), None)
     if entry is None:
@@ -88,6 +92,7 @@ def _resolve_prop_uri(
     prop_name: str,
     expected_type: str | None = None,
 ) -> str:
+    """Resolve a property local name to its full URI."""
     entry = _resolve_prop_entry(class_name, prop_name, expected_type)
     return entry["uri"]
 
@@ -97,6 +102,7 @@ def _resolve_class_prop_by_uri(
     prop_uri: str,
     expected_type: str | None = None,
 ) -> dict:
+    """Resolve a full property URI within a class and optionally validate its type."""
     props = _get_class_props(class_name)
     entry = next((p for p in props if p["uri"] == prop_uri), None)
     if entry is None:
@@ -116,6 +122,7 @@ def _resolve_class_prop_by_uri(
 
 
 def _resolve_any_mapped_prop_uri(prop_uri: str) -> dict:
+    """Resolve any mapped property URI across all classes."""
     from app.routers.metadata_router import KNOWN_PROPERTIES
 
     for props in KNOWN_PROPERTIES.values():
@@ -130,6 +137,7 @@ def _parse_source_list(
     min_count: int = 1,
     default_first_two: bool = False,
 ) -> list[str]:
+    """Parse, validate, deduplicate, and canonically order selected source prefixes."""
     from app.routers.metadata_router import KNOWN_SOURCES
 
     if sources_param:
@@ -154,11 +162,13 @@ def _parse_source_list(
 
 
 def _source_membership_filter(var: str, sources: list[str]) -> str:
+    """Build a SPARQL filter restricting a variable to selected source URI prefixes."""
     clauses = " || ".join(f'STRSTARTS(STR({var}), "{s}")' for s in sources)
     return f"FILTER({clauses})"
 
 
 def _sparql_502(exc: Exception) -> HTTPException:
+    """Wrap SPARQL failures as API-facing 502 errors."""
     return HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(exc)}")
 
 
@@ -225,6 +235,7 @@ async def _fetch_property_presence_rows(
         return []
 
     async def fetch_prop_entity_set(p: dict) -> tuple[str, set[str]]:
+        """Fetch the set of entities that have one selected property."""
         q = f"""
             {PREFIXES}
             SELECT DISTINCT ?entity WHERE {{
@@ -310,6 +321,7 @@ async def _fetch_property_entity_uris(
 async def _sa1_relationship_count(
     class_name: str, class_uri: str, property_name: str
 ) -> dict:
+    """Run SA1 relationship-count outlier profiling with Tukey fences."""
     prop_uri = _resolve_prop_uri(class_name, property_name, expected_type="object")
 
     query = f"""
@@ -379,6 +391,7 @@ async def _sa1_relationship_count(
 
 
 async def _sa1_property_presence_anomaly(class_name: str, class_uri: str) -> dict:
+    """Run SA1 property-presence anomaly profiling for all mapped class properties."""
     props = _get_class_props(class_name)
     if not props:
         return {
@@ -541,6 +554,7 @@ def _sa2_identity_rule(
     identity_props: str,
     target_prop: str,
 ) -> dict:
+    """Build and validate the shared SA2 functional-dependency rule context."""
     prop_uris = list(dict.fromkeys(p.strip() for p in identity_props.split(",") if p.strip()))
     if not prop_uris:
         raise HTTPException(status_code=400, detail="At least one identity property required.")
@@ -579,6 +593,7 @@ def _sa2_identity_rule(
 
 
 def _sa2_pair_rows(ctx: dict, value_bindings: list[dict]) -> list[dict]:
+    """Convert raw SA2 SPARQL bindings into display-ready entity-pair rows."""
     pairs_by_key: dict[tuple[str, str], dict] = {}
     for row in value_bindings:
         e1_uri = row["e1"]["value"]
@@ -635,6 +650,7 @@ def _sa2_within_context(
     target_prop: str,
     sources: str | None,
 ) -> dict:
+    """Build the context needed for an intra-source SA2 request."""
     class_uri = _get_class_uri(class_name)
     source_list = _parse_source_list(sources, min_count=1)
     rule = _sa2_identity_rule(class_name, identity_props, target_prop)
@@ -647,6 +663,7 @@ def _sa2_within_context(
 
 
 def _sa2_within_pair_match_body(ctx: dict, source: str) -> str:
+    """Build the SPARQL body that matches comparable pairs inside one source."""
     mem_e1 = _source_membership_filter("?e1", [source])
     mem_e2 = _source_membership_filter("?e2", [source])
     return f"""
@@ -661,6 +678,7 @@ def _sa2_within_pair_match_body(ctx: dict, source: str) -> str:
 
 
 def _sa2_within_source_count_query(ctx: dict, conflicting: bool) -> str:
+    """Build an intra-source SA2 aggregate count query."""
     source_blocks = []
     for source in ctx["sources"]:
         body = _sa2_within_pair_match_body(ctx, source)
@@ -691,6 +709,7 @@ def _sa2_within_source_count_query(ctx: dict, conflicting: bool) -> str:
 
 
 async def _sa2_within_summary(ctx: dict) -> dict:
+    """Compute the full intra-source SA2 summary and per-source breakdown."""
     grouped_total_q = _sa2_within_source_count_query(ctx, conflicting=False)
     grouped_conflict_q = _sa2_within_source_count_query(ctx, conflicting=True)
 
@@ -703,6 +722,7 @@ async def _sa2_within_summary(ctx: dict) -> dict:
         raise _sparql_502(e)
 
     def source_counts(raw: dict) -> dict[str, int]:
+        """Convert grouped SPARQL aggregate rows into a source-to-count map."""
         return {b["source"]["value"]: int(b["n"]["value"]) for b in _bindings(raw)}
 
     totals_by_source = source_counts(total_by_source_raw)
@@ -746,6 +766,7 @@ async def _sa2_within_summary(ctx: dict) -> dict:
 
 
 async def _sa2_within_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
+    """Fetch one offset-paginated page of intra-source SA2 conflict evidence."""
     source_blocks = []
     for source in ctx["sources"]:
         body = _sa2_within_pair_match_body(ctx, source)
@@ -841,10 +862,12 @@ async def accuracy_value_conflict_rows(
 # ── SA2-cross: Cross-Source Uniqueness Violation ─────────────────────────────
 
 def _cs_src_membership(var: str, sources: list[str]) -> str:
+    """Build a source-membership filter for cross-source SA2 queries."""
     return _source_membership_filter(var, sources)
 
 
 def _cs_diff_source(sources: list[str]) -> str:
+    """Build a SPARQL filter requiring compared entities to come from different sources."""
     same = " || ".join(
         f'(STRSTARTS(STR(?e1), "{s}") && STRSTARTS(STR(?e2), "{s}"))'
         for s in sources
@@ -853,6 +876,7 @@ def _cs_diff_source(sources: list[str]) -> str:
 
 
 def _cs_find_source(uri: str, sources: list[str]) -> str:
+    """Return the selected source prefix that contains an entity URI."""
     for s in sources:
         if uri.startswith(s):
             return s
@@ -860,10 +884,12 @@ def _cs_find_source(uri: str, sources: list[str]) -> str:
 
 
 def _cs_source_label(source_uri: str) -> str:
+    """Convert a source URI prefix into a short display label."""
     return _local_name(source_uri.rstrip("/"))
 
 
 def _cs_parse_sources(sources_param: str | None) -> list[str]:
+    """Parse and validate source prefixes for cross-source SA2."""
     return _parse_source_list(sources_param, min_count=2, default_first_two=True)
 
 
@@ -873,6 +899,7 @@ def _sa2_cross_context(
     target_prop: str,
     sources: str | None,
 ) -> dict:
+    """Build the context needed for a cross-source SA2 request."""
     source_list = _cs_parse_sources(sources)
     class_name = _get_class_name_by_uri(class_uri)
     rule = _sa2_identity_rule(class_name, identity_props, target_prop)
@@ -891,6 +918,7 @@ def _sa2_cross_context(
 
 
 def _sa2_cross_pair_match_body(ctx: dict, sources_for_match: list[str]) -> str:
+    """Build the SPARQL body that matches comparable pairs between source pairs."""
     mem_e1 = _cs_src_membership("?e1", sources_for_match)
     mem_e2 = _cs_src_membership("?e2", sources_for_match)
     diff = _cs_diff_source(sources_for_match)
@@ -907,6 +935,7 @@ def _sa2_cross_pair_match_body(ctx: dict, sources_for_match: list[str]) -> str:
 
 
 def _sa2_cross_source_pair_count_query(ctx: dict, conflicting: bool) -> str:
+    """Build a cross-source SA2 aggregate count query per source pair."""
     pair_blocks = []
     for left, right in ctx["source_pairs"]:
         body = _sa2_cross_pair_match_body(ctx, [left, right])
@@ -938,6 +967,7 @@ def _sa2_cross_source_pair_count_query(ctx: dict, conflicting: bool) -> str:
 
 
 async def _sa2_cross_summary(ctx: dict) -> dict:
+    """Compute the full cross-source SA2 summary and per-source-pair breakdown."""
     grouped_total_q = _sa2_cross_source_pair_count_query(ctx, conflicting=False)
     grouped_conflict_q = _sa2_cross_source_pair_count_query(ctx, conflicting=True)
 
@@ -950,6 +980,7 @@ async def _sa2_cross_summary(ctx: dict) -> dict:
         raise _sparql_502(ex)
 
     def pair_counts(raw: dict) -> dict[tuple[str, str], int]:
+        """Convert grouped SPARQL aggregate rows into a source-pair-to-count map."""
         counts: dict[tuple[str, str], int] = {}
         for b in _bindings(raw):
             counts[(b["source_a"]["value"], b["source_b"]["value"])] = int(b["n"]["value"])
@@ -997,6 +1028,7 @@ async def _sa2_cross_summary(ctx: dict) -> dict:
 
 
 async def _sa2_cross_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
+    """Fetch one offset-paginated page of cross-source SA2 conflict evidence."""
     pair_match_body = _sa2_cross_pair_match_body(ctx, ctx["sources"])
     # Avoid ORDER BY on URI variables here for the same Ontop/Teiid reason as
     # the intra-source rows endpoint.
@@ -1117,6 +1149,7 @@ async def accuracy_property_misuse_by_property(
     ENTITY_LIMIT = 10
 
     async def evaluate_class(cls: dict) -> dict | None:
+        """Evaluate one class for expected or misused uses of the selected property."""
         cls_name = cls["localName"]
         cls_uri = cls["uri"]
         is_expected = cls_name in expected_for

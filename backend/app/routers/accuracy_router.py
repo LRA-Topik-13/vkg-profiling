@@ -137,13 +137,14 @@ def _parse_source_list(
     else:
         raw_sources = KNOWN_SOURCES[:2] if default_first_two else list(KNOWN_SOURCES)
 
-    source_list = list(dict.fromkeys(raw_sources))
-    unknown = sorted(set(source_list) - set(KNOWN_SOURCES))
+    unique_sources = list(dict.fromkeys(raw_sources))
+    unknown = sorted(set(unique_sources) - set(KNOWN_SOURCES))
     if unknown:
         raise HTTPException(
             status_code=400,
             detail=f"Unknown source prefix(es): {', '.join(unknown)}",
         )
+    source_list = [source for source in KNOWN_SOURCES if source in unique_sources]
     if len(source_list) < min_count:
         raise HTTPException(
             status_code=400,
@@ -217,10 +218,9 @@ async def _fetch_property_presence_rows(
         SELECT DISTINCT ?entity WHERE {{
             ?entity a <{class_uri}> .
         }}
-        ORDER BY ?entity
     """
     entity_raw = await execute_sparql(entity_q)
-    all_uris = [b["entity"]["value"] for b in _bindings(entity_raw)]
+    all_uris = sorted(b["entity"]["value"] for b in _bindings(entity_raw))
     if not all_uris:
         return []
 
@@ -264,6 +264,16 @@ async def _two_step_count_uris(
     COUNT step: no error handling, failures propagate to the caller.
     URI step: failures also propagate so SA4 does not silently report zero.
     """
+    count = await _count_distinct_property_entities(class_uri, prop_uri)
+    if count == 0:
+        return 0, [], False
+
+    uris, truncated = await _fetch_property_entity_uris(class_uri, prop_uri, limit)
+    return count, uris, truncated
+
+
+async def _count_distinct_property_entities(class_uri: str, prop_uri: str) -> int:
+    """COUNT DISTINCT entities of class_uri having prop_uri."""
     count_q = f"""
         {PREFIXES}
         SELECT (COUNT(DISTINCT ?entity) AS ?count) WHERE {{
@@ -272,11 +282,15 @@ async def _two_step_count_uris(
         }}
     """
     count_res = await execute_sparql(count_q)
-    count = _first_int(count_res, "count")
+    return _first_int(count_res, "count")
 
-    if count == 0:
-        return 0, [], False
 
+async def _fetch_property_entity_uris(
+    class_uri: str,
+    prop_uri: str,
+    limit: int,
+) -> tuple[list[str], bool]:
+    """Fetch up to limit entity URIs of class_uri having prop_uri."""
     uri_q = f"""
         {PREFIXES}
         SELECT DISTINCT ?entity WHERE {{
@@ -288,7 +302,7 @@ async def _two_step_count_uris(
     uri_res = await execute_sparql(uri_q)
     uris = [b["entity"]["value"] for b in _bindings(uri_res)]
     truncated = len(uris) > limit
-    return count, uris[:limit], truncated
+    return uris[:limit], truncated
 
 
 # ── SA1: mode implementations ──────────────────────────────────────────────────
@@ -305,7 +319,6 @@ async def _sa1_relationship_count(
             OPTIONAL {{ ?entity <{prop_uri}> ?val }}
         }}
         GROUP BY ?entity
-        ORDER BY ?entity
     """
     try:
         raw = await execute_sparql(query)
@@ -323,6 +336,7 @@ async def _sa1_relationship_count(
         {"uri": b["entity"]["value"], "count": int(b["count"]["value"])}
         for b in bindings
     ]
+    rows.sort(key=lambda row: row["uri"])
     stats = _compute_tukey([r["count"] for r in rows])
 
     entities = []
@@ -522,161 +536,305 @@ async def accuracy_outliers(
 # ── SA2: Uniqueness Violation / Value Conflict Detection ─────────────────────
 
 
+def _sa2_identity_rule(
+    class_name: str,
+    identity_props: str,
+    target_prop: str,
+) -> dict:
+    prop_uris = list(dict.fromkeys(p.strip() for p in identity_props.split(",") if p.strip()))
+    if not prop_uris:
+        raise HTTPException(status_code=400, detail="At least one identity property required.")
+    if target_prop in prop_uris:
+        raise HTTPException(
+            status_code=400,
+            detail="Target property cannot also be an identity property.",
+        )
+
+    target_entry = _resolve_class_prop_by_uri(class_name, target_prop, expected_type="data")
+    identity_entries = [
+        _resolve_class_prop_by_uri(class_name, uri, expected_type="data")
+        for uri in prop_uris
+    ]
+
+    e1_patterns, e2_patterns = [], []
+    var_names, prop_names = [], []
+    for i, entry in enumerate(identity_entries):
+        uri = entry["uri"]
+        var = f"k{i}"
+        var_names.append(var)
+        prop_names.append(entry["localName"])
+        e1_patterns.append(f"    ?e1 <{uri}> ?{var} .")
+        e2_patterns.append(f"    ?e2 <{uri}> ?{var} .")
+
+    return {
+        "target_prop": target_prop,
+        "target_property": target_entry["localName"],
+        "identity_prop_uris": prop_uris,
+        "identity_props": prop_names,
+        "e1_block": "\n".join(e1_patterns),
+        "e2_block": "\n".join(e2_patterns),
+        "var_names": var_names,
+        "id_vars_str": " ".join(f"?{v}" for v in var_names),
+    }
+
+
+def _sa2_pair_rows(ctx: dict, value_bindings: list[dict]) -> list[dict]:
+    pairs_by_key: dict[tuple[str, str], dict] = {}
+    for row in value_bindings:
+        e1_uri = row["e1"]["value"]
+        e2_uri = row["e2"]["value"]
+        key = (e1_uri, e2_uri)
+        pair = pairs_by_key.setdefault(key, {
+            "identity_values": {name: set() for name in ctx["identity_props"]},
+            "e1": {
+                "uri": e1_uri,
+                "source": _cs_find_source(e1_uri, ctx["sources"]),
+                "values": set(),
+            },
+            "e2": {
+                "uri": e2_uri,
+                "source": _cs_find_source(e2_uri, ctx["sources"]),
+                "values": set(),
+            },
+        })
+        for i, var in enumerate(ctx["var_names"]):
+            if var in row:
+                pair["identity_values"][ctx["identity_props"][i]].add(row[var]["value"])
+        pair["e1"]["values"].add(row.get("v1", {}).get("value", ""))
+        pair["e2"]["values"].add(row.get("v2", {}).get("value", ""))
+
+    pairs = []
+    for key in sorted(pairs_by_key):
+        pair = pairs_by_key[key]
+        e1_values = sorted(v for v in pair["e1"]["values"] if v != "")
+        e2_values = sorted(v for v in pair["e2"]["values"] if v != "")
+        pairs.append({
+            "identity_values": {
+                name: ", ".join(sorted(values))
+                for name, values in pair["identity_values"].items()
+            },
+            "e1": {
+                "uri": pair["e1"]["uri"],
+                "source": pair["e1"]["source"],
+                "values": e1_values,
+                "value": ", ".join(e1_values),
+            },
+            "e2": {
+                "uri": pair["e2"]["uri"],
+                "source": pair["e2"]["source"],
+                "values": e2_values,
+                "value": ", ".join(e2_values),
+            },
+        })
+    return pairs
+
+
 def _sa2_within_context(
     class_name: str,
-    property: str,
+    identity_props: str,
+    target_prop: str,
     sources: str | None,
 ) -> dict:
     class_uri = _get_class_uri(class_name)
-    prop_uri = _resolve_prop_uri(class_name, property, expected_type="data")
     source_list = _parse_source_list(sources, min_count=1)
-    membership = _source_membership_filter("?entity", source_list)
+    rule = _sa2_identity_rule(class_name, identity_props, target_prop)
     return {
+        **rule,
         "class_name": class_name,
         "class_uri": class_uri,
-        "property": property,
-        "prop_uri": prop_uri,
         "sources": source_list,
-        "membership": membership,
     }
+
+
+def _sa2_within_pair_match_body(ctx: dict, source: str) -> str:
+    mem_e1 = _source_membership_filter("?e1", [source])
+    mem_e2 = _source_membership_filter("?e2", [source])
+    return f"""
+                    ?e1 a <{ctx["class_uri"]}> .
+                    ?e2 a <{ctx["class_uri"]}> .
+                    {mem_e1}
+                    {mem_e2}
+                    FILTER(STR(?e1) < STR(?e2))
+{ctx["e1_block"]}
+{ctx["e2_block"]}
+    """
+
+
+def _sa2_within_source_count_query(ctx: dict, conflicting: bool) -> str:
+    source_blocks = []
+    for source in ctx["sources"]:
+        body = _sa2_within_pair_match_body(ctx, source)
+        conflict_filter = "FILTER(?v1 != ?v2)" if conflicting else ""
+        source_blocks.append(f"""
+            {{
+                BIND("{source}" AS ?source)
+{body}
+                ?e1 <{ctx["target_prop"]}> ?v1 .
+                ?e2 <{ctx["target_prop"]}> ?v2 .
+                {conflict_filter}
+            }}
+        """)
+
+    union_body = "\nUNION\n".join(source_blocks)
+    return f"""
+        {PREFIXES}
+        SELECT ?source (COUNT(?e1) AS ?n) WHERE {{
+            {{
+                SELECT DISTINCT ?source ?e1 ?e2 WHERE {{
+{union_body}
+                }}
+            }}
+        }}
+        GROUP BY ?source
+        ORDER BY ?source
+    """
 
 
 async def _sa2_within_summary(ctx: dict) -> dict:
-    summary_q = f"""
-        {PREFIXES}
-        SELECT ?entity (COUNT(DISTINCT ?val) AS ?value_count) WHERE {{
-            ?entity a <{ctx["class_uri"]}> .
-            {ctx["membership"]}
-            OPTIONAL {{ ?entity <{ctx["prop_uri"]}> ?val }}
-        }}
-        GROUP BY ?entity
-        ORDER BY ?entity
-    """
+    grouped_total_q = _sa2_within_source_count_query(ctx, conflicting=False)
+    grouped_conflict_q = _sa2_within_source_count_query(ctx, conflicting=True)
+
     try:
-        summary_raw = await execute_sparql(summary_q)
+        total_by_source_raw, conflict_by_source_raw = await asyncio.gather(
+            execute_sparql(grouped_total_q),
+            execute_sparql(grouped_conflict_q),
+        )
     except Exception as e:
         raise _sparql_502(e)
 
-    summary_rows = [
-        {
-            "uri": b["entity"]["value"],
-            "value_count": int(b["value_count"]["value"]),
-        }
-        for b in _bindings(summary_raw)
-    ]
+    def source_counts(raw: dict) -> dict[str, int]:
+        return {b["source"]["value"]: int(b["n"]["value"]) for b in _bindings(raw)}
 
-    total = len(summary_rows)
-    conflict_count = sum(1 for r in summary_rows if r["value_count"] > 1)
-    no_value_count = sum(1 for r in summary_rows if r["value_count"] == 0)
-    clean_count = sum(1 for r in summary_rows if r["value_count"] == 1)
-    conflict_rate = round(conflict_count / total * 100, 2) if total else 0.0
-    sa2_score = round((1 - conflict_count / total) * 100, 2) if total else 100.0
+    totals_by_source = source_counts(total_by_source_raw)
+    conflicts_by_source = source_counts(conflict_by_source_raw)
+    total_matched = sum(totals_by_source.values())
+    conflict_count = sum(conflicts_by_source.values())
+
+    source_summary = []
+    for source in ctx["sources"]:
+        total_source = totals_by_source.get(source, 0)
+        conflict_source = conflicts_by_source.get(source, 0)
+        conflict_rate_source = round(conflict_source / total_source * 100, 2) if total_source else 0.0
+        score_source = round((1 - conflict_source / total_source) * 100, 2) if total_source else 100.0
+        source_summary.append({
+            "source": source,
+            "source_label": _cs_source_label(source),
+            "total_matched": total_source,
+            "conflicting_pairs": conflict_source,
+            "conflict_rate": conflict_rate_source,
+            "sa2_score": score_source,
+        })
+
+    conflict_rate = round(conflict_count / total_matched * 100, 2) if total_matched else 0.0
+    sa2_score = round((1 - conflict_count / total_matched) * 100, 2) if total_matched else 100.0
 
     return {
         "class": ctx["class_name"],
-        "property": ctx["property"],
+        "class_uri": ctx["class_uri"],
+        "target_property": ctx["target_property"],
+        "target_prop_uri": ctx["target_prop"],
+        "identity_props": ctx["identity_props"],
+        "identity_prop_uris": ctx["identity_prop_uris"],
         "sources": ctx["sources"],
-        "counting_unit": "entity",
-        "total": total,
-        "conflict_count": conflict_count,
-        "no_value_count": no_value_count,
-        "clean_count": clean_count,
+        "counting_unit": "same_source_entity_pair",
+        "total_matched": total_matched,
+        "conflicting_pairs": conflict_count,
         "conflict_rate": conflict_rate,
         "sa2_score": sa2_score,
+        "source_summary": source_summary,
     }
 
 
-def _sa2_within_entity_rows(ctx: dict, value_bindings: list[dict]) -> list[dict]:
-    conflict_values: dict[str, set[str]] = {}
-    for b in value_bindings:
-        conflict_values.setdefault(b["entity"]["value"], set()).add(b["val"]["value"])
-
-    conflict_entities = []
-    for uri in sorted(conflict_values):
-        values = sorted(conflict_values[uri])
-        conflict_entities.append({
-            "uri": uri,
-            "property": ctx["property"],
-            "values": values,
-            "value_count": len(values),
-            "is_conflict": True,
-            "status": "error",
-            "violations": [{
-                "criterion": "multiple_values",
-                "message": (
-                    f"{ctx['property']} has {len(values)} distinct values: "
-                    f"{', '.join(str(v) for v in values)}."
-                ),
-            }],
-        })
-    return conflict_entities
-
-
 async def _sa2_within_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
+    source_blocks = []
+    for source in ctx["sources"]:
+        body = _sa2_within_pair_match_body(ctx, source)
+        source_blocks.append(f"""
+                    {{
+{body}
+                        ?e1 <{ctx["target_prop"]}> ?page_v1 .
+                        ?e2 <{ctx["target_prop"]}> ?page_v2 .
+                        FILTER(?page_v1 != ?page_v2)
+                    }}
+        """)
+    union_body = "\nUNION\n".join(source_blocks)
+
+    # Avoid ORDER BY on URI variables here. Ontop/Teiid can fail when sorting
+    # RDF resources generated from URI templates, especially on TimeSlot rows.
     query = f"""
         {PREFIXES}
-        SELECT DISTINCT ?entity ?val WHERE {{
+        SELECT DISTINCT {ctx["id_vars_str"]} ?e1 ?e2 ?v1 ?v2 WHERE {{
             {{
-                SELECT DISTINCT ?entity WHERE {{
-                    {{
-                        SELECT ?entity (COUNT(DISTINCT ?v) AS ?n) WHERE {{
-                            ?entity a <{ctx["class_uri"]}> .
-                            {ctx["membership"]}
-                            ?entity <{ctx["prop_uri"]}> ?v .
-                        }}
-                        GROUP BY ?entity
-                        HAVING (?n > 1)
-                    }}
+                SELECT DISTINCT ?e1 ?e2 WHERE {{
+{union_body}
                 }}
-                ORDER BY ?entity
                 LIMIT {limit}
                 OFFSET {offset}
             }}
-            ?entity <{ctx["prop_uri"]}> ?val .
+{ctx["e1_block"]}
+{ctx["e2_block"]}
+            ?e1 <{ctx["target_prop"]}> ?v1 .
+            ?e2 <{ctx["target_prop"]}> ?v2 .
+            FILTER(?v1 != ?v2)
         }}
-        ORDER BY ?entity ?val
     """
     try:
         raw = await execute_sparql(query)
     except Exception as e:
         raise _sparql_502(e)
 
-    rows = _sa2_within_entity_rows(ctx, _bindings(raw))
+    rows = _sa2_pair_rows(ctx, _bindings(raw))
     return {
         "limit": limit,
         "offset": offset,
         "returned_count": len(rows),
-        "entities": rows,
+        "sample_size": len(rows),
+        "pairs": rows,
+        "sample": rows,
     }
 
 
 @router.get("/value-conflict/summary")
 async def accuracy_value_conflict_summary(
     class_name: str = Query(..., description="Class to check, e.g. FullProfessor"),
-    property: str = Query(..., description="Data property to check for multiple values per entity."),
+    identity_props: str = Query(
+        ...,
+        description="Comma-separated full property URIs for identity matching.",
+    ),
+    target_prop: str = Query(
+        ...,
+        description="Full URI of the single-valued property to check for conflicts.",
+    ),
     sources: Optional[str] = Query(
         None,
         description="Comma-separated source URI prefixes. Defaults to all registered sources.",
     ),
 ):
-    """SA2 within-source population summary. Does not return table rows."""
-    ctx = _sa2_within_context(class_name, property, sources)
+    """SA2 intra-source population summary. Does not return table rows."""
+    ctx = _sa2_within_context(class_name, identity_props, target_prop, sources)
     return await _sa2_within_summary(ctx)
 
 
 @router.get("/value-conflict/rows")
 async def accuracy_value_conflict_rows(
     class_name: str = Query(..., description="Class to check, e.g. FullProfessor"),
-    property: str = Query(..., description="Data property to check for multiple values per entity."),
+    identity_props: str = Query(
+        ...,
+        description="Comma-separated full property URIs for identity matching.",
+    ),
+    target_prop: str = Query(
+        ...,
+        description="Full URI of the single-valued property to check for conflicts.",
+    ),
     sources: Optional[str] = Query(
         None,
         description="Comma-separated source URI prefixes. Defaults to all registered sources.",
     ),
-    limit: int = Query(50, ge=1, le=500, description="Max conflict entities returned per page."),
-    offset: int = Query(0, ge=0, description="Conflict entity offset for pagination."),
+    limit: int = Query(50, ge=1, le=500, description="Max conflict pairs returned per page."),
+    offset: int = Query(0, ge=0, description="Conflict pair offset for pagination."),
 ):
-    """SA2 within-source conflict evidence rows only."""
-    ctx = _sa2_within_context(class_name, property, sources)
+    """SA2 intra-source conflict evidence rows only."""
+    ctx = _sa2_within_context(class_name, identity_props, target_prop, sources)
     return await _sa2_within_rows_offset(ctx, limit, offset)
 
 
@@ -717,49 +875,18 @@ def _sa2_cross_context(
 ) -> dict:
     source_list = _cs_parse_sources(sources)
     class_name = _get_class_name_by_uri(class_uri)
-
-    prop_uris = list(dict.fromkeys(p.strip() for p in identity_props.split(",") if p.strip()))
-    if not prop_uris:
-        raise HTTPException(status_code=400, detail="At least one identity property required")
-    if target_prop in prop_uris:
-        raise HTTPException(
-            status_code=400,
-            detail="Target property cannot also be an identity property.",
-        )
-
-    target_entry = _resolve_class_prop_by_uri(class_name, target_prop, expected_type="data")
-    identity_entries = [
-        _resolve_class_prop_by_uri(class_name, uri, expected_type="data")
-        for uri in prop_uris
-    ]
-
-    e1_patterns, e2_patterns = [], []
-    var_names, prop_names = [], []
-    for i, entry in enumerate(identity_entries):
-        uri = entry["uri"]
-        var = f"k{i}"
-        var_names.append(var)
-        prop_names.append(entry["localName"])
-        e1_patterns.append(f"    ?e1 <{uri}> ?{var} .")
-        e2_patterns.append(f"    ?e2 <{uri}> ?{var} .")
+    rule = _sa2_identity_rule(class_name, identity_props, target_prop)
 
     return {
+        **rule,
         "class_uri": class_uri,
         "class_name": class_name,
-        "target_prop": target_prop,
-        "target_property": target_entry["localName"],
-        "identity_prop_uris": prop_uris,
-        "identity_props": prop_names,
         "sources": source_list,
         "source_pairs": [
             (source_list[i], source_list[j])
             for i in range(len(source_list))
             for j in range(i + 1, len(source_list))
         ],
-        "e1_block": "\n".join(e1_patterns),
-        "e2_block": "\n".join(e2_patterns),
-        "var_names": var_names,
-        "id_vars_str": " ".join(f"?{v}" for v in var_names),
     }
 
 
@@ -869,59 +996,10 @@ async def _sa2_cross_summary(ctx: dict) -> dict:
     }
 
 
-def _sa2_cross_pair_rows(ctx: dict, value_bindings: list[dict]) -> list[dict]:
-    pairs_by_key: dict[tuple[str, str], dict] = {}
-    for row in value_bindings:
-        e1_uri = row["e1"]["value"]
-        e2_uri = row["e2"]["value"]
-        key = (e1_uri, e2_uri)
-        pair = pairs_by_key.setdefault(key, {
-            "identity_values": {name: set() for name in ctx["identity_props"]},
-            "e1": {
-                "uri": e1_uri,
-                "source": _cs_find_source(e1_uri, ctx["sources"]),
-                "values": set(),
-            },
-            "e2": {
-                "uri": e2_uri,
-                "source": _cs_find_source(e2_uri, ctx["sources"]),
-                "values": set(),
-            },
-        })
-        for i, var in enumerate(ctx["var_names"]):
-            if var in row:
-                pair["identity_values"][ctx["identity_props"][i]].add(row[var]["value"])
-        pair["e1"]["values"].add(row.get("v1", {}).get("value", ""))
-        pair["e2"]["values"].add(row.get("v2", {}).get("value", ""))
-
-    pairs = []
-    for key in sorted(pairs_by_key):
-        pair = pairs_by_key[key]
-        e1_values = sorted(v for v in pair["e1"]["values"] if v != "")
-        e2_values = sorted(v for v in pair["e2"]["values"] if v != "")
-        pairs.append({
-            "identity_values": {
-                name: ", ".join(sorted(values))
-                for name, values in pair["identity_values"].items()
-            },
-            "e1": {
-                "uri": pair["e1"]["uri"],
-                "source": pair["e1"]["source"],
-                "values": e1_values,
-                "value": ", ".join(e1_values),
-            },
-            "e2": {
-                "uri": pair["e2"]["uri"],
-                "source": pair["e2"]["source"],
-                "values": e2_values,
-                "value": ", ".join(e2_values),
-            },
-        })
-    return pairs
-
-
 async def _sa2_cross_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
     pair_match_body = _sa2_cross_pair_match_body(ctx, ctx["sources"])
+    # Avoid ORDER BY on URI variables here for the same Ontop/Teiid reason as
+    # the intra-source rows endpoint.
     query = f"""
         {PREFIXES}
         SELECT DISTINCT {ctx["id_vars_str"]} ?e1 ?e2 ?v1 ?v2 WHERE {{
@@ -932,7 +1010,6 @@ async def _sa2_cross_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
                     ?e2 <{ctx["target_prop"]}> ?page_v2 .
                     FILTER(?page_v1 != ?page_v2)
                 }}
-                ORDER BY ?e1 ?e2
                 LIMIT {limit}
                 OFFSET {offset}
             }}
@@ -942,14 +1019,13 @@ async def _sa2_cross_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
             ?e2 <{ctx["target_prop"]}> ?v2 .
             FILTER(?v1 != ?v2)
         }}
-        ORDER BY ?e1 ?e2 ?v1 ?v2
     """
     try:
         raw = await execute_sparql(query)
     except Exception as ex:
         raise _sparql_502(ex)
 
-    rows = _sa2_cross_pair_rows(ctx, _bindings(raw))
+    rows = _sa2_pair_rows(ctx, _bindings(raw))
     return {
         "limit": limit,
         "offset": offset,
@@ -1038,19 +1114,23 @@ async def accuracy_property_misuse_by_property(
     }
 
     prop_local = prop_entry["localName"]
-    ENTITY_LIMIT = 20
+    ENTITY_LIMIT = 10
 
     async def evaluate_class(cls: dict) -> dict | None:
         cls_name = cls["localName"]
         cls_uri = cls["uri"]
         is_expected = cls_name in expected_for
 
-        count, entity_uris, entities_truncated = await _two_step_count_uris(
-            cls_uri, property_uri, ENTITY_LIMIT
-        )
-
+        count = await _count_distinct_property_entities(cls_uri, property_uri)
         if not is_expected and count == 0:
             return None
+
+        entity_uris: list[str] = []
+        entities_truncated = False
+        if not is_expected:
+            entity_uris, entities_truncated = await _fetch_property_entity_uris(
+                cls_uri, property_uri, ENTITY_LIMIT
+            )
 
         return {
             "class":              cls_name,

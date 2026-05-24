@@ -1,6 +1,6 @@
-import { ReactNode } from 'react';
+import { ReactNode, useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { statusColor, PaginationInfo } from '../../lib/api';
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
@@ -179,12 +179,36 @@ export function Section({
   subtitle,
   right,
   children,
+  collapsible = false,
+  defaultCollapsed = false,
 }: {
   title: string;
   subtitle?: string;
   right?: ReactNode;
   children: ReactNode;
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
 }) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const open = !collapsible || !collapsed;
+
+  const heading = (
+    <div className="flex items-center gap-2">
+      {collapsible && (
+        <ChevronDown
+          className="w-4 h-4 shrink-0 transition-transform"
+          style={{ color: 'var(--muted-foreground)', transform: open ? 'none' : 'rotate(-90deg)' }}
+        />
+      )}
+      <div>
+        <h3 className="text-xl" style={{ color: 'var(--navy)' }}>{title}</h3>
+        {subtitle && (
+          <p className="mt-1 text-sm" style={{ color: 'var(--muted-foreground)' }}>{subtitle}</p>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div
       className="p-6 border"
@@ -194,16 +218,118 @@ export function Section({
         borderRadius: 'var(--radius)',
       }}
     >
-      <div className="flex items-start justify-between mb-4 gap-4">
-        <div>
-          <h3 className="text-xl" style={{ color: 'var(--navy)' }}>{title}</h3>
-          {subtitle && (
-            <p className="mt-1 text-sm" style={{ color: 'var(--muted-foreground)' }}>{subtitle}</p>
-          )}
-        </div>
+      <div className={`flex items-start justify-between gap-4 ${open ? 'mb-4' : ''}`}>
+        {collapsible ? (
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            className="text-left flex-1"
+            aria-expanded={open}
+          >
+            {heading}
+          </button>
+        ) : (
+          heading
+        )}
         {right}
       </div>
-      {children}
+      {open && children}
+    </div>
+  );
+}
+
+export function ClassSelectList<T>({
+  title,
+  subtitle,
+  items,
+  getKey,
+  getSearchText,
+  selectedKey,
+  onSelect,
+  renderRow,
+  placeholder = 'Search a class…',
+  maxHeight = 360,
+  emptyMessage = 'No classes.',
+}: {
+  title?: string;
+  subtitle?: string;
+  items: T[];
+  getKey: (item: T) => string;
+  getSearchText: (item: T) => string;
+  selectedKey: string | null;
+  onSelect: (key: string) => void;
+  renderRow: (item: T, selected: boolean) => ReactNode;
+  placeholder?: string;
+  maxHeight?: number;
+  emptyMessage?: string;
+}) {
+  const [query, setQuery] = useState('');
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((it) => getSearchText(it).toLowerCase().includes(q));
+  }, [items, query, getSearchText]);
+
+  return (
+    <div
+      className="p-6 border"
+      style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius)' }}
+    >
+      <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
+        <div>
+          {title && <h3 className="text-xl" style={{ color: 'var(--navy)' }}>{title}</h3>}
+          {subtitle && <p className="mt-1 text-sm" style={{ color: 'var(--muted-foreground)' }}>{subtitle}</p>}
+        </div>
+        <div className="relative">
+          <Search
+            className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            style={{ color: 'var(--muted-foreground)' }}
+          />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={placeholder}
+            className="pl-9 pr-3 py-2 text-sm border w-56"
+            style={{
+              backgroundColor: 'var(--card)',
+              borderColor: 'var(--border)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--text)',
+            }}
+          />
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="py-8 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>
+          {query.trim() ? `No classes match “${query.trim()}”.` : emptyMessage}
+        </div>
+      ) : (
+        <ul className="always-scrollbar overflow-y-auto pr-1 space-y-1" style={{ maxHeight }}>
+          {filtered.map((it) => {
+            const key = getKey(it);
+            const selected = key === selectedKey;
+            return (
+              <li key={key}>
+                <button
+                  onClick={() => onSelect(key)}
+                  className="w-full text-left flex items-center justify-between gap-3 px-3 py-2 border transition-colors"
+                  style={{
+                    backgroundColor: selected ? 'var(--accent-soft)' : 'var(--card)',
+                    borderColor: selected ? 'var(--accent)' : 'var(--border)',
+                    borderLeftWidth: 3,
+                    borderLeftColor: selected ? 'var(--accent)' : 'transparent',
+                    borderRadius: 'var(--radius-md)',
+                  }}
+                >
+                  {renderRow(it, selected)}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

@@ -8,7 +8,7 @@ import {
   InterlinkingEntities,
   statusColor,
 } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList } from './_shared';
 
 const PAGE = 25;
 
@@ -47,21 +47,60 @@ export default function InterlinkingCompleteness() {
       <Section
         title="Linked vs Isolated per Class"
         subtitle="Stacked horizontal bar — linked count layered against not-linked. Superposition makes proportion immediately readable while parallelism enables ranking across classes."
+        collapsible
       >
         <StackedLinkChart classes={data.classes} onSelect={setSelected} selected={selected} />
       </Section>
 
-      {sel ? (
-        <ClassDetail entry={sel} onClose={() => setSelected(null)} />
-      ) : (
-        <Section
-          title="Class Detail"
-          subtitle="Select a class from the chart above to drill into its outgoing/incoming links and individual entities."
-        >
-          <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>No class selected.</div>
-        </Section>
-      )}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+        <div className="lg:col-span-2">
+          <ClassSelectList
+            title="Classes"
+            subtitle="Search or pick a class to see its details."
+            items={[...data.classes].filter((c) => c.total_entities > 0).sort((a, b) => a.ratio - b.ratio)}
+            getKey={(c) => c.class}
+            getSearchText={(c) => `${c.label || ''} ${c.class}`}
+            selectedKey={selected}
+            onSelect={(k) => setSelected(k === selected ? null : k)}
+            renderRow={(c) => <ClassRow entry={c} />}
+            maxHeight={560}
+          />
+        </div>
+        <div className="lg:col-span-3">
+          {sel ? (
+            <ClassDetail entry={sel} onClose={() => setSelected(null)} />
+          ) : (
+            <Section
+              title="Class Detail"
+              subtitle="Select a class on the left to drill into its outgoing/incoming links and individual entities."
+            >
+              <div className="py-8 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>No class selected.</div>
+            </Section>
+          )}
+        </div>
+      </div>
     </div>
+  );
+}
+
+function ClassRow({ entry }: { entry: InterlinkingClass }) {
+  return (
+    <>
+      <div className="min-w-0">
+        <div className="truncate" style={{ color: 'var(--text)' }}>{entry.label || entry.class}</div>
+        <div className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>{entry.class}</div>
+      </div>
+      <div className="flex items-center gap-3 shrink-0">
+        <div className="hidden sm:flex w-24 h-1.5 overflow-hidden" style={{ borderRadius: 'var(--radius-sm)' }}>
+          <div style={{ width: `${entry.ratio}%`, backgroundColor: '#1F8A4C' }} />
+          <div style={{ width: `${100 - entry.ratio}%`, backgroundColor: '#9E2B0A' }} />
+        </div>
+        <span className="text-xs tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
+          {entry.linked.toLocaleString()}/{entry.total_entities.toLocaleString()}
+        </span>
+        <StatusBadge percent={entry.ratio} />
+      </div>
+    </>
   );
 }
 

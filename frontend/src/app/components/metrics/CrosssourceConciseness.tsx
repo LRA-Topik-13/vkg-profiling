@@ -404,7 +404,7 @@ export default function CrosssourceConciseness() {
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">-- predicate --</option>
+                <option value="">— predicate —</option>
                 {objectProps.map((p) => (
                   <option key={p.uri} value={p.uri}>{p.label || p.localName}</option>
                 ))}
@@ -416,7 +416,7 @@ export default function CrosssourceConciseness() {
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">-- object --</option>
+                <option value="">— object —</option>
                 {draftValues.map((v) => (
                   <option key={v} value={v}>{shortUri(v)}</option>
                 ))}
@@ -581,15 +581,15 @@ export default function CrosssourceConciseness() {
               color="var(--navy)"
             />
             <Headline
-              value={crossResult.cn3_score}
-              label="CN3 Score"
-              sub="Cross-source conciseness"
-            />
-            <Headline
               value={String(crossResult.ambiguous_instances)}
               label="Ambiguous Instances"
               sub="Overlapping identities"
               color={crossResult.ambiguous_instances > 0 ? '#9E2B0A' : '#1F8A4C'}
+            />
+            <Headline
+              value={crossResult.cn3_score}
+              label="CN3 Score"
+              sub="Cross-source conciseness"
             />
           </div>
 

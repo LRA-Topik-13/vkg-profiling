@@ -390,7 +390,7 @@ export default function IntrasourceConciseness() {
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">-- predicate --</option>
+                <option value="">— predicate —</option>
                 {objectProps.map((p) => (
                   <option key={p.uri} value={p.uri}>{p.label || p.localName}</option>
                 ))}
@@ -402,7 +402,7 @@ export default function IntrasourceConciseness() {
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">-- object --</option>
+                <option value="">— object —</option>
                 {draftValues.map((v) => (
                   <option key={v} value={v}>{shortUri(v)}</option>
                 ))}
@@ -554,8 +554,8 @@ export default function IntrasourceConciseness() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Headline value={String(result.total_representations)} label="Total Representations" sub="In selected source" color="var(--navy)" />
             <Headline value={String(result.unique_instances)} label="Unique Instances" sub="Distinct entities" color="var(--navy)" />
-            <Headline value={result.score_f1} label="Score F1" sub="unique / total" />
-            <Headline value={result.score_f2} label="Score F2" sub="1 - (violations / total)" />
+            <Headline value={result.score_f1} label="Score for Formula 1" sub="unique / total" />
+            <Headline value={result.score_f2} label="Score for Formula 2" sub="1 - (violations / total)" />
           </div>
 
           {/* Pass/fail banner */}

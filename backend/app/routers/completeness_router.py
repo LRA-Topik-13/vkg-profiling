@@ -329,22 +329,17 @@ def build_exists_bindings(prop_uris: list[str]) -> tuple[str, list[str], list[st
     return "\n".join(optional_blocks), select_exprs, var_names
 
 
-@router.get("/by-entity")
-async def completeness_by_entity(
-    class_uri: str = Query(..., description="Full class URI, e.g. http://example.org/voc#FullProfessor"),
-    properties: str = Query(..., description="Comma-separated property URIs, e.g. http://xmlns.com/foaf/0.1/firstName,http://example.org/voc#teaches"),
-    filter_facets: Optional[str] = Query(None, description="Comma-separated facet filters as predicateUri::objectUri pairs"),
-    limit: int = DEFAULT_PAGE_LIMIT,
-    offset: int = 0,
-    include_total: bool = True,
-):
-    limit, offset = _validate_pagination(limit, offset)
-    class_entry = validate_class_uri(class_uri)
-    prop_uris = parse_property_uris(properties)
-    facets = parse_facets(filter_facets)
+async def _by_entity_compute(
+    class_uri: str,
+    class_entry: dict,
+    prop_uris: list[str],
+    facets: list[tuple[str, str]],
+    limit: int,
+    offset: int,
+    include_total: bool,
+) -> dict:
     facet_clauses = build_facet_clauses(facets)
     optional_block, select_exprs, var_names = build_exists_bindings(prop_uris)
-
     var_list = " ".join(select_exprs)
 
     query = f"""
@@ -407,7 +402,6 @@ async def completeness_by_entity(
         "class":      class_entry["localName"],
         "properties": prop_uris,
         "property_info": property_info,
-        "total":      total_entities if total_entities is not None else len(entities),
         "pagination": {
             "limit": limit,
             "offset": offset,
@@ -418,15 +412,12 @@ async def completeness_by_entity(
     }
 
 
-@router.get("/by-property")
-async def completeness_by_property(
-    class_uri: str = Query(..., description="Full class URI"),
-    properties: str = Query(..., description="Comma-separated property URIs"),
-    filter_facets: Optional[str] = Query(None, description="Comma-separated facet filters as predicateUri::objectUri pairs"),
-):
-    class_entry = validate_class_uri(class_uri)
-    prop_uris = parse_property_uris(properties)
-    facets = parse_facets(filter_facets)
+async def _by_property_compute(
+    class_uri: str,
+    class_entry: dict,
+    prop_uris: list[str],
+    facets: list[tuple[str, str]],
+) -> dict:
     facet_clauses = build_facet_clauses(facets)
 
     count_query = f"""
@@ -491,6 +482,34 @@ async def completeness_by_property(
     }
 
 
+@router.get("/by-entity")
+async def completeness_by_entity(
+    class_uri: str = Query(..., description="Full class URI, e.g. http://example.org/voc#FullProfessor"),
+    properties: str = Query(..., description="Comma-separated property URIs, e.g. http://xmlns.com/foaf/0.1/firstName,http://example.org/voc#teaches"),
+    filter_facets: Optional[str] = Query(None, description="Comma-separated facet filters as predicateUri::objectUri pairs"),
+    limit: int = DEFAULT_PAGE_LIMIT,
+    offset: int = 0,
+    include_total: bool = True,
+):
+    limit, offset = _validate_pagination(limit, offset)
+    class_entry = validate_class_uri(class_uri)
+    prop_uris = parse_property_uris(properties)
+    facets = parse_facets(filter_facets)
+    return await _by_entity_compute(class_uri, class_entry, prop_uris, facets, limit, offset, include_total)
+
+
+@router.get("/by-property")
+async def completeness_by_property(
+    class_uri: str = Query(..., description="Full class URI"),
+    properties: str = Query(..., description="Comma-separated property URIs"),
+    filter_facets: Optional[str] = Query(None, description="Comma-separated facet filters as predicateUri::objectUri pairs"),
+):
+    class_entry = validate_class_uri(class_uri)
+    prop_uris = parse_property_uris(properties)
+    facets = parse_facets(filter_facets)
+    return await _by_property_compute(class_uri, class_entry, prop_uris, facets)
+
+
 @router.get("/matrix")
 async def completeness_matrix(
     class_uri: str = Query(..., description="Full class URI"),
@@ -501,20 +520,12 @@ async def completeness_matrix(
     include_total: bool = True,
 ):
     limit, offset = _validate_pagination(limit, offset)
+    class_entry = validate_class_uri(class_uri)
+    prop_uris = parse_property_uris(properties)
+    facets = parse_facets(filter_facets)
     entity_result, property_result = await asyncio.gather(
-        completeness_by_entity(
-            class_uri=class_uri,
-            properties=properties,
-            filter_facets=filter_facets,
-            limit=limit,
-            offset=offset,
-            include_total=include_total,
-        ),
-        completeness_by_property(
-            class_uri=class_uri,
-            properties=properties,
-            filter_facets=filter_facets,
-        ),
+        _by_entity_compute(class_uri, class_entry, prop_uris, facets, limit, offset, include_total),
+        _by_property_compute(class_uri, class_entry, prop_uris, facets),
     )
 
     prop_list = entity_result["properties"]

@@ -202,7 +202,6 @@ async def test_entity_completeness_is_paginated(monkeypatch):
     )
 
     assert len(queries) == 2
-    assert data["total"] == 12
     assert data["pagination"] == {"limit": 1, "offset": 5, "count": 1, "total": 12}
     assert data["entities"][0]["scores"] == {FIRST_NAME_URI: True}
 

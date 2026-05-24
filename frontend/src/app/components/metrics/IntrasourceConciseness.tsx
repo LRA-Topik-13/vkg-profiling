@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Search, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
-import { ScoreDonut, Section, LoadingState, ErrorState } from './_shared';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { Search, Plus, X, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Headline, Section, LoadingState, ErrorState } from './_shared';
 import {
   metadataApi,
   concisenessApi,
@@ -38,6 +38,15 @@ function shortUri(uri: string) {
   }
 }
 
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface Facet {
+  propUri: string;
+  propLabel: string;
+  valueUri: string | null;
+  valueLabel: string;
+}
+
 // ── Sub-components ───────────────────────────────────────────────────────────
 
 function FormulaCard({ title, formula, description }: { title: string; formula: string; description?: string }) {
@@ -57,24 +66,11 @@ function FormulaCard({ title, formula, description }: { title: string; formula: 
   );
 }
 
-function HeadlineCard({ value, label, sub, color }: { value: string; label: string; sub?: string; color?: string }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div
-      className="p-6 border flex flex-col justify-center"
-      style={{
-        backgroundColor: 'var(--card)',
-        borderColor: 'var(--border)',
-        borderRadius: 'var(--radius)',
-        minHeight: 260,
-      }}
-    >
-      <div className="text-sm mb-2" style={{ color: 'var(--muted-foreground)' }}>{label}</div>
-      <div className="text-5xl" style={{ color: color ?? 'var(--navy)', lineHeight: 1.1 }}>
-        {value}
-      </div>
-      {sub && (
-        <div className="mt-2 text-sm" style={{ color: 'var(--muted-foreground)' }}>{sub}</div>
-      )}
+    <div>
+      <div className="mb-1 text-sm" style={{ color: 'var(--text)' }}>{label}</div>
+      {children}
     </div>
   );
 }
@@ -248,9 +244,15 @@ export default function IntrasourceConciseness() {
   const [allProperties, setAllProperties] = useState<PropertyMeta[]>([]);
 
   // Selection
-  const [selectedClass, setSelectedClass] = useState('');
+  const [selectedClassUri, setSelectedClassUri] = useState('');
   const [selectedProps, setSelectedProps] = useState<string[]>([]);
   const [sourcePrefix, setSourcePrefix] = useState(SOURCE_OPTIONS[0].value);
+
+  // Facets
+  const [facets, setFacets] = useState<Facet[]>([]);
+  const [draftPropUri, setDraftPropUri] = useState('');
+  const [draftValueUri, setDraftValueUri] = useState('');
+  const [draftValues, setDraftValues] = useState<string[]>([]);
 
   // Results
   const [result, setResult] = useState<IntraSourceResult | null>(null);
@@ -265,6 +267,21 @@ export default function IntrasourceConciseness() {
   const [dupOffset, setDupOffset] = useState(0);
   const [dupLoading, setDupLoading] = useState(false);
 
+  const selectedClass = useMemo(
+    () => classes.find((c) => c.uri === selectedClassUri) || null,
+    [classes, selectedClassUri],
+  );
+
+  const objectProps = useMemo(
+    () => allProperties.filter((p) => p.type === 'object'),
+    [allProperties],
+  );
+
+  const dataProps = useMemo(
+    () => allProperties.filter((p) => p.type === 'data'),
+    [allProperties],
+  );
+
   // Fetch classes on mount
   useEffect(() => {
     metadataApi.mappedClasses()
@@ -274,40 +291,61 @@ export default function IntrasourceConciseness() {
 
   // Fetch properties when class changes
   useEffect(() => {
+    setSelectedProps([]);
+    setFacets([]);
+    setDraftPropUri('');
+    setDraftValueUri('');
+    setDraftValues([]);
+    setResult(null);
+    setDupItems([]);
+    setDupPagination(null);
     if (!selectedClass) {
       setAllProperties([]);
-      setSelectedProps([]);
-      setResult(null);
-      setDupItems([]);
-      setDupPagination(null);
       return;
     }
-    const classObj = classes.find((c) => c.localName === selectedClass);
-    if (!classObj) return;
     setMetaLoading(true);
-    metadataApi.mappedProperties(classObj.uri)
+    metadataApi.mappedProperties(selectedClass.uri)
       .then((d) => {
+        setAllProperties(d.properties);
         const dp = d.properties.filter((p) => p.type === 'data');
-        setAllProperties(dp);
         setSelectedProps(dp.map((p) => p.uri));
       })
       .catch(() => { setAllProperties([]); setSelectedProps([]); })
       .finally(() => setMetaLoading(false));
-    setResult(null);
-    setDupItems([]);
-    setDupPagination(null);
-  }, [selectedClass, classes]);
+  }, [selectedClass]);
 
-  const selectedClassObj = classes.find((c) => c.localName === selectedClass);
+  // Fetch facet values when draft property changes
+  useEffect(() => {
+    setDraftValueUri('');
+    if (!draftPropUri || !selectedClass) {
+      setDraftValues([]);
+      return;
+    }
+    const propEntry = allProperties.find((p) => p.uri === draftPropUri);
+    if (!propEntry) {
+      setDraftValues([]);
+      return;
+    }
+    metadataApi
+      .facets(selectedClass.uri, propEntry.uri)
+      .then((r) => setDraftValues(r.values))
+      .catch(() => setDraftValues([]));
+  }, [selectedClass, draftPropUri, allProperties]);
+
+  const facetString = useMemo(() => {
+    if (facets.length === 0) return undefined;
+    return facets.map((f) => f.valueUri ? `${f.propUri}::${f.valueUri}` : f.propUri).join(',');
+  }, [facets]);
 
   const fetchDuplicates = useCallback(async (offset: number, limit: number) => {
-    if (!selectedClassObj) return;
+    if (!selectedClass) return;
     setDupLoading(true);
     try {
       const data = await concisenessApi.intraSourceDuplicates({
-        class_uri: selectedClassObj.uri,
+        class_uri: selectedClass.uri,
         identity_props: selectedProps.join(','),
         source_prefix: sourcePrefix,
+        filter_facets: facetString,
         limit,
         offset,
       });
@@ -319,10 +357,48 @@ export default function IntrasourceConciseness() {
     } finally {
       setDupLoading(false);
     }
-  }, [selectedClassObj, selectedProps, sourcePrefix]);
+  }, [selectedClass, selectedProps, sourcePrefix, facetString]);
+
+  function addFacet() {
+    if (!draftPropUri) return;
+    const propEntry = allProperties.find((p) => p.uri === draftPropUri);
+    if (!propEntry) return;
+    const duplicate = facets.some(
+      (f) => f.propUri === draftPropUri && f.valueUri === (draftValueUri || null),
+    );
+    if (duplicate) return;
+    setFacets((prev) => [
+      ...prev,
+      {
+        propUri: draftPropUri,
+        propLabel: propEntry.label || propEntry.localName,
+        valueUri: draftValueUri || null,
+        valueLabel: draftValueUri ? shortUri(draftValueUri) : '(exists)',
+      },
+    ]);
+    setDraftValueUri('');
+  }
+
+  function removeFacet(index: number) {
+    setFacets((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  const toggleProp = (uri: string) => {
+    setSelectedProps((prev) =>
+      prev.includes(uri) ? prev.filter((p) => p !== uri) : [...prev, uri]
+    );
+  };
+
+  const toggleAll = () => {
+    if (selectedProps.length === dataProps.length) {
+      setSelectedProps([]);
+    } else {
+      setSelectedProps(dataProps.map((p) => p.uri));
+    }
+  };
 
   const handleAnalyze = async () => {
-    if (!selectedClassObj || selectedProps.length === 0) return;
+    if (!selectedClass || selectedProps.length === 0) return;
     setLoading(true);
     setError(null);
     setResult(null);
@@ -330,19 +406,19 @@ export default function IntrasourceConciseness() {
     setDupPagination(null);
     setDupOffset(0);
     try {
-      const [data] = await Promise.all([
-        concisenessApi.intraSource({
-          class_uri: selectedClassObj.uri,
-          identity_props: selectedProps.join(','),
-          source_prefix: sourcePrefix,
-        }),
-      ]);
+      const data = await concisenessApi.intraSource({
+        class_uri: selectedClass.uri,
+        identity_props: selectedProps.join(','),
+        source_prefix: sourcePrefix,
+        filter_facets: facetString,
+      });
       setResult(data);
       // Fetch first page of duplicates
       const dupData = await concisenessApi.intraSourceDuplicates({
-        class_uri: selectedClassObj.uri,
+        class_uri: selectedClass.uri,
         identity_props: selectedProps.join(','),
         source_prefix: sourcePrefix,
+        filter_facets: facetString,
         limit: dupPageSize,
         offset: 0,
       });
@@ -355,32 +431,18 @@ export default function IntrasourceConciseness() {
     }
   };
 
-  const toggleProp = (uri: string) => {
-    setSelectedProps((prev) =>
-      prev.includes(uri) ? prev.filter((p) => p !== uri) : [...prev, uri]
-    );
-  };
-
-  const toggleAll = () => {
-    if (selectedProps.length === allProperties.length) {
-      setSelectedProps([]);
-    } else {
-      setSelectedProps(allProperties.map((p) => p.uri));
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Formulas */}
-      <Section title="CN2 -- Extensional Conciseness (Intra-Source)" subtitle="Detect duplicate instance representations within a single data source.">
+      <Section title="Extensional Conciseness (Intra-Source)" subtitle="Detect duplicate instance representations within a single data source.">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <FormulaCard
-            title="Formula F1"
+            title="Formula 1"
             formula="unique_instances / total_representations"
             description="Ratio of unique instances to total instance representations"
           />
           <FormulaCard
-            title="Formula F2"
+            title="Formula 2"
             formula="1 - (violating_instances / total)"
             description="1 minus the ratio of instances violating the uniqueness rule"
           />
@@ -388,116 +450,172 @@ export default function IntrasourceConciseness() {
       </Section>
 
       {/* Configuration */}
-      <Section title="Configuration">
-        <div className="space-y-4">
-          {/* Class selector */}
-          <div>
-            <label className="block text-sm mb-1" style={{ color: 'var(--text)' }}>Select Class</label>
+      <Section
+        title="Configuration"
+        subtitle="Select a class, identity properties, source prefix, and optional facet filters."
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Class">
             <select
-              value={selectedClass}
-              onChange={(e) => setSelectedClass(e.target.value)}
-              className="w-full px-4 py-2 border"
+              value={selectedClassUri}
+              onChange={(e) => setSelectedClassUri(e.target.value)}
+              className="w-full px-3 py-2 border"
               style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
             >
               <option value="">Choose a class...</option>
-              {classes.map((cls) => (
-                <option key={cls.localName} value={cls.localName}>
-                  {cls.label || cls.localName}
+              {classes.map((c) => (
+                <option key={c.uri} value={c.uri}>{c.label || c.localName}</option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Add facet (optional)">
+            <div className="flex gap-2">
+              <select
+                disabled={!selectedClassUri || objectProps.length === 0}
+                value={draftPropUri}
+                onChange={(e) => setDraftPropUri(e.target.value)}
+                className="flex-1 px-3 py-2 border disabled:opacity-50"
+                style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+              >
+                <option value="">-- predicate --</option>
+                {objectProps.map((p) => (
+                  <option key={p.uri} value={p.uri}>{p.label || p.localName}</option>
+                ))}
+              </select>
+              <select
+                disabled={!draftPropUri || draftValues.length === 0}
+                value={draftValueUri}
+                onChange={(e) => setDraftValueUri(e.target.value)}
+                className="flex-1 px-3 py-2 border disabled:opacity-50"
+                style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+              >
+                <option value="">-- object --</option>
+                {draftValues.map((v) => (
+                  <option key={v} value={v}>{shortUri(v)}</option>
+                ))}
+              </select>
+              <button
+                onClick={addFacet}
+                disabled={!draftPropUri}
+                className="inline-flex items-center gap-1 px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
+                title="Add facet"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </Field>
+        </div>
+
+        {facets.length > 0 && (
+          <div className="mt-3">
+            <div className="mb-2 text-sm" style={{ color: 'var(--text)' }}>
+              Active facets <span style={{ color: 'var(--muted-foreground)' }}>(AND)</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {facets.map((f, i) => (
+                <span
+                  key={`${f.propUri}::${f.valueUri ?? ''}`}
+                  className="inline-flex items-center gap-2 px-2 py-1 text-xs border"
+                  style={{
+                    backgroundColor: 'var(--accent-soft)',
+                    color: 'var(--accent)',
+                    borderColor: 'var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                  }}
+                >
+                  <span>
+                    <span style={{ color: 'var(--text)' }}>{f.propLabel}</span>
+                    <span style={{ color: 'var(--muted-foreground)' }}> = </span>
+                    <span>{f.valueLabel}</span>
+                  </span>
+                  <button
+                    onClick={() => removeFacet(i)}
+                    className="inline-flex items-center"
+                    style={{ color: 'var(--accent)' }}
+                    title="Remove facet"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Source prefix */}
+        <div className="mt-4">
+          <Field label="Source Prefix">
+            <select
+              value={sourcePrefix}
+              onChange={(e) => setSourcePrefix(e.target.value)}
+              className="w-full md:w-1/2 px-3 py-2 border"
+              style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+            >
+              {SOURCE_OPTIONS.map((src) => (
+                <option key={src.value} value={src.value}>
+                  {src.label} -- {src.value}
                 </option>
               ))}
             </select>
-          </div>
+          </Field>
+        </div>
 
-          {/* Identity properties */}
-          {selectedClass && (
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-sm" style={{ color: 'var(--text)' }}>
-                  Identity Properties (data properties only)
-                </label>
-                {allProperties.length > 0 && (
-                  <button
-                    onClick={toggleAll}
-                    className="text-xs underline"
-                    style={{ color: 'var(--navy)' }}
-                  >
-                    {selectedProps.length === allProperties.length ? 'Deselect all' : 'Select all'}
-                  </button>
-                )}
-              </div>
-              {metaLoading ? (
-                <LoadingState message="Loading properties..." />
-              ) : allProperties.length === 0 ? (
-                <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>No data properties found for this class.</p>
-              ) : (
-                <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                  {allProperties.map((p) => (
-                    <label
-                      key={p.uri}
-                      className="flex items-center gap-3 px-3 py-2 border cursor-pointer"
-                      style={{
-                        backgroundColor: selectedProps.includes(p.uri) ? 'var(--accent-soft)' : 'var(--card)',
-                        borderColor: 'var(--border)',
-                        borderRadius: 'var(--radius-md)',
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedProps.includes(p.uri)}
-                        onChange={() => toggleProp(p.uri)}
-                        className="w-4 h-4"
-                        style={{ accentColor: 'var(--accent)' }}
-                      />
-                      <span className="text-sm" style={{ color: 'var(--text)' }}>
-                        {p.label || p.localName}
-                      </span>
-                      <span className="text-xs ml-auto truncate max-w-[200px]" style={{ color: 'var(--muted-foreground)' }}>
-                        {shortUri(p.uri)}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Source prefix */}
-          {selectedClass && (
-            <div>
-              <label className="block text-sm mb-1" style={{ color: 'var(--text)' }}>Source Prefix</label>
-              <select
-                value={sourcePrefix}
-                onChange={(e) => setSourcePrefix(e.target.value)}
-                className="w-full md:w-1/2 px-4 py-2 border"
-                style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+        {/* Identity properties */}
+        <div className="mt-6">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm" style={{ color: 'var(--text)' }}>Identity Properties (data properties only)</div>
+            {dataProps.length > 0 && (
+              <button
+                onClick={toggleAll}
+                className="text-xs underline"
+                style={{ color: 'var(--navy)' }}
               >
-                {SOURCE_OPTIONS.map((src) => (
-                  <option key={src.value} value={src.value}>
-                    {src.label} -- {src.value}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Analyze button */}
-          <div className="flex items-center gap-3 pt-1">
-            <button
-              onClick={handleAnalyze}
-              disabled={!selectedClass || selectedProps.length === 0 || loading}
-              className="px-6 py-2.5 flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
-            >
-              <Search className="w-4 h-4" />
-              {loading ? 'Analyzing...' : 'Analyze'}
-            </button>
-            {selectedProps.length > 0 && (
-              <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                {selectedProps.length} identity propert{selectedProps.length === 1 ? 'y' : 'ies'} selected
-              </span>
+                {selectedProps.length === dataProps.length ? 'Deselect all' : 'Select all'}
+              </button>
             )}
           </div>
+          {!selectedClassUri ? (
+            <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Pick a class first.</div>
+          ) : metaLoading ? (
+            <LoadingState message="Loading properties..." />
+          ) : dataProps.length === 0 ? (
+            <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>No data properties found for this class.</div>
+          ) : (
+            <div className="always-scrollbar grid grid-cols-2 md:grid-cols-3 gap-2 max-h-36 overflow-y-scroll pr-2">
+              {dataProps.map((p) => {
+                const active = selectedProps.includes(p.uri);
+                return (
+                  <label
+                    key={p.uri}
+                    className="flex items-center gap-2 px-3 py-2 border cursor-pointer"
+                    style={{
+                      backgroundColor: active ? 'var(--accent-soft)' : 'var(--card)',
+                      borderColor: 'var(--border)',
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                  >
+                    <input type="checkbox" checked={active} onChange={() => toggleProp(p.uri)} style={{ accentColor: 'var(--accent)' }} />
+                    <span className="truncate" style={{ color: 'var(--text)' }} title={p.label || p.localName}>
+                      {p.label || p.localName}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
+
+        <button
+          onClick={handleAnalyze}
+          disabled={!selectedClassUri || selectedProps.length === 0 || loading}
+          className="mt-6 inline-flex items-center gap-2 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
+        >
+          <Search className="w-4 h-4" />
+          {loading ? 'Analyzing...' : 'Analyze'}
+        </button>
       </Section>
 
       {/* Error */}
@@ -522,10 +640,10 @@ export default function IntrasourceConciseness() {
         <>
           {/* Score cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <HeadlineCard value={String(result.total_representations)} label="Total Representations" sub="In selected source" color="var(--navy)" />
-            <HeadlineCard value={String(result.unique_instances)} label="Unique Instances" sub="Distinct entities" color="var(--navy)" />
-            <ScoreDonut title="Score F1" percentage={result.score_f1} sub="unique / total" />
-            <ScoreDonut title="Score F2" percentage={result.score_f2} sub="1 - (violations / total)" />
+            <Headline value={String(result.total_representations)} label="Total Representations" sub="In selected source" color="var(--navy)" />
+            <Headline value={String(result.unique_instances)} label="Unique Instances" sub="Distinct entities" color="var(--navy)" />
+            <Headline value={result.score_f1} label="Score F1" sub="unique / total" />
+            <Headline value={result.score_f2} label="Score F2" sub="1 - (violations / total)" />
           </div>
 
           {/* Pass/fail banner */}

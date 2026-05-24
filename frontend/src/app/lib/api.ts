@@ -283,13 +283,13 @@ export interface PaginatedCrossDuplicates {
 }
 
 export const concisenessApi = {
-  intraSource: (params: { class_uri: string; identity_props: string; source_prefix: string }) =>
+  intraSource: (params: { class_uri: string; identity_props: string; source_prefix: string; filter_facets?: string }) =>
     get<IntraSourceResult>('/conciseness/intra-source', params),
-  crossSource: (params: { class_uri: string; identity_props: string; sources: string }) =>
+  crossSource: (params: { class_uri: string; identity_props: string; sources: string; filter_facets?: string }) =>
     get<CrossSourceResult>('/conciseness/cross-source', params),
-  intraSourceDuplicates: (params: { class_uri: string; identity_props: string; source_prefix: string; limit?: number; offset?: number; include_total?: boolean }) =>
+  intraSourceDuplicates: (params: { class_uri: string; identity_props: string; source_prefix: string; filter_facets?: string; limit?: number; offset?: number; include_total?: boolean }) =>
     get<PaginatedIntraDuplicates>('/conciseness/intra-source/duplicates', params),
-  crossSourceDuplicates: (params: { class_uri: string; identity_props: string; sources: string; limit?: number; offset?: number; include_total?: boolean }) =>
+  crossSourceDuplicates: (params: { class_uri: string; identity_props: string; sources: string; filter_facets?: string; limit?: number; offset?: number; include_total?: boolean }) =>
     get<PaginatedCrossDuplicates>('/conciseness/cross-source/duplicates', params),
 };
 

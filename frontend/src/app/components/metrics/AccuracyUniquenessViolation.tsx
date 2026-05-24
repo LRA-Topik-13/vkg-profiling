@@ -250,7 +250,7 @@ export default function AccuracyUniquenessViolation() {
   }, [selectedClassUri]);
 
   useEffect(() => {
-    setIdentityPropUris((prev) => prev.filter((uri) => uri !== targetPropUri));
+    setIdentityPropUris(dataProperties.filter((p) => p.uri !== targetPropUri).map((p) => p.uri));
     setIntraSummary(null);
     setCrossSummary(null);
     setIntraRows(emptyRows());
@@ -378,7 +378,20 @@ export default function AccuracyUniquenessViolation() {
             </Field>
           </div>
 
-          <Field label="Identity Properties" hint="The left side of the functional dependency. Select one or more data properties.">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-sm" style={{ color: 'var(--text)' }}>Identity Properties</div>
+              {identityCandidates.length > 0 && (
+                <button
+                  onClick={() => setIdentityPropUris(identityPropUris.length === identityCandidates.length ? [] : identityCandidates.map((p) => p.uri))}
+                  className="text-xs underline"
+                  style={{ color: 'var(--navy)' }}
+                >
+                  {identityPropUris.length === identityCandidates.length ? 'Deselect all' : 'Select all'}
+                </button>
+              )}
+            </div>
+            <div className="text-xs mb-2" style={{ color: 'var(--muted-foreground)' }}>The left side of the functional dependency. Select one or more data properties.</div>
             {!selectedClassUri ? (
               <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Choose a class first.</p>
             ) : identityCandidates.length === 0 ? (
@@ -386,7 +399,7 @@ export default function AccuracyUniquenessViolation() {
                 This class does not have another data property to use as identity. Select one data source or choose a class with more data properties.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <div className="always-scrollbar grid grid-cols-1 md:grid-cols-3 gap-2 max-h-36 overflow-y-scroll pr-2">
                 {identityCandidates.map((prop) => {
                   const active = identityPropUris.includes(prop.uri);
                   return (
@@ -398,7 +411,7 @@ export default function AccuracyUniquenessViolation() {
                 })}
               </div>
             )}
-          </Field>
+          </div>
 
           <Field label="Data Sources" hint={selectedSources.length === 1 ? 'One selected source runs intra-source checking only.' : 'Two or more selected sources also run cross-source checking.'}>
             <div className="flex flex-wrap gap-3">

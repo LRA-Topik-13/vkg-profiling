@@ -1,2 +1,18 @@
 @import './tailwind.css';
 @import './theme.css';
+
+/* Force scrollbar always visible (macOS hides by default) */
+.always-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+.always-scrollbar::-webkit-scrollbar-track {
+  background: var(--muted);
+  border-radius: 4px;
+}
+.always-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+.always-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}

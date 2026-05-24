@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, ChevronLeft, ChevronRight, Plus, X, AlertTriangle } from 'lucide-react';
+import { Search, Plus, X, AlertTriangle, Check } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import {
   completenessApi,
@@ -9,7 +9,7 @@ import {
   CompletenessMatrix,
   statusColor,
 } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, StatusBadge, PaginatedTable } from './_shared';
 
 const PAGE = 25;
 
@@ -43,6 +43,7 @@ export default function PropertyCompleteness() {
   const [facets, setFacets] = useState<Facet[]>([]);
   const [draft, setDraft] = useState<FacetDraft>(EMPTY_DRAFT);
   const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(PAGE);
   const [data, setData] = useState<CompletenessMatrix | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -139,7 +140,7 @@ export default function PropertyCompleteness() {
     setFacets((prev) => prev.filter((_, i) => i !== index));
   }
 
-  async function analyze(newOffset = 0) {
+  async function analyze(newOffset = 0, newPageSize = pageSize) {
     if (!selectedClassUri || selectedPropUris.length === 0) return;
     setLoading(true);
     setError(null);
@@ -148,11 +149,12 @@ export default function PropertyCompleteness() {
         class_uri: selectedClassUri,
         properties: selectedPropUris.join(','),
         filter_facets: facets.length > 0 ? facets.map((f) => `${f.propUri}::${f.valueUri}`).join(',') : undefined,
-        limit: PAGE,
+        limit: newPageSize,
         offset: newOffset,
       });
       setData(r);
       setOffset(newOffset);
+      setPageSize(newPageSize);
       setAnalyzedSignature(currentSignature);
     } catch (e) {
       setError(String(e));
@@ -366,12 +368,35 @@ export default function PropertyCompleteness() {
         </div>
       )}
 
-      {data && <ResultsView data={data} offset={offset} onPage={(o) => analyze(o)} />}
+      {data && (
+        <ResultsView
+          data={data}
+          offset={offset}
+          pageSize={pageSize}
+          loading={loading}
+          onPage={(o) => analyze(o)}
+          onPageSizeChange={(s) => analyze(0, s)}
+        />
+      )}
     </div>
   );
 }
 
-function ResultsView({ data, offset, onPage }: { data: CompletenessMatrix; offset: number; onPage: (o: number) => void }) {
+function ResultsView({
+  data,
+  offset,
+  pageSize,
+  loading,
+  onPage,
+  onPageSizeChange,
+}: {
+  data: CompletenessMatrix;
+  offset: number;
+  pageSize: number;
+  loading: boolean;
+  onPage: (o: number) => void;
+  onPageSizeChange: (size: number) => void;
+}) {
   const labelOf = (uri: string) =>
     data.property_info.find((p) => p.uri === uri)?.label ||
     data.property_info.find((p) => p.uri === uri)?.localName ||
@@ -383,8 +408,6 @@ function ResultsView({ data, offset, onPage }: { data: CompletenessMatrix; offse
     filled: p.filled,
     missing: p.missing,
   }));
-
-  const total = data.pagination?.total ?? data.summary.total_entities;
 
   return (
     <>
@@ -436,74 +459,74 @@ function ResultsView({ data, offset, onPage }: { data: CompletenessMatrix; offse
 
       <Section
         title="Entity × Property Matrix"
-        subtitle="Each row is an entity, each column a property. Filled cells use status color, missing cells stay muted."
+        subtitle="Each row is an entity, each column a property. A green check marks a filled value; a dash marks a missing one. Entity and Score columns stay pinned while you scroll horizontally."
       >
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr style={{ color: 'var(--muted-foreground)' }}>
-                <th className="text-left py-2 pr-4">Entity</th>
-                {data.properties.map((p) => (
-                  <th key={p} className="text-center py-2 px-2" title={labelOf(p)}>{shortText(labelOf(p))}</th>
-                ))}
-                <th className="text-right py-2 pl-2">Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.entities.map((e) => (
-                <tr key={e.uri} className="border-t" style={{ borderColor: 'var(--border)' }}>
-                  <td className="py-2 pr-4 truncate max-w-[280px]" style={{ color: 'var(--text)' }} title={e.uri}>
-                    {shortenUri(e.uri)}
-                  </td>
-                  {data.properties.map((p) => {
-                    const has = e.scores[p];
-                    return (
-                      <td key={p} className="py-2 px-2 text-center">
-                        <span
-                          className="inline-block"
-                          style={{
-                            width: 14,
-                            height: 14,
-                            borderRadius: 3,
-                            backgroundColor: has ? statusColor(e.completeness) : 'var(--muted)',
-                          }}
-                        />
-                      </td>
-                    );
-                  })}
-                  <td className="py-2 pl-2 text-right">
-                    <StatusBadge percent={e.completeness} />
-                  </td>
-                </tr>
+        <PaginatedTable
+          colSpan={data.properties.length + 2}
+          pagination={data.pagination ?? null}
+          pageSize={pageSize}
+          loading={loading}
+          onPageSizeChange={onPageSizeChange}
+          onPrev={() => onPage(Math.max(0, offset - pageSize))}
+          onNext={() => onPage(offset + pageSize)}
+          head={
+            <>
+              <th
+                className="text-left px-4 py-3"
+                style={{ color: 'var(--text-on-dark)', position: 'sticky', left: 0, zIndex: 3, backgroundColor: 'var(--navy)' }}
+              >
+                Entity
+              </th>
+              {data.properties.map((p) => (
+                <th key={p} className="text-center px-2 py-3" style={{ color: 'var(--text-on-dark)' }} title={labelOf(p)}>
+                  {shortText(labelOf(p))}
+                </th>
               ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="mt-4 flex items-center justify-between text-sm" style={{ color: 'var(--muted-foreground)' }}>
-          <span>
-            Showing {offset + 1}–{offset + data.entities.length}
-            {total != null ? ` of ${total}` : ''}
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => onPage(Math.max(0, offset - PAGE))}
-              disabled={offset === 0}
-              className="inline-flex items-center gap-1 px-3 py-1 border disabled:opacity-40"
-              style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
-            >
-              <ChevronLeft className="w-4 h-4" /> Prev
-            </button>
-            <button
-              onClick={() => onPage(offset + PAGE)}
-              disabled={total != null && offset + data.entities.length >= total}
-              className="inline-flex items-center gap-1 px-3 py-1 border disabled:opacity-40"
-              style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
-            >
-              Next <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+              <th
+                className="text-right px-4 py-3"
+                style={{ color: 'var(--text-on-dark)', position: 'sticky', right: 0, zIndex: 3, backgroundColor: 'var(--navy)' }}
+              >
+                Score
+              </th>
+            </>
+          }
+        >
+          {data.entities.map((e) => (
+            <tr key={e.uri} style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
+              <td
+                className="px-4 py-2 truncate max-w-[280px] text-sm"
+                style={{ color: 'var(--text)', position: 'sticky', left: 0, zIndex: 1, backgroundColor: 'var(--card)' }}
+                title={e.uri}
+              >
+                {shortenUri(e.uri)}
+              </td>
+              {data.properties.map((p) => {
+                const has = e.scores[p];
+                return (
+                  <td key={p} className="px-2 py-2 text-center">
+                    {has ? (
+                      <span
+                        className="inline-flex items-center justify-center align-middle"
+                        style={{ width: 18, height: 18, borderRadius: 999, backgroundColor: '#1F8A4C' }}
+                        aria-label="Filled"
+                      >
+                        <Check className="w-3 h-3" strokeWidth={3} style={{ color: '#fff' }} />
+                      </span>
+                    ) : (
+                      <span className="align-middle" style={{ color: 'var(--muted-foreground)', opacity: 0.35 }} aria-label="Missing">–</span>
+                    )}
+                  </td>
+                );
+              })}
+              <td
+                className="px-4 py-2 text-right"
+                style={{ position: 'sticky', right: 0, zIndex: 1, backgroundColor: 'var(--card)' }}
+              >
+                <StatusBadge percent={e.completeness} />
+              </td>
+            </tr>
+          ))}
+        </PaginatedTable>
       </Section>
     </>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { Search, Plus, X, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Headline, Section, LoadingState, ErrorState } from './_shared';
+import { Search, Plus, X, FileText } from 'lucide-react';
+import { Headline, Section, LoadingState, ErrorState, PaginatedTable } from './_shared';
 import {
   metadataApi,
   concisenessApi,
@@ -92,155 +92,67 @@ function AmbiguousGroupsTable({
   onNext: () => void;
   loading: boolean;
 }) {
-  if (!pagination) return null;
-
-  if (pagination.total === 0) {
-    return (
-      <div
-        className="px-4 py-3 text-sm border"
-        style={{ backgroundColor: '#e6f4ea', borderColor: 'rgba(31,138,76,0.3)', color: '#1F8A4C', borderRadius: 'var(--radius-md)' }}
-      >
-        No ambiguous instances found across sources. All cross-source identities are distinct.
-      </div>
-    );
-  }
-
-  const currentPage = Math.floor(pagination.offset / pageSize) + 1;
-  const totalPages = pagination.total != null ? Math.ceil(pagination.total / pageSize) : null;
-  const hasPrev = pagination.offset > 0;
-  const hasNext = pagination.total != null ? pagination.offset + pageSize < pagination.total : pagination.count === pageSize;
-
   return (
-    <div
-      className="p-6 border"
-      style={{
-        backgroundColor: 'var(--card)',
-        borderColor: 'var(--border)',
-        borderRadius: 'var(--radius)',
-      }}
+    <PaginatedTable
+      title="Ambiguous Instance Groups"
+      colSpan={2}
+      pagination={pagination}
+      pageSize={pageSize}
+      pageSizeOptions={PAGE_SIZE_OPTIONS}
+      onPageSizeChange={onPageSizeChange}
+      onPrev={onPrev}
+      onNext={onNext}
+      loading={loading}
+      emptyState={
+        <div
+          className="px-4 py-3 text-sm border"
+          style={{ backgroundColor: '#e6f4ea', borderColor: 'rgba(31,138,76,0.3)', color: '#1F8A4C', borderRadius: 'var(--radius-md)' }}
+        >
+          No ambiguous instances found across sources. All cross-source identities are distinct.
+        </div>
+      }
+      head={
+        <>
+          <th className="px-4 py-3 text-left" style={{ color: 'var(--text-on-dark)' }}>Identity Values</th>
+          <th className="px-4 py-3 text-left" style={{ color: 'var(--text-on-dark)' }}>Matching Entities</th>
+        </>
+      }
     >
-      <h3 className="text-xl mb-4" style={{ color: 'var(--navy)' }}>Ambiguous Instance Groups</h3>
-
-      <div
-        className="border overflow-hidden"
-        style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-md)' }}
-      >
-        <table className="w-full" style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.15s' }}>
-          <thead
-            style={{
-              backgroundColor: 'var(--navy)',
-              borderBottom: '1px solid var(--border)',
-            }}
-          >
-            <tr>
-              <th className="px-4 py-3 text-left" style={{ color: 'var(--text-on-dark)' }}>Identity Values</th>
-              <th className="px-4 py-3 text-left" style={{ color: 'var(--text-on-dark)' }}>Matching Entities</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((g, i) => (
-              <tr
-                key={i}
-                style={{
-                  backgroundColor: 'var(--card)',
-                  borderBottom: '1px solid var(--border)',
-                }}
-              >
-                <td className="px-4 py-3">
-                  <div className="space-y-1">
-                    {Object.entries(g.identity_values).map(([k, v]) => (
-                      <span
-                        key={k}
-                        className="inline-block mr-2 text-sm px-1.5 py-0.5"
-                        style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 'var(--radius-sm)' }}
-                      >
-                        {k}: <span className="font-medium" style={{ color: 'var(--text)' }}>{v}</span>
-                      </span>
-                    ))}
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="space-y-1">
-                    {g.entities.map((e, j) => (
-                      <div key={j} className="flex items-center gap-2">
-                        <span
-                          className="text-sm font-mono whitespace-nowrap px-1.5 py-0.5"
-                          style={{ backgroundColor: 'var(--info-soft)', color: 'var(--navy)', borderRadius: 'var(--radius-sm)' }}
-                        >
-                          {shortUri(e.source)}
-                        </span>
-                        <p className="text-sm font-mono truncate max-w-[250px]" style={{ color: 'var(--navy)' }} title={e.uri}>
-                          {shortUri(e.uri)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={2} className="px-4 py-3" style={{ backgroundColor: 'var(--card)' }}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm" style={{ color: 'var(--text)' }}>Rows per page:</span>
-                    <select
-                      value={pageSize}
-                      onChange={(e) => onPageSizeChange(Number(e.target.value))}
-                      className="px-3 py-1 border"
-                      style={{
-                        backgroundColor: 'var(--card)',
-                        borderColor: 'var(--border)',
-                        borderRadius: 'var(--radius-sm)',
-                        color: 'var(--text)',
-                      }}
-                    >
-                      {PAGE_SIZE_OPTIONS.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-sm" style={{ color: 'var(--text)' }}>
-                      {totalPages != null ? `Page ${currentPage} of ${totalPages}` : `Page ${currentPage}`}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={onPrev}
-                        disabled={!hasPrev || loading}
-                        className="p-2 border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        style={{
-                          backgroundColor: 'var(--card)',
-                          borderColor: 'var(--border)',
-                          borderRadius: 'var(--radius-sm)',
-                          color: 'var(--navy)',
-                        }}
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={onNext}
-                        disabled={!hasNext || loading}
-                        className="p-2 border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        style={{
-                          backgroundColor: 'var(--card)',
-                          borderColor: 'var(--border)',
-                          borderRadius: 'var(--radius-sm)',
-                          color: 'var(--navy)',
-                        }}
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
+      {items.map((g, i) => (
+        <tr key={i} style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
+          <td className="px-4 py-3">
+            <div className="space-y-1">
+              {Object.entries(g.identity_values).map(([k, v]) => (
+                <span
+                  key={k}
+                  className="inline-block mr-2 text-sm px-1.5 py-0.5"
+                  style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 'var(--radius-sm)' }}
+                >
+                  {k}: <span className="font-medium" style={{ color: 'var(--text)' }}>{v}</span>
+                </span>
+              ))}
+            </div>
+          </td>
+          <td className="px-4 py-3">
+            <div className="space-y-1">
+              {g.entities.map((e, j) => (
+                <div key={j} className="flex items-center gap-2">
+                  <span
+                    className="text-sm font-mono whitespace-nowrap px-1.5 py-0.5"
+                    style={{ backgroundColor: 'var(--info-soft)', color: 'var(--navy)', borderRadius: 'var(--radius-sm)' }}
+                  >
+                    {shortUri(e.source)}
+                  </span>
+                  <p className="text-sm font-mono truncate max-w-[250px]" style={{ color: 'var(--navy)' }} title={e.uri}>
+                    {shortUri(e.uri)}
+                  </p>
                 </div>
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-    </div>
+              ))}
+            </div>
+          </td>
+        </tr>
+      ))}
+    </PaginatedTable>
   );
 }
 

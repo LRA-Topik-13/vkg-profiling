@@ -413,8 +413,8 @@ function ResultsView({
     <>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Headline value={data.summary.overall_completeness} label="Overall Completeness" sub={`Class: ${data.class}`} />
-        <Headline value={data.summary.total_entities} label="Total Entities" sub="Entities in scope" color="var(--navy)" />
-        <Headline value={data.properties.length} label="Properties Analyzed" sub="Active selection" color="var(--navy)" />
+        <Headline value={String(data.summary.total_entities)} label="Total Entities" sub="Entities in scope" color="var(--navy)" />
+        <Headline value={String(data.properties.length)} label="Properties Analyzed" sub="Active selection" color="var(--navy)" />
       </div>
 
       <Section

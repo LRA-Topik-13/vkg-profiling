@@ -21,8 +21,8 @@ export default function ClassCompleteness() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Headline value={data.overall_completeness} label="Overall Class Completeness" sub="Average across classes with data" />
-        <Headline value={data.total_entities} label="Total Entities" sub={`${data.classes.length} classes`} color="var(--navy)" />
-        <Headline value={data.classes.filter((c) => c.total_entities > 0).length} label="Populated Classes" sub="Classes with ≥ 1 entity" color="var(--navy)" />
+        <Headline value={String(data.total_entities)} label="Total Entities" sub={`${data.classes.length} classes`} color="var(--navy)" />
+        <Headline value={String(data.classes.filter((c) => c.total_entities > 0).length)} label="Populated Classes" sub="Classes with ≥ 1 entity" color="var(--navy)" />
       </div>
 
       <Section
@@ -62,7 +62,6 @@ export default function ClassCompleteness() {
 }
 
 function ClassRow({ entry }: { entry: ClassSummaryEntry }) {
-  const color = statusColor(entry.completeness);
   return (
     <>
       <div className="min-w-0">
@@ -70,11 +69,8 @@ function ClassRow({ entry }: { entry: ClassSummaryEntry }) {
         <div className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>{entry.class}</div>
       </div>
       <div className="flex items-center gap-3 shrink-0">
-        <div className="hidden sm:block w-24 h-1.5" style={{ backgroundColor: 'var(--muted)', borderRadius: 'var(--radius-sm)' }}>
-          <div className="h-1.5" style={{ width: `${entry.completeness}%`, backgroundColor: color, borderRadius: 'var(--radius-sm)' }} />
-        </div>
-        <span className="text-xs tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
-          {entry.total_entities.toLocaleString()} ent.
+        <span className="text-xs tabular-nums whitespace-nowrap" style={{ color: 'var(--muted-foreground)' }}>
+          {entry.total_entities.toLocaleString()} {entry.total_entities === 1 ? 'entity' : 'entities'}
         </span>
         <StatusBadge percent={entry.completeness} />
       </div>

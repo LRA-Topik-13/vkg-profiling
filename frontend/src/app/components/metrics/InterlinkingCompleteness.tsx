@@ -31,13 +31,13 @@ export default function InterlinkingCompleteness() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Headline value={data.overall_ratio} label="Overall Linked Ratio" sub="Entities with ≥ 1 link / total" />
         <Headline
-          value={data.classes.reduce((s, c) => s + c.linked, 0)}
+          value={String(data.classes.reduce((s, c) => s + c.linked, 0))}
           label="Linked Entities"
           sub="Across all classes"
           color="var(--navy)"
         />
         <Headline
-          value={data.classes.reduce((s, c) => s + c.not_linked, 0)}
+          value={String(data.classes.reduce((s, c) => s + c.not_linked, 0))}
           label="Isolated Entities"
           sub="No incoming or outgoing link"
           color={statusColor(100 - data.overall_ratio)}
@@ -91,10 +91,6 @@ function ClassRow({ entry }: { entry: InterlinkingClass }) {
         <div className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>{entry.class}</div>
       </div>
       <div className="flex items-center gap-3 shrink-0">
-        <div className="hidden sm:flex w-24 h-1.5 overflow-hidden" style={{ borderRadius: 'var(--radius-sm)' }}>
-          <div style={{ width: `${entry.ratio}%`, backgroundColor: '#1F8A4C' }} />
-          <div style={{ width: `${100 - entry.ratio}%`, backgroundColor: '#9E2B0A' }} />
-        </div>
         <span className="text-xs tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
           {entry.linked.toLocaleString()}/{entry.total_entities.toLocaleString()}
         </span>

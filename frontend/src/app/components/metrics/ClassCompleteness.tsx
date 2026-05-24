@@ -60,7 +60,7 @@ function Ranking({ entries }: { entries: ClassSummaryEntry[] }) {
     [entries],
   );
   return (
-    <div className="max-h-[500px] overflow-y-auto">
+    <div className="always-scrollbar max-h-[500px] overflow-y-auto">
       <ResponsiveContainer width="100%" height={Math.max(220, ranked.length * 40)}>
         <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 24 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
@@ -145,7 +145,7 @@ function ClassCard({
       </button>
 
       {expanded && entry.by_property.length > 0 && (
-        <div className="mt-3 space-y-2 max-h-60 overflow-y-auto pr-1">
+        <div className="always-scrollbar mt-3 space-y-2 max-h-60 overflow-y-scroll pr-1">
           {entry.by_property
             .slice()
             .sort((a, b) => a.completeness - b.completeness)

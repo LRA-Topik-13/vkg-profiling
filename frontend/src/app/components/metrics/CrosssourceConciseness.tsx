@@ -455,9 +455,9 @@ export default function CrosssourceConciseness() {
   return (
     <div className="space-y-6">
       {/* Formulas */}
-      <Section title="CN3 -- Ambiguous Instance Detection (Cross-Source)" subtitle="Detect ambiguous instances across multiple data sources.">
+      <Section title="Ambiguous Instance Detection (Cross-Source)" subtitle="Detect ambiguous instances across multiple data sources.">
         <FormulaCard
-          title="CN3 Formula"
+          title="Formula"
           formula="1 - (ambiguous_instances / total_in_semantic_metadata_set)"
           description="Detects unresolved cross-source identity overlaps across all pairwise source combinations"
         />
@@ -605,7 +605,7 @@ export default function CrosssourceConciseness() {
           ) : dataProps.length === 0 ? (
             <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>No data properties found for this class.</div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            <div className="always-scrollbar grid grid-cols-2 md:grid-cols-3 gap-2 max-h-36 overflow-y-scroll pr-2">
               {dataProps.map((p) => {
                 const active = selectedProps.includes(p.uri);
                 return (

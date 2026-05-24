@@ -434,15 +434,15 @@ export default function IntrasourceConciseness() {
   return (
     <div className="space-y-6">
       {/* Formulas */}
-      <Section title="CN2 -- Extensional Conciseness (Intra-Source)" subtitle="Detect duplicate instance representations within a single data source.">
+      <Section title="Extensional Conciseness (Intra-Source)" subtitle="Detect duplicate instance representations within a single data source.">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <FormulaCard
-            title="Formula F1"
+            title="Formula 1"
             formula="unique_instances / total_representations"
             description="Ratio of unique instances to total instance representations"
           />
           <FormulaCard
-            title="Formula F2"
+            title="Formula 2"
             formula="1 - (violating_instances / total)"
             description="1 minus the ratio of instances violating the uniqueness rule"
           />
@@ -583,7 +583,7 @@ export default function IntrasourceConciseness() {
           ) : dataProps.length === 0 ? (
             <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>No data properties found for this class.</div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            <div className="always-scrollbar grid grid-cols-2 md:grid-cols-3 gap-2 max-h-36 overflow-y-scroll pr-2">
               {dataProps.map((p) => {
                 const active = selectedProps.includes(p.uri);
                 return (

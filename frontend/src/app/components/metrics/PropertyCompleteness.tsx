@@ -78,7 +78,10 @@ export default function PropertyCompleteness() {
     }
     metadataApi
       .mappedProperties(selectedClass.uri)
-      .then((r) => setProps(r.properties))
+      .then((r) => {
+        setProps(r.properties);
+        setSelectedPropUris(r.properties.map((p) => p.uri));
+      })
       .catch((e) => setError(String(e)));
   }, [selectedClass]);
 
@@ -271,11 +274,22 @@ export default function PropertyCompleteness() {
         )}
 
         <div className="mt-6">
-          <div className="mb-2 text-sm" style={{ color: 'var(--text)' }}>Properties to evaluate</div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm" style={{ color: 'var(--text)' }}>Properties to evaluate</div>
+            {props.length > 0 && (
+              <button
+                onClick={() => setSelectedPropUris(selectedPropUris.length === props.length ? [] : props.map((p) => p.uri))}
+                className="text-xs underline"
+                style={{ color: 'var(--navy)' }}
+              >
+                {selectedPropUris.length === props.length ? 'Deselect all' : 'Select all'}
+              </button>
+            )}
+          </div>
           {props.length === 0 ? (
             <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Pick a class first.</div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-2">
+            <div className="always-scrollbar grid grid-cols-2 md:grid-cols-3 gap-2 max-h-36 overflow-y-scroll pr-2">
               {props.map((p) => {
                 const active = selectedPropUris.includes(p.uri);
                 return (

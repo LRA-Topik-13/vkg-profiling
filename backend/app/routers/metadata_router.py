@@ -427,7 +427,6 @@ async def get_facet_values(
             ?entity a <{class_uri}> .
             ?entity <{property_uri}> ?value .
         }}
-        ORDER BY ?value
     """
     try:
         raw = await execute_sparql(query)
@@ -440,7 +439,7 @@ async def get_facet_values(
         "class": cls.get("localName", ""),
         "property_uri": property_uri,
         "property": prop_entry.get("localName", ""),
-        "values": [b["value"]["value"] for b in bindings],
+        "values": sorted(b["value"]["value"] for b in bindings),
     }
 
 

@@ -696,8 +696,8 @@ async def _sa2_within_summary(ctx: dict) -> dict:
     for source in ctx["sources"]:
         total_source = totals_by_source.get(source, 0)
         conflict_source = conflicts_by_source.get(source, 0)
-        conflict_rate_source = round(conflict_source / total_source * 100, 2) if total_source else 0.0
-        score_source = round((1 - conflict_source / total_source) * 100, 2) if total_source else 100.0
+        conflict_rate_source = round(conflict_source / total_source * 100, 2) if total_source else None
+        score_source = round((1 - conflict_source / total_source) * 100, 2) if total_source else None
         source_summary.append({
             "source": source,
             "source_label": _cs_source_label(source),
@@ -707,8 +707,8 @@ async def _sa2_within_summary(ctx: dict) -> dict:
             "sa2_score": score_source,
         })
 
-    conflict_rate = round(conflict_count / total_matched * 100, 2) if total_matched else 0.0
-    sa2_score = round((1 - conflict_count / total_matched) * 100, 2) if total_matched else 100.0
+    conflict_rate = round(conflict_count / total_matched * 100, 2) if total_matched else None
+    sa2_score = round((1 - conflict_count / total_matched) * 100, 2) if total_matched else None
 
     return {
         "uri": ctx["class_uri"],
@@ -957,8 +957,8 @@ async def _sa2_cross_summary(ctx: dict) -> dict:
     for left, right in ctx["source_pairs"]:
         total_pair = totals_by_pair.get((left, right), 0)
         conflict_pair = conflicts_by_pair.get((left, right), 0)
-        conflict_rate_pair = round(conflict_pair / total_pair * 100, 2) if total_pair else 0.0
-        score_pair = round((1 - conflict_pair / total_pair) * 100, 2) if total_pair else 100.0
+        conflict_rate_pair = round(conflict_pair / total_pair * 100, 2) if total_pair else None
+        score_pair = round((1 - conflict_pair / total_pair) * 100, 2) if total_pair else None
         source_pair_summary.append({
             "source_a": left,
             "source_b": right,
@@ -970,8 +970,8 @@ async def _sa2_cross_summary(ctx: dict) -> dict:
             "sa2_cross_score": score_pair,
         })
 
-    conflict_rate = round(conflict_count / total_matched * 100, 2) if total_matched else 0.0
-    sa2_score = round((1 - conflict_count / total_matched) * 100, 2) if total_matched else 100.0
+    conflict_rate = round(conflict_count / total_matched * 100, 2) if total_matched else None
+    sa2_score = round((1 - conflict_count / total_matched) * 100, 2) if total_matched else None
 
     return {
         "uri": ctx["class_uri"],

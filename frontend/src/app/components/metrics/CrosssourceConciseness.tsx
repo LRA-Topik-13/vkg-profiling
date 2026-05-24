@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Search, Plus, X, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
-import { ScoreDonut, Section, LoadingState, ErrorState } from './_shared';
+import { Headline, Section, LoadingState, ErrorState } from './_shared';
 import {
   metadataApi,
   concisenessApi,
@@ -61,28 +61,6 @@ function FormulaCard({ title, formula, description }: { title: string; formula: 
       <p className="text-sm font-mono mt-1" style={{ color: 'var(--text)' }}>{formula}</p>
       {description && (
         <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>{description}</p>
-      )}
-    </div>
-  );
-}
-
-function HeadlineCard({ value, label, sub, color }: { value: string; label: string; sub?: string; color?: string }) {
-  return (
-    <div
-      className="p-6 border flex flex-col justify-center"
-      style={{
-        backgroundColor: 'var(--card)',
-        borderColor: 'var(--border)',
-        borderRadius: 'var(--radius)',
-        minHeight: 260,
-      }}
-    >
-      <div className="text-sm mb-2" style={{ color: 'var(--muted-foreground)' }}>{label}</div>
-      <div className="text-5xl" style={{ color: color ?? 'var(--navy)', lineHeight: 1.1 }}>
-        {value}
-      </div>
-      {sub && (
-        <div className="mt-2 text-sm" style={{ color: 'var(--muted-foreground)' }}>{sub}</div>
       )}
     </div>
   );
@@ -683,19 +661,19 @@ export default function CrosssourceConciseness() {
       {crossResult && !loading && (
         <>
           {/* Score cards: 3 columns */}
-          <div className="grid grid-cols-3 gap-4">
-            <HeadlineCard
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Headline
               value={String(crossResult.total_entities)}
               label="Total Entities"
               sub={`Across ${crossResult.sources?.length || 0} sources`}
               color="var(--navy)"
             />
-            <ScoreDonut
-              title="CN3 Score"
-              percentage={crossResult.cn3_score}
+            <Headline
+              value={crossResult.cn3_score}
+              label="CN3 Score"
               sub="Cross-source conciseness"
             />
-            <HeadlineCard
+            <Headline
               value={String(crossResult.ambiguous_instances)}
               label="Ambiguous Instances"
               sub="Overlapping identities"

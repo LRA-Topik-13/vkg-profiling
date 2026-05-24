@@ -90,7 +90,7 @@ function StackedLinkChart({
   );
 
   return (
-    <div className="max-h-[500px] overflow-y-auto">
+    <div className="always-scrollbar max-h-[500px] overflow-y-auto">
       <ResponsiveContainer width="100%" height={Math.max(220, sorted.length * 44)}>
         <BarChart data={sorted} layout="vertical" margin={{ left: 24, right: 24 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
@@ -188,7 +188,7 @@ function LinkList({ title, links, icon }: { title: string; links: import('../../
       {links.length === 0 ? (
         <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>None</div>
       ) : (
-        <ul className="space-y-2 max-h-72 overflow-auto pr-1">
+        <ul className="always-scrollbar space-y-2 max-h-72 overflow-y-scroll pr-1">
           {links.map((l, i) => (
             <li key={`${l.direction}-${l.property}-${i}`} className="text-sm">
               <div style={{ color: 'var(--text)' }}>{l.propertyLabel || l.property}</div>

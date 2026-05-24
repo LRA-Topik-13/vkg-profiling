@@ -114,7 +114,7 @@ function InventoryList({ title, items, mapped }: { title: string; items: { local
       {items.length === 0 ? (
         <div className="text-sm py-2" style={{ color: 'var(--muted-foreground)' }}>None</div>
       ) : (
-        <ul className="space-y-1 max-h-72 overflow-auto pr-2">
+        <ul className="always-scrollbar space-y-1 max-h-72 overflow-y-scroll pr-2">
           {items.map((it) => (
             <li key={it.localName} className="flex items-center gap-2 text-sm" style={{ color: 'var(--text)' }}>
               <Icon className="w-4 h-4 shrink-0" style={{ color: tone }} />

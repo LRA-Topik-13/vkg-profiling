@@ -1,6 +1,133 @@
 import { ReactNode } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { statusColor } from '../../lib/api';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { statusColor, PaginationInfo } from '../../lib/api';
+
+const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
+
+export function PaginatedTable({
+  title,
+  head,
+  colSpan,
+  children,
+  pagination,
+  pageSize,
+  pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
+  onPageSizeChange,
+  onPrev,
+  onNext,
+  loading = false,
+  emptyState,
+}: {
+  title?: string;
+  head: ReactNode;
+  colSpan: number;
+  children: ReactNode;
+  pagination: PaginationInfo | null;
+  pageSize: number;
+  pageSizeOptions?: number[];
+  onPageSizeChange: (size: number) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  loading?: boolean;
+  emptyState?: ReactNode;
+}) {
+  if (!pagination) return null;
+  if (pagination.total === 0 && emptyState) return <>{emptyState}</>;
+
+  const currentPage = Math.floor(pagination.offset / pageSize) + 1;
+  const totalPages = pagination.total != null ? Math.ceil(pagination.total / pageSize) : null;
+  const hasPrev = pagination.offset > 0;
+  const hasNext =
+    pagination.total != null ? pagination.offset + pageSize < pagination.total : pagination.count === pageSize;
+
+  const table = (
+    <div
+      className="border overflow-hidden"
+      style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-md)' }}
+    >
+      <div className="overflow-x-auto">
+        <table className="w-full" style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.15s' }}>
+          <thead style={{ backgroundColor: 'var(--navy)', borderBottom: '1px solid var(--border)' }}>
+            <tr>{head}</tr>
+          </thead>
+          <tbody>{children}</tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={colSpan} className="px-4 py-3" style={{ backgroundColor: 'var(--card)' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm" style={{ color: 'var(--text)' }}>Rows per page:</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => onPageSizeChange(Number(e.target.value))}
+                      className="px-3 py-1 border"
+                      style={{
+                        backgroundColor: 'var(--card)',
+                        borderColor: 'var(--border)',
+                        borderRadius: 'var(--radius-sm)',
+                        color: 'var(--text)',
+                      }}
+                    >
+                      {pageSizeOptions.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm" style={{ color: 'var(--text)' }}>
+                      {totalPages != null ? `Page ${currentPage} of ${totalPages}` : `Page ${currentPage}`}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={onPrev}
+                        disabled={!hasPrev || loading}
+                        className="p-2 border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: 'var(--card)',
+                          borderColor: 'var(--border)',
+                          borderRadius: 'var(--radius-sm)',
+                          color: 'var(--navy)',
+                        }}
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={onNext}
+                        disabled={!hasNext || loading}
+                        className="p-2 border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: 'var(--card)',
+                          borderColor: 'var(--border)',
+                          borderRadius: 'var(--radius-sm)',
+                          color: 'var(--navy)',
+                        }}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+
+  if (!title) return table;
+
+  return (
+    <div
+      className="p-6 border"
+      style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius)' }}
+    >
+      <h3 className="text-xl mb-4" style={{ color: 'var(--navy)' }}>{title}</h3>
+      {table}
+    </div>
+  );
+}
 
 export function Headline({
   value,

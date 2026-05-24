@@ -25,6 +25,7 @@ export const metadataApi = {
   mappedClasses: () => get<{ classes: ClassMeta[] }>('/metadata/mapped-classes'),
   mappedProperties: (classUri?: string) =>
     get<{ properties: PropertyMeta[]; class?: string }>('/metadata/mapped-properties', { class_uri: classUri }),
+  allProperties: () => get<{ properties: PropertyMeta[] }>('/metadata/all-properties'),
   facets: (classUri: string, propertyUri: string) =>
     get<{ values: string[] }>('/metadata/facets', { class_uri: classUri, property_uri: propertyUri }),
 };
@@ -93,6 +94,147 @@ export interface InterlinkingEntities {
   entities: { uri: string; label?: string | null }[];
   pagination: { limit: number; offset: number; count: number; total: number | null };
 }
+
+
+export interface AccuracyViolation {
+  criterion?: string;
+  message: string;
+}
+
+export interface AccuracyRelationshipEntity {
+  uri: string;
+  count: number;
+  is_outlier: boolean;
+  status: 'ok' | 'warning' | string;
+  violations: AccuracyViolation[];
+}
+
+export interface AccuracyPresencePropertyStat {
+  property: string;
+  fill_count: number;
+  fill_rate: number;
+  threshold: number;
+  is_majority: boolean;
+}
+
+export interface AccuracyPresenceEntity {
+  uri: string;
+  filled_count: number;
+  total_props: number;
+  prop_status: Record<string, boolean>;
+  outlier_properties: Array<{ property: string; fill_rate: number; fill_pct: number; has_value: boolean; is_majority: boolean }>;
+  is_outlier: boolean;
+  status: 'ok' | 'warning' | string;
+  violations: AccuracyViolation[];
+}
+
+export interface AccuracyOutlierResult {
+  uri: string;
+  class: string;
+  property?: string;
+  type: 'relationship_count' | 'property_presence_anomaly' | string;
+  statistics: Partial<{ q1: number; q3: number; iqr: number; lower_fence: number; upper_fence: number; insufficient_data: boolean }>;
+  properties_checked?: string[];
+  property_stats?: AccuracyPresencePropertyStat[];
+  outlier_count: number;
+  total: number;
+  entities: Array<AccuracyRelationshipEntity | AccuracyPresenceEntity>;
+}
+
+export interface AccuracyPairEndpointEntity {
+  uri: string;
+  source: string;
+  values: string[];
+  value: string;
+}
+
+export interface AccuracyPairRow {
+  identity_values: Record<string, string>;
+  e1: AccuracyPairEndpointEntity;
+  e2: AccuracyPairEndpointEntity;
+}
+
+export interface AccuracyWithinSourceSummaryEntry {
+  source: string;
+  source_label: string;
+  total_matched: number;
+  conflicting_pairs: number;
+  conflict_rate: number;
+  sa2_score: number;
+}
+
+export interface AccuracyCrossSourceSummaryEntry {
+  source_a: string;
+  source_b: string;
+  source_a_label: string;
+  source_b_label: string;
+  total_matched: number;
+  conflicting_pairs: number;
+  conflict_rate: number;
+  sa2_cross_score: number;
+}
+
+export interface AccuracyValueConflictSummary {
+  uri: string;
+  class: string;
+  target_property: string;
+  target_prop_uri: string;
+  identity_props: string[];
+  identity_prop_uris: string[];
+  sources: string[];
+  counting_unit: string;
+  total_matched: number;
+  conflicting_pairs: number;
+  conflict_rate: number;
+  sa2_score?: number;
+  sa2_cross_score?: number;
+  source_summary?: AccuracyWithinSourceSummaryEntry[];
+  source_pair_summary?: AccuracyCrossSourceSummaryEntry[];
+}
+
+export interface AccuracyValueConflictRows {
+  limit: number;
+  offset: number;
+  returned_count: number;
+  sample_size: number;
+  pairs: AccuracyPairRow[];
+  sample?: AccuracyPairRow[];
+}
+
+export interface AccuracyPropertyMisuseClass {
+  uri: string;
+  class: string;
+  expected: boolean;
+  count: number;
+  entity_uris: string[];
+  entities_truncated: boolean;
+}
+
+export interface AccuracyPropertyMisuseResult {
+  property: string;
+  uri: string;
+  expected_for_classes: string[];
+  total_expected_count: number;
+  total_misuse_count: number;
+  total_property_uses: number;
+  sa4_score: number;
+  classes: AccuracyPropertyMisuseClass[];
+}
+
+export const accuracyApi = {
+  outliers: (params: { class_uri: string; type: string; property_uri?: string }) =>
+    get<AccuracyOutlierResult>('/accuracy/outliers', params),
+  valueConflictSummary: (params: { class_uri: string; identity_props: string; target_prop: string; sources?: string }) =>
+    get<AccuracyValueConflictSummary>('/accuracy/value-conflict/summary', params),
+  valueConflictRows: (params: { class_uri: string; identity_props: string; target_prop: string; sources?: string; limit?: number; offset?: number }) =>
+    get<AccuracyValueConflictRows>('/accuracy/value-conflict/rows', params),
+  valueConflictCrossSourceSummary: (params: { class_uri: string; identity_props: string; target_prop: string; sources?: string }) =>
+    get<AccuracyValueConflictSummary>('/accuracy/value-conflict/cross-source/summary', params),
+  valueConflictCrossSourceRows: (params: { class_uri: string; identity_props: string; target_prop: string; sources?: string; limit?: number; offset?: number; sample_limit?: number }) =>
+    get<AccuracyValueConflictRows>('/accuracy/value-conflict/cross-source/rows', params),
+  propertyMisuseByProperty: (property_uri: string) =>
+    get<AccuracyPropertyMisuseResult>('/accuracy/property-misuse/by-property', { property_uri }),
+};
 
 export interface IntraSourceResult {
   total_representations: number;

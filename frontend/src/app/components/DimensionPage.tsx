@@ -5,6 +5,9 @@ import SchemaCompleteness from './metrics/SchemaCompleteness';
 import PropertyCompleteness from './metrics/PropertyCompleteness';
 import InterlinkingCompleteness from './metrics/InterlinkingCompleteness';
 import ClassCompleteness from './metrics/ClassCompleteness';
+import AccuracyOutlierProfiling from './metrics/AccuracyOutlierProfiling';
+import AccuracyUniquenessViolation from './metrics/AccuracyUniquenessViolation';
+import AccuracyPropertyMisuse from './metrics/AccuracyPropertyMisuse';
 
 interface DimensionPageProps {
   dimension: 'accuracy' | 'completeness' | 'conciseness';
@@ -15,7 +18,7 @@ const dimensionConfig = {
     title: 'Accuracy',
     description: 'Measure the correctness and precision of your data',
     color: 'var(--accent)',
-    tabs: ['Semantic Accuracy', 'Syntactic Accuracy', 'Timeliness'],
+    tabs: ['SA1 - Outlier Profiling', 'SA2 - Uniqueness Violation', 'SA4 - Property Misuse'],
   },
   completeness: {
     title: 'Completeness',
@@ -51,6 +54,12 @@ export default function DimensionPage({ dimension }: DimensionPageProps) {
     if (dimension === 'conciseness') {
       if (activeTab === 0) return <IntrasourceConciseness />;
       if (activeTab === 1) return <CrosssourceConciseness />;
+    }
+
+    if (dimension === 'accuracy') {
+      if (activeTab === 0) return <AccuracyOutlierProfiling />;
+      if (activeTab === 1) return <AccuracyUniquenessViolation />;
+      if (activeTab === 2) return <AccuracyPropertyMisuse />;
     }
 
     return null;

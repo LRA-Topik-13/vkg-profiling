@@ -983,27 +983,73 @@ def mapping_coverage():
     prop_coverage  = round(len(mapped_props)   / total_props   * 100, 2) if total_props   else 0.0
     overall_coverage = round((len(mapped_classes) + len(mapped_props)) / (total_classes + total_props) * 100, 2)
 
-    def _name_with_label(items):
-        return [{"uri": i["uri"], "name": i["localName"], "label": i.get("label")} for i in items]
-
     return {
         "classes": {
             "total":          total_classes,
             "mapped":         len(mapped_classes),
             "unmapped":       len(unmapped_classes),
             "coverage":       class_coverage,
-            "mapped_list":    _name_with_label(mapped_classes),
-            "unmapped_list":  _name_with_label(unmapped_classes),
         },
         "properties": {
             "total":          total_props,
             "mapped":         len(mapped_props),
             "unmapped":       len(unmapped_props),
             "coverage":       prop_coverage,
-            "mapped_list":    _name_with_label(mapped_props),
-            "unmapped_list":  _name_with_label(unmapped_props),
         },
         "overall_coverage": overall_coverage,
+    }
+
+
+@router.get("/mapping-items")
+def mapping_items(
+    kind: str = Query(..., description="class or property"),
+    status: str = Query(..., description="mapped or unmapped"),
+    q: str = Query("", description="Case-insensitive filter on localName / label"),
+    limit: int = DEFAULT_PAGE_LIMIT,
+    offset: int = 0,
+    include_total: bool = True,
+):
+    """Paginated, searchable inventory of ontology items behind mapping coverage.
+
+    The schema item lists scale with the ontology, not the instance data, but a
+    generic dataset can still carry thousands of classes/properties — so this is
+    served in pages instead of inlined into /mapping-coverage."""
+    limit, offset = _validate_pagination(limit, offset)
+    if kind not in {"class", "property"}:
+        raise HTTPException(status_code=400, detail="kind must be 'class' or 'property'")
+    if status not in {"mapped", "unmapped"}:
+        raise HTTPException(status_code=400, detail="status must be 'mapped' or 'unmapped'")
+
+    from app.routers.metadata_router import ONTOLOGY_CLASSES, ONTOLOGY_PROPERTIES
+
+    source = ONTOLOGY_CLASSES if kind == "class" else ONTOLOGY_PROPERTIES
+    want_mapped = status == "mapped"
+    items = [i for i in source if bool(i["mapped"]) == want_mapped]
+
+    needle = q.strip().lower()
+    if needle:
+        items = [
+            i for i in items
+            if needle in i["localName"].lower()
+            or needle in (i.get("label") or "").lower()
+        ]
+
+    total = len(items) if include_total else None
+    page = items[offset:offset + limit]
+
+    return {
+        "kind": kind,
+        "status": status,
+        "items": [
+            {"uri": i["uri"], "localName": i["localName"], "label": i.get("label")}
+            for i in page
+        ],
+        "pagination": {
+            "limit": limit,
+            "offset": offset,
+            "count": len(page),
+            "total": total,
+        },
     }
 
 

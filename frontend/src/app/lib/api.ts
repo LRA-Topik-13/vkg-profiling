@@ -15,8 +15,6 @@ async function get<T>(path: string, params?: Record<string, string | number | bo
   return res.json() as Promise<T>;
 }
 
-export interface MetaItem { localName: string; label?: string | null }
-
 export interface ClassMeta { localName: string; uri: string; label?: string | null }
 export interface PropertyMeta { localName: string; uri: string; type: 'data' | 'object'; label?: string | null; range?: string | null; rangeClass?: string | null }
 
@@ -31,9 +29,19 @@ export const metadataApi = {
 };
 
 export interface MappingCoverage {
-  classes: { total: number; mapped: number; unmapped: number; coverage: number; mapped_list: MetaItem[]; unmapped_list: MetaItem[] };
-  properties: { total: number; mapped: number; unmapped: number; coverage: number; mapped_list: MetaItem[]; unmapped_list: MetaItem[] };
+  classes: { total: number; mapped: number; unmapped: number; coverage: number };
+  properties: { total: number; mapped: number; unmapped: number; coverage: number };
   overall_coverage: number;
+}
+
+export type MappingItemKind = 'class' | 'property';
+export type MappingItemStatus = 'mapped' | 'unmapped';
+export interface MappingItem { uri: string; localName: string; label?: string | null }
+export interface MappingItemsResponse {
+  kind: MappingItemKind;
+  status: MappingItemStatus;
+  items: MappingItem[];
+  pagination: PaginationInfo;
 }
 
 export interface PropertyResult { property: string; label?: string; filled: number; missing: number; completeness: number }
@@ -295,6 +303,8 @@ export const concisenessApi = {
 
 export const completenessApi = {
   mappingCoverage: () => get<MappingCoverage>('/completeness/mapping-coverage'),
+  mappingItems: (params: { kind: MappingItemKind; status: MappingItemStatus; q?: string; limit?: number; offset?: number; include_total?: boolean }) =>
+    get<MappingItemsResponse>('/completeness/mapping-items', params),
   matrix: (params: { class_uri: string; properties: string; filter_facets?: string; limit?: number; offset?: number }) =>
     get<CompletenessMatrix>('/completeness/matrix', params),
   classSummary: () => get<ClassSummary>('/completeness/class-summary'),

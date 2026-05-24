@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { CheckCircle2, XCircle } from 'lucide-react';
-import { completenessApi, MappingCoverage, statusColor } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState } from './_shared';
+import {
+  completenessApi,
+  MappingCoverage,
+  MappingItemsResponse,
+  MappingItemKind,
+  MappingItemStatus,
+  statusColor,
+} from '../../lib/api';
+import { Headline, Section, LoadingState, ErrorState, PaginatedTable, SearchInput } from './_shared';
+
+const PAGE = 10;
 
 export default function SchemaCompleteness() {
   const [data, setData] = useState<MappingCoverage | null>(null);
@@ -26,10 +35,7 @@ export default function SchemaCompleteness() {
         <Headline value={data.properties.coverage} label="Property Coverage" sub={`${data.properties.mapped} / ${data.properties.total} properties mapped`} />
       </div>
 
-      <Section
-        title="Mapping Distribution"
-        subtitle="Two parallel donuts so the user can compare class and property coverage with identical encoding (small multiples + parallelism)."
-      >
+      <Section title="Mapping Distribution">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <DonutCard
             title="Classes"
@@ -47,14 +53,22 @@ export default function SchemaCompleteness() {
       </Section>
 
       <Section
-        title="Mapping Inventory"
-        subtitle="Drill-down into the actual ontology items that are mapped vs unmapped. Supports investigation per Gürdür et al. (2019)."
+        title="Class Mapping"
+        subtitle="Which ontology classes are backed by an OBDA mapping vs left unmapped."
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <InventoryList title="Unmapped Classes" items={data.classes.unmapped_list} mapped={false} />
-          <InventoryList title="Mapped Classes" items={data.classes.mapped_list} mapped />
-          <InventoryList title="Unmapped Properties" items={data.properties.unmapped_list} mapped={false} />
-          <InventoryList title="Mapped Properties" items={data.properties.mapped_list} mapped />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+          <PaginatedInventory kind="class" status="mapped" title="Mapped Classes" />
+          <PaginatedInventory kind="class" status="unmapped" title="Unmapped Classes" />
+        </div>
+      </Section>
+
+      <Section
+        title="Property Mapping"
+        subtitle="Which ontology properties are backed by an OBDA mapping vs left unmapped."
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+          <PaginatedInventory kind="property" status="mapped" title="Mapped Properties" />
+          <PaginatedInventory kind="property" status="unmapped" title="Unmapped Properties" />
         </div>
       </Section>
     </div>
@@ -94,37 +108,107 @@ function DonutCard({ title, mapped, unmapped, color }: { title: string; mapped: 
   );
 }
 
-function InventoryList({ title, items, mapped }: { title: string; items: { localName: string; label?: string | null }[]; mapped: boolean }) {
+function PaginatedInventory({ kind, status, title }: { kind: MappingItemKind; status: MappingItemStatus; title: string }) {
+  const mapped = status === 'mapped';
   const Icon = mapped ? CheckCircle2 : XCircle;
   const tone = mapped ? '#1F8A4C' : '#9E2B0A';
+
+  const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(PAGE);
+  const [data, setData] = useState<MappingItemsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Debounce the search box so we issue one request after the user stops typing,
+  // and reset to the first page whenever the term changes.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedQuery(query);
+      setOffset(0);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    completenessApi
+      .mappingItems({ kind, status, q: debouncedQuery || undefined, limit: pageSize, offset })
+      .then((r) => {
+        if (cancelled) return;
+        setData(r);
+        setError(null);
+      })
+      .catch((e) => !cancelled && setError(String(e)))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, status, debouncedQuery, pageSize, offset]);
+
+  const total = data?.pagination.total ?? null;
+
   return (
     <div
       className="p-4 border"
       style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)' }}
     >
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-sm" style={{ color: 'var(--text)' }}>{title}</div>
-        <span
-          className="px-2 py-0.5 text-xs"
-          style={{ backgroundColor: `${tone}1A`, color: tone, borderRadius: 'var(--radius-sm)' }}
-        >
-          {items.length}
-        </span>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm" style={{ color: 'var(--text)' }}>{title}</span>
+          {total != null && (
+            <span
+              className="px-2 py-0.5 text-xs"
+              style={{ backgroundColor: `${tone}1A`, color: tone, borderRadius: 'var(--radius-sm)' }}
+            >
+              {total}
+            </span>
+          )}
+        </div>
+        <SearchInput value={query} onChange={setQuery} width="w-44" compact />
       </div>
-      {items.length === 0 ? (
-        <div className="text-sm py-2" style={{ color: 'var(--muted-foreground)' }}>None</div>
+
+      {error ? (
+        <div className="text-sm py-2" style={{ color: '#9E2B0A' }}>{error}</div>
       ) : (
-        <ul className="always-scrollbar space-y-1 max-h-72 overflow-y-scroll pr-2">
-          {items.map((it) => (
-            <li key={it.localName} className="flex items-center gap-2 text-sm" style={{ color: 'var(--text)' }}>
-              <Icon className="w-4 h-4 shrink-0" style={{ color: tone }} />
-              <span className="truncate">
-                {it.label ? `${it.label} ` : ''}
-                <span style={{ color: 'var(--muted-foreground)' }}>({it.localName})</span>
-              </span>
-            </li>
+        <PaginatedTable
+          colSpan={1}
+          pagination={data?.pagination ?? null}
+          pageSize={pageSize}
+          loading={loading}
+          onPageSizeChange={(s) => {
+            setPageSize(s);
+            setOffset(0);
+          }}
+          onPrev={() => setOffset(Math.max(0, offset - pageSize))}
+          onNext={() => setOffset(offset + pageSize)}
+          emptyState={
+            <div className="text-sm py-3" style={{ color: 'var(--muted-foreground)' }}>
+              {debouncedQuery.trim() ? `No items match “${debouncedQuery.trim()}”.` : 'None'}
+            </div>
+          }
+          head={
+            <th className="text-left px-4 py-3" style={{ color: 'var(--text-on-dark)' }}>
+              {kind === 'class' ? 'Class' : 'Property'}
+            </th>
+          }
+        >
+          {data?.items.map((it) => (
+            <tr key={it.uri} style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
+              <td className="px-4 py-2 text-sm" style={{ color: 'var(--text)' }} title={it.uri}>
+                <div className="flex items-center gap-2">
+                  <Icon className="w-4 h-4 shrink-0" style={{ color: tone }} />
+                  <span className="truncate">
+                    {it.label ? `${it.label} ` : ''}
+                    <span style={{ color: 'var(--muted-foreground)' }}>({it.localName})</span>
+                  </span>
+                </div>
+              </td>
+            </tr>
           ))}
-        </ul>
+        </PaginatedTable>
       )}
     </div>
   );

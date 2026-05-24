@@ -5,6 +5,42 @@ import { statusColor, PaginationInfo } from '../../lib/api';
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
+export function SearchInput({
+  value,
+  onChange,
+  placeholder = 'Search…',
+  width = 'w-56',
+  compact = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  width?: string;
+  compact?: boolean;
+}) {
+  return (
+    <div className="relative">
+      <Search
+        className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+        style={{ color: 'var(--muted-foreground)' }}
+      />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={`pl-9 pr-3 text-sm border ${compact ? 'py-1.5' : 'py-2'} ${width}`}
+        style={{
+          backgroundColor: 'var(--card)',
+          borderColor: 'var(--border)',
+          borderRadius: 'var(--radius-md)',
+          color: 'var(--text)',
+        }}
+      />
+    </div>
+  );
+}
+
 export function PaginatedTable({
   title,
   head,
@@ -280,25 +316,7 @@ export function ClassSelectList<T>({
           {title && <h3 className="text-xl" style={{ color: 'var(--navy)' }}>{title}</h3>}
           {subtitle && <p className="mt-1 text-sm" style={{ color: 'var(--muted-foreground)' }}>{subtitle}</p>}
         </div>
-        <div className="relative">
-          <Search
-            className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-            style={{ color: 'var(--muted-foreground)' }}
-          />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={placeholder}
-            className="pl-9 pr-3 py-2 text-sm border w-56"
-            style={{
-              backgroundColor: 'var(--card)',
-              borderColor: 'var(--border)',
-              borderRadius: 'var(--radius-md)',
-              color: 'var(--text)',
-            }}
-          />
-        </div>
+        <SearchInput value={query} onChange={setQuery} placeholder={placeholder} />
       </div>
 
       {filtered.length === 0 ? (

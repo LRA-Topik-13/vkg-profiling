@@ -66,6 +66,13 @@ def test_mapping_items_rejects_invalid_kind_and_status():
     assert client.get("/completeness/mapping-items", params={"kind": "class", "status": "bogus"}).status_code == 400
 
 
+def test_not_linked_filters_avoids_unsupported_exists():
+    body = completeness_router._not_linked_filters(["http://example.org/voc#worksFor"])
+    assert "EXISTS" not in body.upper()
+    assert "OPTIONAL" in body
+    assert "!BOUND(?linked)" in body.replace(" ", "")
+
+
 FULL_PROFESSOR_URI = "http://example.org/voc#FullProfessor"
 COURSE_URI = "http://example.org/voc#Course"
 FIRST_NAME_URI = "http://xmlns.com/foaf/0.1/firstName"

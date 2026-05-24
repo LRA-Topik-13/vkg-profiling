@@ -121,8 +121,6 @@ function PaginatedInventory({ kind, status, title }: { kind: MappingItemKind; st
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Debounce the search box so we issue one request after the user stops typing,
-  // and reset to the first page whenever the term changes.
   useEffect(() => {
     const t = setTimeout(() => {
       setDebouncedQuery(query);

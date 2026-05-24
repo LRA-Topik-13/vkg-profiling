@@ -196,17 +196,20 @@ def _not_linked_filters(obj_prop_uris: list[str]) -> str:
     if not values:
         return ""
     return f"""
-        FILTER NOT EXISTS {{
-            {values}
-            ?e ?p ?other .
-            FILTER(isIRI(?other))
-            FILTER(?p != rdf:type)
+        OPTIONAL {{
+            {{
+                {values}
+                ?e ?p ?other .
+                FILTER(isIRI(?other))
+                FILTER(?p != rdf:type)
+            }} UNION {{
+                {values}
+                ?other ?p ?e .
+                FILTER(?p != rdf:type)
+            }}
+            BIND(true AS ?linked)
         }}
-        FILTER NOT EXISTS {{
-            {values}
-            ?other ?p ?e .
-            FILTER(?p != rdf:type)
-        }}
+        FILTER(!BOUND(?linked))
     """
 
 

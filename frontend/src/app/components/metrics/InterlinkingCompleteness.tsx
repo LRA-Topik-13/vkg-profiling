@@ -250,14 +250,20 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
 
   useEffect(() => {
     setOffset(0);
+    setData(null);
   }, [classUri, status]);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     completenessApi
       .interlinkingEntities({ class_uri: classUri, status, limit: PAGE, offset })
-      .then(setData)
-      .finally(() => setLoading(false));
+      .then((r) => !cancelled && setData(r))
+      .catch(() => !cancelled && setData(null))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
   }, [classUri, status, offset]);
 
   const total = data?.pagination.total ?? null;

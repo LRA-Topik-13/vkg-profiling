@@ -92,6 +92,16 @@ def _property_count_union(
     return "\nUNION\n".join(branches)
 
 
+STANDARD_LABEL_PREDICATES = [
+    "http://www.w3.org/2000/01/rdf-schema#label",
+    "http://www.w3.org/2004/02/skos/core#prefLabel",
+    "http://purl.org/dc/terms/title",
+    "http://purl.org/dc/elements/1.1/title",
+    "http://schema.org/name",
+    "http://xmlns.com/foaf/0.1/name",
+]
+
+
 def _entity_label_config(class_uri: str) -> list[dict]:
     from app.routers.metadata_router import KNOWN_PROPERTIES
 
@@ -104,18 +114,28 @@ def _entity_label_config(class_uri: str) -> list[dict]:
 
 
 async def _labels_for_entities(class_uri: str, entity_uris: list[str]) -> dict[str, str]:
-    label_props = _entity_label_config(class_uri)
-    if not label_props or not entity_uris:
+    if not entity_uris:
+        return {}
+
+    heuristic_uris = [p["uri"] for p in _entity_label_config(class_uri)]
+    seen: set[str] = set()
+    predicates: list[str] = []
+    for uri in STANDARD_LABEL_PREDICATES + heuristic_uris:
+        if uri not in seen:
+            seen.add(uri)
+            predicates.append(uri)
+    n_standard = len(STANDARD_LABEL_PREDICATES)
+    if not predicates:
         return {}
 
     values = " ".join(f"<{_validate_http_uri(uri, 'entity URI')}>" for uri in entity_uris)
     optionals = "\n".join(
-        f"OPTIONAL {{ ?e <{p['uri']}> ?v{i} }}"
-        for i, p in enumerate(label_props)
+        f"OPTIONAL {{ ?e <{p}> ?v{i} }}"
+        for i, p in enumerate(predicates)
     )
     vars_select = " ".join(
         f"(SAMPLE(?v{i}) AS ?val{i})"
-        for i in range(len(label_props))
+        for i in range(len(predicates))
     )
     label_q = f"""
         {PREFIXES}
@@ -130,11 +150,19 @@ async def _labels_for_entities(class_uri: str, entity_uris: list[str]) -> dict[s
     labels: dict[str, str] = {}
     for b in label_res.get("results", {}).get("bindings", []):
         e_uri = b["e"]["value"]
-        parts = []
-        for i in range(len(label_props)):
-            val = b.get(f"val{i}", {}).get("value")
-            if val:
-                parts.append(val)
+        canonical = next(
+            (b[f"val{i}"]["value"] for i in range(n_standard)
+             if b.get(f"val{i}", {}).get("value")),
+            None,
+        )
+        if canonical:
+            labels[e_uri] = canonical
+            continue
+        parts = [
+            b[f"val{i}"]["value"]
+            for i in range(n_standard, len(predicates))
+            if b.get(f"val{i}", {}).get("value")
+        ]
         if parts:
             labels[e_uri] = " ".join(parts)
     return labels
@@ -399,6 +427,10 @@ async def _by_entity_compute(
             "scores":       scores,
             "completeness": completeness,
         })
+
+    labels = await _labels_for_entities(class_uri, [e["uri"] for e in entities])
+    for e in entities:
+        e["label"] = labels.get(e["uri"])
 
     return {
         "uri":        class_uri,

@@ -9,7 +9,7 @@ import {
   CompletenessMatrix,
   statusColor,
 } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge, PaginatedTable } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, StatusBadge, PaginatedTable, prettyId } from './_shared';
 
 const PAGE = 25;
 
@@ -498,7 +498,7 @@ function ResultsView({
                 style={{ color: 'var(--text)', position: 'sticky', left: 0, zIndex: 1, backgroundColor: 'var(--card)' }}
                 title={e.uri}
               >
-                {shortenUri(e.uri)}
+                {e.label || prettyId(e.uri)}
               </td>
               {data.properties.map((p) => {
                 const has = e.scores[p];

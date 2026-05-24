@@ -5,6 +5,24 @@ import { statusColor, PaginationInfo } from '../../lib/api';
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
+export function prettyId(uri: string): string {
+  if (!uri) return '';
+  const hash = uri.indexOf('#');
+  let tail: string;
+  if (hash >= 0) {
+    tail = uri.slice(hash + 1);
+  } else {
+    const m = uri.match(/^[a-z][a-z0-9+.-]*:\/\/[^/]+\/(.+)$/i);
+    tail = m ? m[1] : uri.slice(uri.lastIndexOf('/') + 1);
+  }
+  try {
+    tail = decodeURIComponent(tail);
+  } catch {
+    return tail || uri;
+  }
+  return tail || uri;
+}
+
 export function SearchInput({
   value,
   onChange,

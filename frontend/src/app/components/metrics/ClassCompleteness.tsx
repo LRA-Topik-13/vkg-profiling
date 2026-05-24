@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { completenessApi, ClassSummary, ClassSummaryEntry, statusColor } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList } from './_shared';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { completenessApi, ClassSummary, ClassSummaryEntry, CompletenessMatrix, statusColor } from '../../lib/api';
+import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList, prettyId } from './_shared';
+
+const PAGE = 10;
 
 export default function ClassCompleteness() {
   const [data, setData] = useState<ClassSummary | null>(null);
@@ -129,6 +132,10 @@ function Ranking({
 function ClassDetail({ entry, onClose }: { entry: ClassSummaryEntry; onClose: () => void }) {
   const color = statusColor(entry.completeness);
   const props = [...entry.by_property].sort((a, b) => a.completeness - b.completeness);
+  const propertiesParam = useMemo(
+    () => entry.by_property.map((p) => p.uri).filter(Boolean).join(','),
+    [entry.by_property],
+  );
   return (
     <Section
       title={`Detail · ${entry.label || entry.class}`}
@@ -168,7 +175,94 @@ function ClassDetail({ entry, onClose }: { entry: ClassSummaryEntry; onClose: ()
           ))}
         </div>
       )}
+
+      {propertiesParam && (
+        <div className="mt-6 pt-6 border-t" style={{ borderColor: 'var(--border)' }}>
+          <div className="text-sm mb-3" style={{ color: 'var(--navy)' }}>Entities</div>
+          <EntityDrilldown classUri={entry.uri} properties={propertiesParam} />
+        </div>
+      )}
     </Section>
+  );
+}
+
+function EntityDrilldown({ classUri, properties }: { classUri: string; properties: string }) {
+  const [offset, setOffset] = useState(0);
+  const [data, setData] = useState<CompletenessMatrix | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setOffset(0);
+    setData(null);
+  }, [classUri, properties]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    completenessApi
+      .matrix({ class_uri: classUri, properties, limit: PAGE, offset })
+      .then((r) => !cancelled && setData(r))
+      .catch(() => !cancelled && setData(null))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [classUri, properties, offset]);
+
+  const total = data?.pagination?.total ?? null;
+  const propCount = data?.properties.length ?? 0;
+
+  if (loading && !data) {
+    return <div className="py-6 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>Loading…</div>;
+  }
+  if (!data || data.entities.length === 0) {
+    return <div className="py-6 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>No entities for this class.</div>;
+  }
+
+  return (
+    <>
+      <ul className="space-y-1 text-sm">
+        {data.entities.map((e) => {
+          const filled = Object.values(e.scores).filter(Boolean).length;
+          return (
+            <li key={e.uri} className="flex items-center gap-2">
+              <StatusBadge percent={e.completeness} />
+              <span className="truncate" style={{ color: 'var(--text)' }} title={e.uri}>
+                {e.label || prettyId(e.uri)}
+              </span>
+              <span className="text-xs ml-auto tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
+                {filled}/{propCount} props
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="mt-3 flex items-center justify-between text-sm" style={{ color: 'var(--muted-foreground)' }}>
+        <span>
+          {offset + 1}–{offset + data.entities.length}
+          {total != null ? ` of ${total}` : ''}
+        </span>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setOffset(Math.max(0, offset - PAGE))}
+            disabled={offset === 0}
+            className="inline-flex items-center gap-1 px-3 py-1 border disabled:opacity-40"
+            style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+          >
+            <ChevronLeft className="w-4 h-4" /> Prev
+          </button>
+          <button
+            onClick={() => setOffset(offset + PAGE)}
+            disabled={total != null && offset + data.entities.length >= total}
+            className="inline-flex items-center gap-1 px-3 py-1 border disabled:opacity-40"
+            style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+          >
+            Next <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 

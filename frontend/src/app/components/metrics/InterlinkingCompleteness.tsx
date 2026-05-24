@@ -8,7 +8,7 @@ import {
   InterlinkingEntities,
   statusColor,
 } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList, prettyId } from './_shared';
 
 const PAGE = 25;
 
@@ -309,10 +309,10 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
               <li key={e.uri} className="flex items-center gap-2">
                 <StatusBadge percent={status === 'linked' ? 100 : 0} />
                 <span className="truncate" style={{ color: 'var(--text)' }} title={e.uri}>
-                  {e.label || shortenUri(e.uri)}
+                  {e.label || prettyId(e.uri)}
                 </span>
                 <span className="text-xs ml-auto" style={{ color: 'var(--muted-foreground)' }}>
-                  {shortenUri(e.uri)}
+                  {prettyId(e.uri)}
                 </span>
               </li>
             ))}
@@ -350,10 +350,4 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
       )}
     </div>
   );
-}
-
-function shortenUri(uri: string): string {
-  if (!uri) return '';
-  const i = Math.max(uri.lastIndexOf('#'), uri.lastIndexOf('/'));
-  return i > 0 ? uri.slice(i + 1) : uri;
 }

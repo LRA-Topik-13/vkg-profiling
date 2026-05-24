@@ -44,8 +44,8 @@ export interface MappingItemsResponse {
   pagination: PaginationInfo;
 }
 
-export interface PropertyResult { property: string; label?: string; filled: number; missing: number; completeness: number }
-export interface EntityRow { uri: string; scores: Record<string, boolean>; completeness: number }
+export interface PropertyResult { property: string; uri?: string; label?: string; filled: number; missing: number; completeness: number }
+export interface EntityRow { uri: string; label?: string | null; scores: Record<string, boolean>; completeness: number }
 export interface MatrixPropertyInfo { uri: string; localName?: string; label?: string | null }
 export interface CompletenessMatrix {
   class_uri: string;

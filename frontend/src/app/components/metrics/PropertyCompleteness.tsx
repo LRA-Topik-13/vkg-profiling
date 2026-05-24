@@ -17,8 +17,23 @@ interface Facet {
   propUri: string;
   propLabel: string;
   valueUri: string;
-  valueLabel: string;
 }
+
+interface FacetDraft {
+  propUri: string;
+  valueUri: string;
+  values: string[];
+  loading: boolean;
+  error: string | null;
+}
+
+const EMPTY_DRAFT: FacetDraft = {
+  propUri: '',
+  valueUri: '',
+  values: [],
+  loading: false,
+  error: null,
+};
 
 export default function PropertyCompleteness() {
   const [classes, setClasses] = useState<ClassMeta[]>([]);
@@ -26,13 +41,21 @@ export default function PropertyCompleteness() {
   const [selectedClassUri, setSelectedClassUri] = useState<string>('');
   const [selectedPropUris, setSelectedPropUris] = useState<string[]>([]);
   const [facets, setFacets] = useState<Facet[]>([]);
-  const [draftPropUri, setDraftPropUri] = useState<string>('');
-  const [draftValueUri, setDraftValueUri] = useState<string>('');
-  const [draftValues, setDraftValues] = useState<string[]>([]);
+  const [draft, setDraft] = useState<FacetDraft>(EMPTY_DRAFT);
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<CompletenessMatrix | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [analyzedSignature, setAnalyzedSignature] = useState<string | null>(null);
+
+  const currentSignature = useMemo(() => {
+    if (!selectedClassUri || selectedPropUris.length === 0) return null;
+    const facetKey = facets.map((f) => `${f.propUri}::${f.valueUri}`).sort().join('|');
+    const propKey = [...selectedPropUris].sort().join('|');
+    return `${selectedClassUri}::${propKey}::${facetKey}`;
+  }, [selectedClassUri, selectedPropUris, facets]);
+
+  const stale = data !== null && currentSignature !== null && analyzedSignature !== currentSignature;
 
   const selectedClass = useMemo(
     () => classes.find((c) => c.uri === selectedClassUri) || null,
@@ -46,10 +69,9 @@ export default function PropertyCompleteness() {
   useEffect(() => {
     setSelectedPropUris([]);
     setFacets([]);
-    setDraftPropUri('');
-    setDraftValueUri('');
-    setDraftValues([]);
+    setDraft(EMPTY_DRAFT);
     setData(null);
+    setAnalyzedSignature(null);
     if (!selectedClass) {
       setProps([]);
       return;
@@ -61,21 +83,21 @@ export default function PropertyCompleteness() {
   }, [selectedClass]);
 
   useEffect(() => {
-    setDraftValueUri('');
-    if (!draftPropUri || !selectedClass) {
-      setDraftValues([]);
+    if (!draft.propUri || !selectedClass) {
+      setDraft((d) => ({ ...d, valueUri: '', values: [], loading: false, error: null }));
       return;
     }
-    const propEntry = props.find((p) => p.uri === draftPropUri);
+    const propEntry = props.find((p) => p.uri === draft.propUri);
     if (!propEntry) {
-      setDraftValues([]);
+      setDraft((d) => ({ ...d, valueUri: '', values: [], loading: false, error: null }));
       return;
     }
+    setDraft((d) => ({ ...d, valueUri: '', loading: true, error: null }));
     metadataApi
       .facets(selectedClass.uri, propEntry.uri)
-      .then((r) => setDraftValues(r.values))
-      .catch(() => setDraftValues([]));
-  }, [selectedClass, draftPropUri, props]);
+      .then((r) => setDraft((d) => ({ ...d, values: r.values, loading: false })))
+      .catch((e) => setDraft((d) => ({ ...d, values: [], loading: false, error: String(e) })));
+  }, [selectedClass, draft.propUri, props]);
 
   const objectProps = useMemo(() => props.filter((p) => p.type === 'object'), [props]);
 
@@ -94,21 +116,20 @@ export default function PropertyCompleteness() {
   }
 
   function addFacet() {
-    if (!draftPropUri || !draftValueUri) return;
-    const propEntry = props.find((p) => p.uri === draftPropUri);
+    if (!draft.propUri || !draft.valueUri) return;
+    const propEntry = props.find((p) => p.uri === draft.propUri);
     if (!propEntry) return;
-    const duplicate = facets.some((f) => f.propUri === draftPropUri && f.valueUri === draftValueUri);
+    const duplicate = facets.some((f) => f.propUri === draft.propUri && f.valueUri === draft.valueUri);
     if (duplicate) return;
     setFacets((prev) => [
       ...prev,
       {
-        propUri: draftPropUri,
+        propUri: draft.propUri,
         propLabel: propEntry.label || propEntry.localName,
-        valueUri: draftValueUri,
-        valueLabel: shortenUri(draftValueUri),
+        valueUri: draft.valueUri,
       },
     ]);
-    setDraftValueUri('');
+    setDraft((d) => ({ ...d, valueUri: '' }));
   }
 
   function removeFacet(index: number) {
@@ -129,6 +150,7 @@ export default function PropertyCompleteness() {
       });
       setData(r);
       setOffset(newOffset);
+      setAnalyzedSignature(currentSignature);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -161,8 +183,8 @@ export default function PropertyCompleteness() {
             <div className="flex gap-2">
               <select
                 disabled={!selectedClassUri || objectProps.length === 0}
-                value={draftPropUri}
-                onChange={(e) => setDraftPropUri(e.target.value)}
+                value={draft.propUri}
+                onChange={(e) => setDraft((d) => ({ ...d, propUri: e.target.value }))}
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
@@ -172,20 +194,22 @@ export default function PropertyCompleteness() {
                 ))}
               </select>
               <select
-                disabled={!draftPropUri || draftValues.length === 0}
-                value={draftValueUri}
-                onChange={(e) => setDraftValueUri(e.target.value)}
+                disabled={!draft.propUri || draft.values.length === 0}
+                value={draft.valueUri}
+                onChange={(e) => setDraft((d) => ({ ...d, valueUri: e.target.value }))}
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">— object —</option>
-                {draftValues.map((v) => (
+                <option value="">
+                  {draft.loading ? 'Loading…' : draft.error ? 'Failed to load' : '— object —'}
+                </option>
+                {draft.values.map((v) => (
                   <option key={v} value={v}>{shortenUri(v)}</option>
                 ))}
               </select>
               <button
                 onClick={addFacet}
-                disabled={!draftPropUri || !draftValueUri}
+                disabled={!draft.propUri || !draft.valueUri}
                 className="inline-flex items-center gap-1 px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
                 title="Add facet"
@@ -193,13 +217,27 @@ export default function PropertyCompleteness() {
                 <Plus className="w-4 h-4" />
               </button>
             </div>
+            {draft.error && (
+              <div className="mt-1 text-xs" style={{ color: 'var(--accent)' }}>
+                Failed to load facet values. Check API connectivity.
+              </div>
+            )}
           </Field>
         </div>
 
         {facets.length > 0 && (
           <div className="mt-3">
-            <div className="mb-2 text-sm" style={{ color: 'var(--text)' }}>
-              Active facets <span style={{ color: 'var(--muted-foreground)' }}>(AND)</span>
+            <div className="flex items-center justify-between mb-2 text-sm" style={{ color: 'var(--text)' }}>
+              <span>
+                Active facets <span style={{ color: 'var(--muted-foreground)' }}>(AND)</span>
+              </span>
+              <button
+                onClick={() => setFacets([])}
+                className="text-xs underline"
+                style={{ color: 'var(--accent)' }}
+              >
+                Clear all
+              </button>
             </div>
             <div className="flex flex-wrap gap-2">
               {facets.map((f, i) => (
@@ -216,7 +254,7 @@ export default function PropertyCompleteness() {
                   <span>
                     <span style={{ color: 'var(--text)' }}>{f.propLabel}</span>
                     <span style={{ color: 'var(--muted-foreground)' }}> = </span>
-                    <span>{f.valueLabel}</span>
+                    <span>{shortenUri(f.valueUri)}</span>
                   </span>
                   <button
                     onClick={() => removeFacet(i)}
@@ -237,7 +275,7 @@ export default function PropertyCompleteness() {
           {props.length === 0 ? (
             <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Pick a class first.</div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-2">
               {props.map((p) => {
                 const active = selectedPropUris.includes(p.uri);
                 return (
@@ -298,6 +336,21 @@ export default function PropertyCompleteness() {
 
       {error && <ErrorState message={error} />}
       {loading && !data && <LoadingState />}
+
+      {data && stale && (
+        <div
+          className="flex items-start gap-2 px-3 py-2 text-sm border"
+          style={{
+            backgroundColor: '#FEF7E6',
+            color: '#8A5A00',
+            borderColor: 'rgba(224,139,26,0.4)',
+            borderRadius: 'var(--radius-md)',
+          }}
+        >
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <div>Configuration changed since last analysis. Click <strong>Analyze</strong> to refresh results.</div>
+        </div>
+      )}
 
       {data && <ResultsView data={data} offset={offset} onPage={(o) => analyze(o)} />}
     </div>

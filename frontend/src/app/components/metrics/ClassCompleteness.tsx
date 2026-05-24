@@ -60,22 +60,24 @@ function Ranking({ entries }: { entries: ClassSummaryEntry[] }) {
     [entries],
   );
   return (
-    <ResponsiveContainer width="100%" height={Math.max(220, ranked.length * 40)}>
-      <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 24 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-        <XAxis type="number" domain={[0, 100]} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}%`} />
-        <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
-        <Tooltip
-          contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }}
-          formatter={(v: number, _n, p) => [`${v.toFixed(2)}%`, `${p.payload.entities} entities`]}
-        />
-        <Bar dataKey="completeness" radius={[0, 6, 6, 0]}>
-          {ranked.map((d, i) => (
-            <Cell key={i} fill={statusColor(d.completeness)} />
-          ))}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
+    <div className="max-h-[500px] overflow-y-auto">
+      <ResponsiveContainer width="100%" height={Math.max(220, ranked.length * 40)}>
+        <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 24 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+          <XAxis type="number" domain={[0, 100]} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}%`} />
+          <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
+          <Tooltip
+            contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }}
+            formatter={(v: number, _n, p) => [`${v.toFixed(2)}%`, `${p.payload.entities} entities`]}
+          />
+          <Bar dataKey="completeness" radius={[0, 6, 6, 0]}>
+            {ranked.map((d, i) => (
+              <Cell key={i} fill={statusColor(d.completeness)} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -143,7 +145,7 @@ function ClassCard({
       </button>
 
       {expanded && entry.by_property.length > 0 && (
-        <div className="mt-3 space-y-2">
+        <div className="mt-3 space-y-2 max-h-60 overflow-y-auto pr-1">
           {entry.by_property
             .slice()
             .sort((a, b) => a.completeness - b.completeness)

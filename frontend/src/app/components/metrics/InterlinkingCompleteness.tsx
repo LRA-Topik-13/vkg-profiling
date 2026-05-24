@@ -90,40 +90,42 @@ function StackedLinkChart({
   );
 
   return (
-    <ResponsiveContainer width="100%" height={Math.max(220, sorted.length * 44)}>
-      <BarChart data={sorted} layout="vertical" margin={{ left: 24, right: 24 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-        <XAxis type="number" stroke="var(--muted-foreground)" />
-        <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
-        <Tooltip
-          contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }}
-          formatter={(v: number, name: string, p) =>
-            name === 'linked'
-              ? [`${v} linked (${p.payload.ratio.toFixed(1)}%)`, 'Linked']
-              : [`${v} isolated`, 'Not linked']
-          }
-        />
-        <Legend />
-        <Bar
-          dataKey="linked"
-          stackId="a"
-          fill="#1F8A4C"
-          radius={[0, 0, 0, 0]}
-          onClick={(d: any) => onSelect(d.rawClass)}
-          style={{ cursor: 'pointer' }}
-          fillOpacity={(d: any) => (selected && d.rawClass !== selected ? 0.35 : 1)}
-        />
-        <Bar
-          dataKey="not_linked"
-          stackId="a"
-          fill="#9E2B0A"
-          radius={[0, 6, 6, 0]}
-          onClick={(d: any) => onSelect(d.rawClass)}
-          style={{ cursor: 'pointer' }}
-          fillOpacity={(d: any) => (selected && d.rawClass !== selected ? 0.35 : 1)}
-        />
-      </BarChart>
-    </ResponsiveContainer>
+    <div className="max-h-[500px] overflow-y-auto">
+      <ResponsiveContainer width="100%" height={Math.max(220, sorted.length * 44)}>
+        <BarChart data={sorted} layout="vertical" margin={{ left: 24, right: 24 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+          <XAxis type="number" stroke="var(--muted-foreground)" />
+          <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
+          <Tooltip
+            contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }}
+            formatter={(v: number, name: string, p) =>
+              name === 'linked'
+                ? [`${v} linked (${p.payload.ratio.toFixed(1)}%)`, 'Linked']
+                : [`${v} isolated`, 'Not linked']
+            }
+          />
+          <Legend />
+          <Bar
+            dataKey="linked"
+            stackId="a"
+            fill="#1F8A4C"
+            radius={[0, 0, 0, 0]}
+            onClick={(d: any) => onSelect(d.rawClass)}
+            style={{ cursor: 'pointer' }}
+            fillOpacity={(d: any) => (selected && d.rawClass !== selected ? 0.35 : 1)}
+          />
+          <Bar
+            dataKey="not_linked"
+            stackId="a"
+            fill="#9E2B0A"
+            radius={[0, 6, 6, 0]}
+            onClick={(d: any) => onSelect(d.rawClass)}
+            style={{ cursor: 'pointer' }}
+            fillOpacity={(d: any) => (selected && d.rawClass !== selected ? 0.35 : 1)}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 

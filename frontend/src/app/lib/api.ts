@@ -159,8 +159,8 @@ export interface AccuracyWithinSourceSummaryEntry {
   source_label: string;
   total_matched: number;
   conflicting_pairs: number;
-  conflict_rate: number;
-  sa2_score: number;
+  conflict_rate: number | null;
+  sa2_score: number | null;
 }
 
 export interface AccuracyCrossSourceSummaryEntry {
@@ -170,8 +170,8 @@ export interface AccuracyCrossSourceSummaryEntry {
   source_b_label: string;
   total_matched: number;
   conflicting_pairs: number;
-  conflict_rate: number;
-  sa2_cross_score: number;
+  conflict_rate: number | null;
+  sa2_cross_score: number | null;
 }
 
 export interface AccuracyValueConflictSummary {
@@ -185,9 +185,9 @@ export interface AccuracyValueConflictSummary {
   counting_unit: string;
   total_matched: number;
   conflicting_pairs: number;
-  conflict_rate: number;
-  sa2_score?: number;
-  sa2_cross_score?: number;
+  conflict_rate: number | null;
+  sa2_score?: number | null;
+  sa2_cross_score?: number | null;
   source_summary?: AccuracyWithinSourceSummaryEntry[];
   source_pair_summary?: AccuracyCrossSourceSummaryEntry[];
 }

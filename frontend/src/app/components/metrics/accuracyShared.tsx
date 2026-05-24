@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
 import { ClassMeta, PropertyMeta, statusColor } from '../../lib/api';
 
 export const SOURCE_OPTIONS = [
@@ -56,6 +57,10 @@ export function formatPercent(value: number | undefined | null) {
   return `${Number(value || 0).toFixed(1)}%`;
 }
 
+export function formatNullablePercent(value: number | undefined | null) {
+  return value == null ? 'N/A' : `${Number(value).toFixed(1)}%`;
+}
+
 export function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error || 'Request failed');
 }
@@ -96,6 +101,43 @@ export function MetricCard({ value, label, sub, color }: { value: string | numbe
       <div className="text-sm mb-2" style={{ color: 'var(--muted-foreground)' }}>{label}</div>
       <div className="text-4xl" style={{ color: color ?? 'var(--navy)', lineHeight: 1.1 }}>{value}</div>
       {sub && <div className="mt-2 text-sm" style={{ color: 'var(--muted-foreground)' }}>{sub}</div>}
+    </div>
+  );
+}
+
+
+export function AccuracyScoreDonut({ title, percentage, sub }: { title: string; percentage: number | null; sub?: string }) {
+  const isAvailable = percentage != null;
+  const value = isAvailable ? Math.max(0, Math.min(100, percentage)) : 0;
+  const color = isAvailable ? statusColor(value) : 'var(--muted-foreground)';
+  const chart = isAvailable
+    ? [
+        { name: 'Score', value, color },
+        { name: 'Remaining', value: Math.max(0, 100 - value), color: 'var(--muted)' },
+      ]
+    : [
+        { name: 'Not applicable', value: 100, color: 'var(--muted)' },
+      ];
+
+  return (
+    <div
+      className="p-4 border"
+      style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)' }}
+    >
+      <div className="text-sm mb-3" style={{ color: 'var(--muted-foreground)' }}>{title}</div>
+      <div className="relative" style={{ height: 180 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={chart} dataKey="value" innerRadius={50} outerRadius={75} paddingAngle={isAvailable ? 2 : 0} startAngle={90} endAngle={-270} isAnimationActive={false}>
+              {chart.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <div className="text-3xl" style={{ color }}>{isAvailable ? `${value.toFixed(1)}%` : 'N/A'}</div>
+        </div>
+      </div>
+      {sub && <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{sub}</div>}
     </div>
   );
 }

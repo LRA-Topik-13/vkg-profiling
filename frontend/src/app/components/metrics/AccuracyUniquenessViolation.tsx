@@ -10,8 +10,9 @@ import {
   metadataApi,
   PropertyMeta,
 } from '../../lib/api';
-import { EmptyState, ErrorState, LoadingState, ScoreDonut, Section } from './_shared';
+import { EmptyState, ErrorState, LoadingState, Section } from './_shared';
 import {
+  AccuracyScoreDonut,
   DEFAULT_PAGE_SIZE,
   Field,
   FormulaCard,
@@ -23,7 +24,7 @@ import {
   TablePager,
   errorMessage,
   formatCount,
-  formatPercent,
+  formatNullablePercent,
   labelForClass,
   labelForProperty,
   shortUri,
@@ -43,12 +44,19 @@ interface RowState {
 const emptyRows = (): RowState => ({ rows: [], offset: 0, pageSize: DEFAULT_PAGE_SIZE, loading: false, error: null });
 
 function scoreFromSummary(summary: AccuracyValueConflictSummary | null, mode: EvidenceMode) {
-  if (!summary) return 100;
-  return mode === 'cross' ? Number(summary.sa2_cross_score ?? 100) : Number(summary.sa2_score ?? 100);
+  if (!summary) return null;
+  return mode === 'cross' ? summary.sa2_cross_score ?? null : summary.sa2_score ?? null;
 }
 
 function summaryLabel(mode: EvidenceMode) {
   return mode === 'cross' ? 'Cross-Source' : 'Intra-Source';
+}
+
+function scoreTone(score: number | null | undefined) {
+  if (score == null) return 'neutral';
+  if (score >= 90) return 'good';
+  if (score >= 70) return 'warn';
+  return 'bad';
 }
 
 function PairEvidenceTable({
@@ -76,6 +84,14 @@ function PairEvidenceTable({
 
   if (state.error) {
     return <ErrorState message={state.error} />;
+  }
+
+  if (summary.total_matched === 0) {
+    return (
+      <div className="px-4 py-3 text-sm border" style={{ backgroundColor: 'var(--muted)', borderColor: 'var(--border)', color: 'var(--muted-foreground)', borderRadius: 'var(--radius-md)' }}>
+        No comparable pairs found for this rule.
+      </div>
+    );
   }
 
   if (total === 0) {
@@ -168,8 +184,8 @@ function BreakdownTable({ summary, mode }: { summary: AccuracyValueConflictSumma
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{label}</td>
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{formatCount(row.total_matched)}</td>
                   <td className="px-4 py-3 text-sm" style={{ color: row.conflicting_pairs > 0 ? 'var(--accent)' : 'var(--text)' }}>{formatCount(row.conflicting_pairs)}</td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{formatPercent(row.conflict_rate)}</td>
-                  <td className="px-4 py-3"><StatusPill tone={score >= 90 ? 'good' : score >= 70 ? 'warn' : 'bad'}>{formatPercent(score)}</StatusPill></td>
+                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{formatNullablePercent(row.conflict_rate)}</td>
+                  <td className="px-4 py-3"><StatusPill tone={scoreTone(score)}>{formatNullablePercent(score)}</StatusPill></td>
                 </tr>
               );
             })}
@@ -205,6 +221,8 @@ export default function AccuracyUniquenessViolation() {
   const hasCross = selectedSources.length >= 2;
   const activeSummary = activeMode === 'cross' ? crossSummary : intraSummary;
   const activeRows = activeMode === 'cross' ? crossRows : intraRows;
+  const activeScore = scoreFromSummary(activeSummary, activeMode);
+  const ruleText = targetProp && identityLabels.length > 0 ? `${identityLabels.join(' + ')} -> ${labelForProperty(targetProp)}` : '';
 
   useEffect(() => {
     metadataApi.mappedClasses().then((data) => setClasses(data.classes)).catch((err) => setError(errorMessage(err)));
@@ -336,7 +354,10 @@ export default function AccuracyUniquenessViolation() {
   return (
     <div className="space-y-6">
       <Section title="SA2, Uniqueness Violation" subtitle="Check whether selected identity properties determine one target property.">
-        <FormulaCard title="Functional Dependency" formula="identity properties -> target property" description="Pairs with the same identity values should not disagree on the target value." />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <FormulaCard title="Functional Dependency" formula="identity properties -> target property" description="Pairs with the same identity values should not disagree on the target value." />
+          <FormulaCard title="SA2 Score" formula="1 - (conflicting matched pairs / matched comparable pairs)" description="When no comparable pairs exist, the score is shown as N/A." />
+        </div>
       </Section>
 
       <Section title="Configuration">
@@ -392,7 +413,8 @@ export default function AccuracyUniquenessViolation() {
 
           {selectedClass && targetProp && identityLabels.length > 0 && (
             <div className="px-4 py-3 text-sm border" style={{ backgroundColor: 'var(--muted)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}>
-              Rule: <span className="font-medium">{identityLabels.join(' + ')}</span> determines <span className="font-medium">{labelForProperty(targetProp)}</span> for <span className="font-medium">{labelForClass(selectedClass)}</span>.
+              <div className="font-mono text-base mb-1" style={{ color: 'var(--navy)' }}>{ruleText}</div>
+              <div>Rule: <span className="font-medium">{identityLabels.join(' + ')}</span> determines <span className="font-medium">{labelForProperty(targetProp)}</span> for <span className="font-medium">{labelForClass(selectedClass)}</span>.</div>
             </div>
           )}
 
@@ -409,10 +431,10 @@ export default function AccuracyUniquenessViolation() {
       {(intraSummary || crossSummary) && !summaryLoading && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <MetricCard value={formatCount(activeSummary?.total_matched || 0)} label="Matched Pairs" sub={summaryLabel(activeMode)} />
+            <MetricCard value={formatCount(activeSummary?.total_matched || 0)} label="Matched Pairs" sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : summaryLabel(activeMode)} />
             <MetricCard value={formatCount(activeSummary?.conflicting_pairs || 0)} label="Conflicting Pairs" sub="Evidence rows" color={(activeSummary?.conflicting_pairs || 0) > 0 ? '#9E2B0A' : '#1F8A4C'} />
-            <MetricCard value={formatPercent(activeSummary?.conflict_rate || 0)} label="Conflict Rate" sub="conflicts / matched pairs" color={(activeSummary?.conflict_rate || 0) > 0 ? '#9E2B0A' : '#1F8A4C'} />
-            <ScoreDonut title="SA2 Score" percentage={scoreFromSummary(activeSummary, activeMode)} sub="1 - conflict rate" />
+            <MetricCard value={formatNullablePercent(activeSummary?.conflict_rate)} label="Conflict Rate" sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : 'conflicts / matched pairs'} color={(activeSummary?.conflict_rate || 0) > 0 ? '#9E2B0A' : 'var(--navy)'} />
+            <AccuracyScoreDonut title="SA2 Score" percentage={activeScore} sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : '1 - conflict rate'} />
           </div>
 
           {hasCross && (

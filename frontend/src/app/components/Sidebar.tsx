@@ -63,7 +63,7 @@ export default function Sidebar({
       >
         <Link
           to="/"
-          className="flex items-center justify-center w-full h-full p-4"
+          className="flex items-center justify-center w-full h-full px-4 py-2"
         >
           {collapsed ? (
             <BarChart3
@@ -73,8 +73,8 @@ export default function Sidebar({
           ) : (
             <div className="relative flex items-center justify-center w-full">
               <h1
-                className="text-2xl whitespace-nowrap"
-                style={{ color: 'var(--text-on-dark)' }}
+                className="whitespace-nowrap"
+                style={{ color: 'var(--text-on-dark)', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: '2rem', letterSpacing: '0.04em' }}
               >
                 ProVKG
               </h1>
@@ -82,7 +82,7 @@ export default function Sidebar({
                 className="w-8 h-8 absolute"
                 style={{
                   color: 'var(--accent)',
-                  right: 'calc(50% + 3rem)',
+                  right: 'calc(50% + 4rem)',
                 }}
               />
             </div>

@@ -43,7 +43,7 @@ export default function LandingPage() {
       <section className="max-w-7xl mx-auto px-6 py-16">
         <div className="text-center mb-16">
           <h2 className="text-4xl mb-4" style={{ color: 'var(--navy)' }}>
-            VKG Data Quality Analysis
+            VKG Data Quality Profiling
           </h2>
           <p className="text-xl" style={{ color: 'var(--muted-foreground)' }}>
             Monitor and improve your knowledge graph data across three critical dimensions

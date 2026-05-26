@@ -114,6 +114,11 @@ services:
       METADATA_SOURCE: "${METADATA_SOURCE:-ontology}"
       ONTOLOGY_FILE: "${ONTOLOGY_FILE:-/app/vkg/obda/university.ttl}"
       OBDA_FILE: "${OBDA_FILE:-/app/vkg/obda/university.obda}"
+      TEIID_HOST: "${TEIID_HOST:-teiid}"
+      TEIID_PORT: "${TEIID_PORT:-35432}"
+      TEIID_DB: "${TEIID_DB:-universities}"
+      TEIID_USER: "${TEIID_USER:-user1}"
+      TEIID_PASSWORD: "${TEIID_PASSWORD:-Password12345_}"
     ports:
       - '0.0.0.0:${API_PORT:-8000}:8000'
     volumes:

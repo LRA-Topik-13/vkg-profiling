@@ -9,7 +9,7 @@ export default function Layout() {
     <div className="flex">
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
       <div
-        className="flex-1 min-h-screen transition-all duration-300"
+        className="flex-1 min-w-0 min-h-screen transition-all duration-300"
         style={{ marginLeft: collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH }}
       >
         <Outlet />

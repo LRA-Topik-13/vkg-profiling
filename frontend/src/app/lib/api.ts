@@ -15,8 +15,6 @@ async function get<T>(path: string, params?: Record<string, string | number | bo
   return res.json() as Promise<T>;
 }
 
-export interface MetaItem { localName: string; label?: string | null }
-
 export interface ClassMeta { localName: string; uri: string; label?: string | null }
 export interface PropertyMeta { localName: string; uri: string; type: 'data' | 'object'; label?: string | null; range?: string | null; rangeClass?: string | null }
 
@@ -31,13 +29,23 @@ export const metadataApi = {
 };
 
 export interface MappingCoverage {
-  classes: { total: number; mapped: number; unmapped: number; coverage: number; mapped_list: MetaItem[]; unmapped_list: MetaItem[] };
-  properties: { total: number; mapped: number; unmapped: number; coverage: number; mapped_list: MetaItem[]; unmapped_list: MetaItem[] };
+  classes: { total: number; mapped: number; unmapped: number; coverage: number };
+  properties: { total: number; mapped: number; unmapped: number; coverage: number };
   overall_coverage: number;
 }
 
-export interface PropertyResult { property: string; label?: string; filled: number; missing: number; completeness: number }
-export interface EntityRow { uri: string; scores: Record<string, boolean>; completeness: number }
+export type MappingItemKind = 'class' | 'property';
+export type MappingItemStatus = 'mapped' | 'unmapped';
+export interface MappingItem { uri: string; localName: string; label?: string | null }
+export interface MappingItemsResponse {
+  kind: MappingItemKind;
+  status: MappingItemStatus;
+  items: MappingItem[];
+  pagination: PaginationInfo;
+}
+
+export interface PropertyResult { property: string; uri?: string; label?: string; filled: number; missing: number; completeness: number }
+export interface EntityRow { uri: string; label?: string | null; scores: Record<string, boolean>; completeness: number }
 export interface MatrixPropertyInfo { uri: string; localName?: string; label?: string | null }
 export interface CompletenessMatrix {
   class_uri: string;
@@ -62,6 +70,34 @@ export interface ClassSummary {
   classes: ClassSummaryEntry[];
   total_entities: number;
   overall_completeness: number;
+}
+
+export interface PopulationSourceBreakdown {
+  table: string;
+  source_population: number;
+}
+export interface PopulationEntry {
+  uri: string;
+  class: string;
+  label?: string | null;
+  represented: number;
+  source_population: number | null;
+  missing: number | null;
+  completeness: number | null;
+  by_source: PopulationSourceBreakdown[];
+}
+export interface PopulationSummary {
+  classes: PopulationEntry[];
+  total_represented: number;
+  total_source_population: number | null;
+  overall_completeness: number | null;
+  source_reachable: boolean;
+  source_error: string | null;
+}
+export interface PopulationEntities {
+  class: string;
+  entities: { uri: string; label?: string | null; source: string | null }[];
+  pagination: { limit: number; offset: number; count: number; total: number | null };
 }
 
 export interface LinkDetail {
@@ -295,9 +331,14 @@ export const concisenessApi = {
 
 export const completenessApi = {
   mappingCoverage: () => get<MappingCoverage>('/completeness/mapping-coverage'),
+  mappingItems: (params: { kind: MappingItemKind; status: MappingItemStatus; q?: string; limit?: number; offset?: number; include_total?: boolean }) =>
+    get<MappingItemsResponse>('/completeness/mapping-items', params),
   matrix: (params: { class_uri: string; properties: string; filter_facets?: string; limit?: number; offset?: number }) =>
     get<CompletenessMatrix>('/completeness/matrix', params),
   classSummary: () => get<ClassSummary>('/completeness/class-summary'),
+  populationSummary: () => get<PopulationSummary>('/completeness/population-summary'),
+  populationEntities: (params: { class_uri: string; limit?: number; offset?: number }) =>
+    get<PopulationEntities>('/completeness/population-entities', params),
   interlinking: () => get<Interlinking>('/completeness/interlinking'),
   interlinkingEntities: (params: { class_uri: string; status: 'linked' | 'not_linked'; limit?: number; offset?: number }) =>
     get<InterlinkingEntities>('/completeness/interlinking/entities', params),

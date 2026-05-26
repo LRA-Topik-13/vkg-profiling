@@ -15,3 +15,10 @@ SPARQL_MAX_KEEPALIVE_CONNECTIONS = int(os.getenv("SPARQL_MAX_KEEPALIVE_CONNECTIO
 # Ontology and OBDA files used to derive VKG metadata at startup.
 ONTOLOGY_FILE = os.getenv("ONTOLOGY_FILE", str(DEFAULT_ONTOLOGY_FILE))
 OBDA_FILE = os.getenv("OBDA_FILE", str(DEFAULT_OBDA_FILE))
+
+TEIID_HOST = os.getenv("TEIID_HOST", "teiid")
+TEIID_PORT = int(os.getenv("TEIID_PORT", "35432"))
+TEIID_DB = os.getenv("TEIID_DB", "universities")
+TEIID_USER = os.getenv("TEIID_USER", "user1")
+TEIID_PASSWORD = os.getenv("TEIID_PASSWORD", "Password12345_")
+TEIID_CONNECT_TIMEOUT = int(os.getenv("TEIID_CONNECT_TIMEOUT", "5"))

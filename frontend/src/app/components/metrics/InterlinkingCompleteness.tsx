@@ -8,7 +8,7 @@ import {
   InterlinkingEntities,
   statusColor,
 } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList, prettyId } from './_shared';
 
 const PAGE = 25;
 
@@ -31,13 +31,13 @@ export default function InterlinkingCompleteness() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Headline value={data.overall_ratio} label="Overall Linked Ratio" sub="Entities with ≥ 1 link / total" />
         <Headline
-          value={data.classes.reduce((s, c) => s + c.linked, 0)}
+          value={String(data.classes.reduce((s, c) => s + c.linked, 0))}
           label="Linked Entities"
           sub="Across all classes"
           color="var(--navy)"
         />
         <Headline
-          value={data.classes.reduce((s, c) => s + c.not_linked, 0)}
+          value={String(data.classes.reduce((s, c) => s + c.not_linked, 0))}
           label="Isolated Entities"
           sub="No incoming or outgoing link"
           color={statusColor(100 - data.overall_ratio)}
@@ -46,7 +46,6 @@ export default function InterlinkingCompleteness() {
 
       <Section
         title="Linked vs Isolated per Class"
-        subtitle="Stacked horizontal bar — linked count layered against not-linked. Superposition makes proportion immediately readable while parallelism enables ranking across classes."
         collapsible
       >
         <StackedLinkChart classes={data.classes} onSelect={setSelected} selected={selected} />
@@ -72,7 +71,6 @@ export default function InterlinkingCompleteness() {
           ) : (
             <Section
               title="Class Detail"
-              subtitle="Select a class on the left to drill into its outgoing/incoming links and individual entities."
             >
               <div className="py-8 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>No class selected.</div>
             </Section>
@@ -91,10 +89,6 @@ function ClassRow({ entry }: { entry: InterlinkingClass }) {
         <div className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>{entry.class}</div>
       </div>
       <div className="flex items-center gap-3 shrink-0">
-        <div className="hidden sm:flex w-24 h-1.5 overflow-hidden" style={{ borderRadius: 'var(--radius-sm)' }}>
-          <div style={{ width: `${entry.ratio}%`, backgroundColor: '#1F8A4C' }} />
-          <div style={{ width: `${100 - entry.ratio}%`, backgroundColor: '#9E2B0A' }} />
-        </div>
         <span className="text-xs tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
           {entry.linked.toLocaleString()}/{entry.total_entities.toLocaleString()}
         </span>
@@ -254,14 +248,20 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
 
   useEffect(() => {
     setOffset(0);
+    setData(null);
   }, [classUri, status]);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     completenessApi
       .interlinkingEntities({ class_uri: classUri, status, limit: PAGE, offset })
-      .then(setData)
-      .finally(() => setLoading(false));
+      .then((r) => !cancelled && setData(r))
+      .catch(() => !cancelled && setData(null))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
   }, [classUri, status, offset]);
 
   const total = data?.pagination.total ?? null;
@@ -307,10 +307,10 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
               <li key={e.uri} className="flex items-center gap-2">
                 <StatusBadge percent={status === 'linked' ? 100 : 0} />
                 <span className="truncate" style={{ color: 'var(--text)' }} title={e.uri}>
-                  {e.label || shortenUri(e.uri)}
+                  {e.label || prettyId(e.uri)}
                 </span>
                 <span className="text-xs ml-auto" style={{ color: 'var(--muted-foreground)' }}>
-                  {shortenUri(e.uri)}
+                  {prettyId(e.uri)}
                 </span>
               </li>
             ))}
@@ -348,10 +348,4 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
       )}
     </div>
   );
-}
-
-function shortenUri(uri: string): string {
-  if (!uri) return '';
-  const i = Math.max(uri.lastIndexOf('#'), uri.lastIndexOf('/'));
-  return i > 0 ? uri.slice(i + 1) : uri;
 }

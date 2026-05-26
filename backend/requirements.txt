@@ -3,5 +3,6 @@ uvicorn[standard]
 httpx
 rdflib
 python-dotenv
+psycopg2-binary
 pytest
 pytest-asyncio

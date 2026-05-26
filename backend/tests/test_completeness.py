@@ -28,6 +28,51 @@ def test_mapping_coverage_uses_ontology_and_obda_metadata():
     assert 0 <= data["overall_coverage"] <= 100
 
 
+def test_mapping_items_paginates_and_reports_total():
+    client = TestClient(app)
+
+    full = client.get("/completeness/mapping-items", params={"kind": "class", "status": "mapped", "limit": 500}).json()
+    total = full["pagination"]["total"]
+    assert total == len(full["items"]) > 0
+
+    page = client.get("/completeness/mapping-items", params={"kind": "class", "status": "mapped", "limit": 2}).json()
+    assert len(page["items"]) <= 2
+    assert page["pagination"]["total"] == total
+    assert page["pagination"]["count"] == len(page["items"])
+    assert all({"uri", "localName", "label"} <= set(it) for it in page["items"])
+
+
+def test_mapping_items_search_is_case_insensitive_subset():
+    client = TestClient(app)
+
+    base = client.get("/completeness/mapping-items", params={"kind": "property", "status": "mapped", "limit": 500}).json()
+    assert base["items"], "expected at least one mapped property to search within"
+    needle = base["items"][0]["localName"][:3]
+
+    hit = client.get(
+        "/completeness/mapping-items",
+        params={"kind": "property", "status": "mapped", "q": needle.upper(), "limit": 500},
+    ).json()
+    assert hit["pagination"]["total"] <= base["pagination"]["total"]
+    assert all(
+        needle.lower() in it["localName"].lower() or needle.lower() in (it["label"] or "").lower()
+        for it in hit["items"]
+    )
+
+
+def test_mapping_items_rejects_invalid_kind_and_status():
+    client = TestClient(app)
+    assert client.get("/completeness/mapping-items", params={"kind": "thing", "status": "mapped"}).status_code == 400
+    assert client.get("/completeness/mapping-items", params={"kind": "class", "status": "bogus"}).status_code == 400
+
+
+def test_not_linked_filters_avoids_unsupported_exists():
+    body = completeness_router._not_linked_filters(["http://example.org/voc#worksFor"])
+    assert "EXISTS" not in body.upper()
+    assert "OPTIONAL" in body
+    assert "!BOUND(?linked)" in body.replace(" ", "")
+
+
 FULL_PROFESSOR_URI = "http://example.org/voc#FullProfessor"
 COURSE_URI = "http://example.org/voc#Course"
 FIRST_NAME_URI = "http://xmlns.com/foaf/0.1/firstName"

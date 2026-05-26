@@ -92,6 +92,16 @@ def _property_count_union(
     return "\nUNION\n".join(branches)
 
 
+STANDARD_LABEL_PREDICATES = [
+    "http://www.w3.org/2000/01/rdf-schema#label",
+    "http://www.w3.org/2004/02/skos/core#prefLabel",
+    "http://purl.org/dc/terms/title",
+    "http://purl.org/dc/elements/1.1/title",
+    "http://schema.org/name",
+    "http://xmlns.com/foaf/0.1/name",
+]
+
+
 def _entity_label_config(class_uri: str) -> list[dict]:
     from app.routers.metadata_router import KNOWN_PROPERTIES
 
@@ -104,18 +114,28 @@ def _entity_label_config(class_uri: str) -> list[dict]:
 
 
 async def _labels_for_entities(class_uri: str, entity_uris: list[str]) -> dict[str, str]:
-    label_props = _entity_label_config(class_uri)
-    if not label_props or not entity_uris:
+    if not entity_uris:
+        return {}
+
+    heuristic_uris = [p["uri"] for p in _entity_label_config(class_uri)]
+    seen: set[str] = set()
+    predicates: list[str] = []
+    for uri in STANDARD_LABEL_PREDICATES + heuristic_uris:
+        if uri not in seen:
+            seen.add(uri)
+            predicates.append(uri)
+    n_standard = len(STANDARD_LABEL_PREDICATES)
+    if not predicates:
         return {}
 
     values = " ".join(f"<{_validate_http_uri(uri, 'entity URI')}>" for uri in entity_uris)
     optionals = "\n".join(
-        f"OPTIONAL {{ ?e <{p['uri']}> ?v{i} }}"
-        for i, p in enumerate(label_props)
+        f"OPTIONAL {{ ?e <{p}> ?v{i} }}"
+        for i, p in enumerate(predicates)
     )
     vars_select = " ".join(
         f"(SAMPLE(?v{i}) AS ?val{i})"
-        for i in range(len(label_props))
+        for i in range(len(predicates))
     )
     label_q = f"""
         {PREFIXES}
@@ -130,11 +150,19 @@ async def _labels_for_entities(class_uri: str, entity_uris: list[str]) -> dict[s
     labels: dict[str, str] = {}
     for b in label_res.get("results", {}).get("bindings", []):
         e_uri = b["e"]["value"]
-        parts = []
-        for i in range(len(label_props)):
-            val = b.get(f"val{i}", {}).get("value")
-            if val:
-                parts.append(val)
+        canonical = next(
+            (b[f"val{i}"]["value"] for i in range(n_standard)
+             if b.get(f"val{i}", {}).get("value")),
+            None,
+        )
+        if canonical:
+            labels[e_uri] = canonical
+            continue
+        parts = [
+            b[f"val{i}"]["value"]
+            for i in range(n_standard, len(predicates))
+            if b.get(f"val{i}", {}).get("value")
+        ]
         if parts:
             labels[e_uri] = " ".join(parts)
     return labels
@@ -196,17 +224,20 @@ def _not_linked_filters(obj_prop_uris: list[str]) -> str:
     if not values:
         return ""
     return f"""
-        FILTER NOT EXISTS {{
-            {values}
-            ?e ?p ?other .
-            FILTER(isIRI(?other))
-            FILTER(?p != rdf:type)
+        OPTIONAL {{
+            {{
+                {values}
+                ?e ?p ?other .
+                FILTER(isIRI(?other))
+                FILTER(?p != rdf:type)
+            }} UNION {{
+                {values}
+                ?other ?p ?e .
+                FILTER(?p != rdf:type)
+            }}
+            BIND(true AS ?linked)
         }}
-        FILTER NOT EXISTS {{
-            {values}
-            ?other ?p ?e .
-            FILTER(?p != rdf:type)
-        }}
+        FILTER(!BOUND(?linked))
     """
 
 
@@ -396,6 +427,10 @@ async def _by_entity_compute(
             "scores":       scores,
             "completeness": completeness,
         })
+
+    labels = await _labels_for_entities(class_uri, [e["uri"] for e in entities])
+    for e in entities:
+        e["label"] = labels.get(e["uri"])
 
     return {
         "uri":        class_uri,
@@ -983,27 +1018,73 @@ def mapping_coverage():
     prop_coverage  = round(len(mapped_props)   / total_props   * 100, 2) if total_props   else 0.0
     overall_coverage = round((len(mapped_classes) + len(mapped_props)) / (total_classes + total_props) * 100, 2)
 
-    def _name_with_label(items):
-        return [{"uri": i["uri"], "name": i["localName"], "label": i.get("label")} for i in items]
-
     return {
         "classes": {
             "total":          total_classes,
             "mapped":         len(mapped_classes),
             "unmapped":       len(unmapped_classes),
             "coverage":       class_coverage,
-            "mapped_list":    _name_with_label(mapped_classes),
-            "unmapped_list":  _name_with_label(unmapped_classes),
         },
         "properties": {
             "total":          total_props,
             "mapped":         len(mapped_props),
             "unmapped":       len(unmapped_props),
             "coverage":       prop_coverage,
-            "mapped_list":    _name_with_label(mapped_props),
-            "unmapped_list":  _name_with_label(unmapped_props),
         },
         "overall_coverage": overall_coverage,
+    }
+
+
+@router.get("/mapping-items")
+def mapping_items(
+    kind: str = Query(..., description="class or property"),
+    status: str = Query(..., description="mapped or unmapped"),
+    q: str = Query("", description="Case-insensitive filter on localName / label"),
+    limit: int = DEFAULT_PAGE_LIMIT,
+    offset: int = 0,
+    include_total: bool = True,
+):
+    """Paginated, searchable inventory of ontology items behind mapping coverage.
+
+    The schema item lists scale with the ontology, not the instance data, but a
+    generic dataset can still carry thousands of classes/properties — so this is
+    served in pages instead of inlined into /mapping-coverage."""
+    limit, offset = _validate_pagination(limit, offset)
+    if kind not in {"class", "property"}:
+        raise HTTPException(status_code=400, detail="kind must be 'class' or 'property'")
+    if status not in {"mapped", "unmapped"}:
+        raise HTTPException(status_code=400, detail="status must be 'mapped' or 'unmapped'")
+
+    from app.routers.metadata_router import ONTOLOGY_CLASSES, ONTOLOGY_PROPERTIES
+
+    source = ONTOLOGY_CLASSES if kind == "class" else ONTOLOGY_PROPERTIES
+    want_mapped = status == "mapped"
+    items = [i for i in source if bool(i["mapped"]) == want_mapped]
+
+    needle = q.strip().lower()
+    if needle:
+        items = [
+            i for i in items
+            if needle in i["localName"].lower()
+            or needle in (i.get("label") or "").lower()
+        ]
+
+    total = len(items) if include_total else None
+    page = items[offset:offset + limit]
+
+    return {
+        "kind": kind,
+        "status": status,
+        "items": [
+            {"uri": i["uri"], "localName": i["localName"], "label": i.get("label")}
+            for i in page
+        ],
+        "pagination": {
+            "limit": limit,
+            "offset": offset,
+            "count": len(page),
+            "total": total,
+        },
     }
 
 
@@ -1133,4 +1214,157 @@ async def class_summary():
         "classes": results,
         "total_entities": total_entities,
         "overall_completeness": overall,
+    }
+
+
+@router.get("/population-summary")
+async def population_summary():
+    from app.population import POPULATION_SPECS
+    from app.routers.metadata_router import KNOWN_CLASSES_BY_URI
+    from app.teiid_client import execute_teiid, TeiidUnavailable
+
+    class_uris = list(POPULATION_SPECS.keys())
+    class_list = [
+        KNOWN_CLASSES_BY_URI.get(uri, {"uri": uri, "localName": uri.split("#")[-1].split("/")[-1], "label": None})
+        for uri in class_uris
+    ]
+
+    represented_q = f"""
+        {PREFIXES}
+        SELECT ?class (COUNT(DISTINCT ?e) AS ?n) WHERE {{
+            {_class_union(class_list, "?e a <{class_uri}> .")}
+        }}
+        GROUP BY ?class
+    """
+    try:
+        rep_raw = await execute_sparql(represented_q)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+
+    represented: dict[str, int] = {uri: 0 for uri in class_uris}
+    rep_bindings = rep_raw.get("results", {}).get("bindings", [])
+    if len(class_uris) == 1 and rep_bindings and "class" not in rep_bindings[0]:
+        represented[class_uris[0]] = int(rep_bindings[0]["n"]["value"])
+    else:
+        for row in rep_bindings:
+            uri = row.get("class", {}).get("value")
+            if uri in represented:
+                represented[uri] = int(row["n"]["value"])
+
+    selects: list[str] = []
+    base_tables: dict[tuple[str, str], list[str]] = {}
+    for uri, groups in POPULATION_SPECS.items():
+        for g in groups:
+            base_tables[(uri, g.base)] = g.tables
+            branches = " UNION ALL ".join(
+                f"SELECT {b.key} AS id FROM {b.table}" + (f" WHERE {b.where}" if b.where else "")
+                for b in g.branches
+            )
+            selects.append(
+                f"SELECT CAST('{uri}' AS string) AS cls, "
+                f"CAST('{g.base}' AS string) AS grp, "
+                f"COUNT(DISTINCT id) AS n FROM ({branches}) AS u"
+            )
+    union_sql = "\nUNION ALL\n".join(selects)
+
+    source_total: dict[str, int] = {}
+    source_by_table: dict[str, list[dict]] = {uri: [] for uri in class_uris}
+    source_reachable = True
+    source_error: str | None = None
+    try:
+        rows = await execute_teiid(union_sql)
+        for cls_uri, base, n in rows:
+            n = int(n)
+            source_total[cls_uri] = source_total.get(cls_uri, 0) + n
+            tables = base_tables.get((cls_uri, base), [])
+            source_by_table.setdefault(cls_uri, []).append({
+                "table": ", ".join(tables) if tables else base,
+                "source_population": n,
+            })
+    except TeiidUnavailable as e:
+        source_reachable = False
+        source_error = str(e)
+
+    results = []
+    for cls in class_list:
+        uri = cls["uri"]
+        rep = represented.get(uri, 0)
+        src = source_total.get(uri) if source_reachable else None
+        if src is None:
+            completeness = None
+            missing = None
+        elif src == 0:
+            completeness = 100.0 if rep == 0 else None
+            missing = 0
+        else:
+            completeness = round(rep / src * 100, 2)
+            missing = max(0, src - rep)
+        results.append({
+            "uri": uri,
+            "class": cls.get("localName", uri.split("#")[-1].split("/")[-1]),
+            "label": cls.get("label"),
+            "represented": rep,
+            "source_population": src,
+            "missing": missing,
+            "completeness": completeness,
+            "by_source": sorted(source_by_table.get(uri, []), key=lambda r: r["table"]),
+        })
+    results.sort(key=lambda r: (r["completeness"] is None, r["completeness"] if r["completeness"] is not None else 0))
+
+    total_represented = sum(r["represented"] for r in results)
+    total_source = sum(src for r in results if (src := r["source_population"]) is not None) if source_reachable else None
+    overall = (
+        round(total_represented / total_source * 100, 2)
+        if source_reachable and total_source else None
+    )
+
+    return {
+        "classes": results,
+        "total_represented": total_represented,
+        "total_source_population": total_source,
+        "overall_completeness": overall,
+        "source_reachable": source_reachable,
+        "source_error": source_error,
+    }
+
+
+@router.get("/population-entities")
+async def population_entities(
+    class_uri: str = Query(..., description="Full class URI"),
+    limit: int = Query(25, ge=1, le=MAX_PAGE_LIMIT),
+    offset: int = Query(0, ge=0),
+):
+    class_entry = validate_class_uri(class_uri)
+    limit, offset = _validate_pagination(limit, offset)
+
+    count_q = f"""
+        {PREFIXES}
+        SELECT (COUNT(DISTINCT ?e) AS ?n) WHERE {{ ?e a <{class_uri}> . }}
+    """
+    page_q = f"""
+        {PREFIXES}
+        SELECT DISTINCT ?e WHERE {{ ?e a <{class_uri}> . }}
+        ORDER BY ?e LIMIT {limit} OFFSET {offset}
+    """
+    try:
+        count_raw, page_raw = await asyncio.gather(
+            execute_sparql(count_q),
+            execute_sparql(page_q),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+
+    total = _count_binding(count_raw, "n")
+    uris = [b["e"]["value"] for b in page_raw.get("results", {}).get("bindings", [])]
+    labels = await _labels_for_entities(class_uri, uris)
+
+    def _source_of(uri: str) -> str | None:
+        m = re.search(r"voc#(uni\d+)/", uri)
+        return m.group(1) if m else None
+
+    entities = [{"uri": u, "label": labels.get(u), "source": _source_of(u)} for u in uris]
+    return {
+        "class": class_entry["localName"],
+        "entities": entities,
+        "pagination": {"limit": limit, "offset": offset, "count": len(uris), "total": total},
     }

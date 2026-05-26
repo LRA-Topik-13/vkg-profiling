@@ -89,6 +89,70 @@ def _resolve_any_mapped_prop_uri(prop_uri: str) -> dict:
     raise HTTPException(status_code=404, detail=f"Property URI '{prop_uri}' not found")
 
 
+def _parse_facets(
+    filter_facets: Optional[str],
+    class_uri: str,
+) -> list[tuple[str, str | None]]:
+    """Parse optional object-property facets used to narrow the evaluated population."""
+    if not filter_facets:
+        return []
+
+    class_props = {p["uri"]: p for p in _get_class_props(class_uri)}
+    facets: list[tuple[str, str | None]] = []
+    for token in filter_facets.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if "::" in token:
+            pred, obj = token.split("::", 1)
+            pred = pred.strip()
+            obj = obj.strip()
+            if not pred or not obj:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Invalid facet '{token}'. Both predicate and object "
+                        "are required when using '::'."
+                    ),
+                )
+        else:
+            pred = token
+            obj = None
+
+        prop = class_props.get(pred)
+        if prop is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Facet property '{pred}' is not a known property for class '{class_uri}'.",
+            )
+        if prop.get("type") != "object":
+            raise HTTPException(
+                status_code=400,
+                detail="Facet filters must use object properties.",
+            )
+        facets.append((pred, obj))
+
+    return facets
+
+
+def _build_facet_clauses(
+    subject_var: str,
+    facets: list[tuple[str, str | None]],
+) -> str:
+    """Build SPARQL clauses that apply all facet filters with AND semantics."""
+    if not facets:
+        return ""
+
+    tag = subject_var.lstrip("?")
+    lines = []
+    for i, (pred, obj) in enumerate(facets):
+        if obj is None:
+            lines.append(f"            {subject_var} <{pred}> ?_fac_{tag}_{i} .")
+        else:
+            lines.append(f"            {subject_var} <{pred}> <{obj}> .")
+    return "\n".join(lines)
+
+
 def _parse_source_list(
     sources_param: str | None,
     min_count: int = 1,
@@ -165,6 +229,7 @@ def _compute_tukey(values: list[float]) -> dict:
 async def _fetch_property_presence_rows(
     class_uri: str,
     props: list[dict],
+    facets: list[tuple[str, str | None]],
 ) -> list[dict]:
     """
     Returns per-entity property-existence data using N+1 INNER JOIN queries
@@ -179,11 +244,13 @@ async def _fetch_property_presence_rows(
     Returns a list of {"uri": str, "prop_status": {name: bool}} dicts.
     """
     prop_names = [p["localName"] for p in props]
+    facet_clauses = _build_facet_clauses("?entity", facets)
 
     entity_q = f"""
         {PREFIXES}
         SELECT DISTINCT ?entity WHERE {{
             ?entity a <{class_uri}> .
+{facet_clauses}
         }}
     """
     entity_raw = await execute_sparql(entity_q)
@@ -197,6 +264,7 @@ async def _fetch_property_presence_rows(
             {PREFIXES}
             SELECT DISTINCT ?entity WHERE {{
                 ?entity a <{class_uri}> .
+{facet_clauses}
                 ?entity <{p["uri"]}> ?val .
             }}
         """
@@ -276,17 +344,22 @@ async def _fetch_property_entity_uris(
 # ── SA1: mode implementations ──────────────────────────────────────────────────
 
 async def _sa1_relationship_count(
-    class_uri: str, class_name: str, property_uri: str
+    class_uri: str,
+    class_name: str,
+    property_uri: str,
+    facets: list[tuple[str, str | None]],
 ) -> dict:
     """Run SA1 relationship-count outlier profiling with Tukey fences."""
     prop_entry = _resolve_prop_by_uri(class_uri, property_uri, expected_type="object")
     prop_uri = prop_entry["uri"]
     property_name = prop_entry["localName"]
+    facet_clauses = _build_facet_clauses("?entity", facets)
 
     query = f"""
         {PREFIXES}
         SELECT ?entity (COUNT(DISTINCT ?val) AS ?count) WHERE {{
             ?entity a <{class_uri}> .
+{facet_clauses}
             OPTIONAL {{ ?entity <{prop_uri}> ?val }}
         }}
         GROUP BY ?entity
@@ -350,7 +423,11 @@ async def _sa1_relationship_count(
     }
 
 
-async def _sa1_property_presence_anomaly(class_uri: str, class_name: str) -> dict:
+async def _sa1_property_presence_anomaly(
+    class_uri: str,
+    class_name: str,
+    facets: list[tuple[str, str | None]],
+) -> dict:
     """Run SA1 property-presence anomaly profiling for all mapped class properties."""
     props = _get_class_props(class_uri)
     if not props:
@@ -362,7 +439,7 @@ async def _sa1_property_presence_anomaly(class_uri: str, class_name: str) -> dic
     prop_names = [p["localName"] for p in props]
 
     try:
-        rows = await _fetch_property_presence_rows(class_uri, props)
+        rows = await _fetch_property_presence_rows(class_uri, props, facets)
     except Exception as e:
         raise _sparql_502(e)
 
@@ -467,6 +544,10 @@ async def accuracy_outliers(
         "relationship_count",
         description="'relationship_count' or 'property_presence_anomaly'",
     ),
+    filter_facets: Optional[str] = Query(
+        None,
+        description="Comma-separated object-property facets. Use prop_uri or prop_uri::object_uri.",
+    ),
 ):
     """
     SA1: Outlier Profiling.
@@ -487,6 +568,7 @@ async def accuracy_outliers(
     """
     class_entry = _validate_class_uri(class_uri)
     class_name = class_entry["localName"]
+    facets = _parse_facets(filter_facets, class_uri)
 
     if type == "relationship_count":
         if not property_uri:
@@ -494,10 +576,10 @@ async def accuracy_outliers(
                 status_code=400,
                 detail="'property_uri' is required when type=relationship_count"
             )
-        return await _sa1_relationship_count(class_uri, class_name, property_uri)
+        return await _sa1_relationship_count(class_uri, class_name, property_uri, facets)
 
     if type in {"property_presence_anomaly", "completeness"}:
-        return await _sa1_property_presence_anomaly(class_uri, class_name)
+        return await _sa1_property_presence_anomaly(class_uri, class_name, facets)
 
     raise HTTPException(
         status_code=400,
@@ -611,16 +693,19 @@ def _sa2_within_context(
     identity_props: str,
     target_prop: str,
     sources: str | None,
+    filter_facets: str | None,
 ) -> dict:
     """Build the context needed for an intra-source SA2 request."""
     class_entry = _validate_class_uri(class_uri)
     source_list = _parse_source_list(sources, min_count=1)
     rule = _sa2_identity_rule(class_uri, identity_props, target_prop)
+    facets = _parse_facets(filter_facets, class_uri)
     return {
         **rule,
         "class_name": class_entry["localName"],
         "class_uri": class_uri,
         "sources": source_list,
+        "facets": facets,
     }
 
 
@@ -628,12 +713,16 @@ def _sa2_within_pair_match_body(ctx: dict, source: str) -> str:
     """Build the SPARQL body that matches comparable pairs inside one source."""
     mem_e1 = _source_membership_filter("?e1", [source])
     mem_e2 = _source_membership_filter("?e2", [source])
+    facet_e1 = _build_facet_clauses("?e1", ctx["facets"])
+    facet_e2 = _build_facet_clauses("?e2", ctx["facets"])
     return f"""
                     ?e1 a <{ctx["class_uri"]}> .
                     ?e2 a <{ctx["class_uri"]}> .
                     {mem_e1}
                     {mem_e2}
                     FILTER(STR(?e1) < STR(?e2))
+{facet_e1}
+{facet_e2}
 {ctx["e1_block"]}
 {ctx["e2_block"]}
     """
@@ -792,9 +881,13 @@ async def accuracy_value_conflict_summary(
         None,
         description="Comma-separated source URI prefixes. Defaults to all registered sources.",
     ),
+    filter_facets: Optional[str] = Query(
+        None,
+        description="Comma-separated object-property facets. Use prop_uri or prop_uri::object_uri.",
+    ),
 ):
     """SA2 intra-source population summary. Does not return table rows."""
-    ctx = _sa2_within_context(class_uri, identity_props, target_prop, sources)
+    ctx = _sa2_within_context(class_uri, identity_props, target_prop, sources, filter_facets)
     return await _sa2_within_summary(ctx)
 
 
@@ -813,11 +906,15 @@ async def accuracy_value_conflict_rows(
         None,
         description="Comma-separated source URI prefixes. Defaults to all registered sources.",
     ),
+    filter_facets: Optional[str] = Query(
+        None,
+        description="Comma-separated object-property facets. Use prop_uri or prop_uri::object_uri.",
+    ),
     limit: int = Query(50, ge=1, le=500, description="Max conflict pairs returned per page."),
     offset: int = Query(0, ge=0, description="Conflict pair offset for pagination."),
 ):
     """SA2 intra-source conflict evidence rows only."""
-    ctx = _sa2_within_context(class_uri, identity_props, target_prop, sources)
+    ctx = _sa2_within_context(class_uri, identity_props, target_prop, sources, filter_facets)
     return await _sa2_within_rows_offset(ctx, limit, offset)
 
 
@@ -860,17 +957,20 @@ def _sa2_cross_context(
     identity_props: str,
     target_prop: str,
     sources: str | None,
+    filter_facets: str | None,
 ) -> dict:
     """Build the context needed for a cross-source SA2 request."""
     source_list = _cs_parse_sources(sources)
     class_entry = _validate_class_uri(class_uri)
     rule = _sa2_identity_rule(class_uri, identity_props, target_prop)
+    facets = _parse_facets(filter_facets, class_uri)
 
     return {
         **rule,
         "class_uri": class_uri,
         "class_name": class_entry["localName"],
         "sources": source_list,
+        "facets": facets,
         "source_pairs": [
             (source_list[i], source_list[j])
             for i in range(len(source_list))
@@ -884,6 +984,8 @@ def _sa2_cross_pair_match_body(ctx: dict, sources_for_match: list[str]) -> str:
     mem_e1 = _cs_src_membership("?e1", sources_for_match)
     mem_e2 = _cs_src_membership("?e2", sources_for_match)
     diff = _cs_diff_source(sources_for_match)
+    facet_e1 = _build_facet_clauses("?e1", ctx["facets"])
+    facet_e2 = _build_facet_clauses("?e2", ctx["facets"])
     return f"""
                     ?e1 a <{ctx["class_uri"]}> .
                     ?e2 a <{ctx["class_uri"]}> .
@@ -891,6 +993,8 @@ def _sa2_cross_pair_match_body(ctx: dict, sources_for_match: list[str]) -> str:
                     {mem_e2}
                     {diff}
                     FILTER(STR(?e1) < STR(?e2))
+{facet_e1}
+{facet_e2}
 {ctx["e1_block"]}
 {ctx["e2_block"]}
     """
@@ -1046,9 +1150,13 @@ async def accuracy_value_conflict_cross_source_summary(
         None,
         description="Comma-separated source URI prefixes. Defaults to the first 2 registered sources.",
     ),
+    filter_facets: Optional[str] = Query(
+        None,
+        description="Comma-separated object-property facets. Use prop_uri or prop_uri::object_uri.",
+    ),
 ):
     """SA2 cross-source population summary. Does not return table rows."""
-    ctx = _sa2_cross_context(class_uri, identity_props, target_prop, sources)
+    ctx = _sa2_cross_context(class_uri, identity_props, target_prop, sources, filter_facets)
     return await _sa2_cross_summary(ctx)
 
 
@@ -1067,12 +1175,16 @@ async def accuracy_value_conflict_cross_source_rows(
         None,
         description="Comma-separated source URI prefixes. Defaults to the first 2 registered sources.",
     ),
+    filter_facets: Optional[str] = Query(
+        None,
+        description="Comma-separated object-property facets. Use prop_uri or prop_uri::object_uri.",
+    ),
     limit: int = Query(50, ge=1, le=500, description="Max conflict pairs returned per page."),
     offset: int = Query(0, ge=0, description="Conflict pair offset for pagination."),
     sample_limit: Optional[int] = Query(None, ge=1, le=500, description="Deprecated alias for limit."),
 ):
     """SA2 cross-source conflict evidence rows only."""
-    ctx = _sa2_cross_context(class_uri, identity_props, target_prop, sources)
+    ctx = _sa2_cross_context(class_uri, identity_props, target_prop, sources, filter_facets)
     effective_limit = sample_limit if sample_limit is not None else limit
     return await _sa2_cross_rows_offset(ctx, effective_limit, offset)
 

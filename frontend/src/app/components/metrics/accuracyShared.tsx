@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
 import { ClassMeta, PropertyMeta, statusColor } from '../../lib/api';
 
@@ -63,6 +63,18 @@ export function formatNullablePercent(value: number | undefined | null) {
 
 export function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error || 'Request failed');
+}
+
+export interface AccuracyFacet {
+  propUri: string;
+  propLabel: string;
+  valueUri: string | null;
+  valueLabel: string;
+}
+
+export function facetsToParam(facets: AccuracyFacet[]) {
+  if (facets.length === 0) return undefined;
+  return facets.map((facet) => facet.valueUri ? `${facet.propUri}::${facet.valueUri}` : facet.propUri).join(',');
 }
 
 export function scoreTone(score: number) {
@@ -160,6 +172,77 @@ export function StatusPill({ tone, children }: { tone: 'good' | 'warn' | 'bad' |
     <span className="inline-flex items-center px-2 py-0.5 text-xs" style={{ backgroundColor: bg, color, borderRadius: 'var(--radius-sm)' }}>
       {children}
     </span>
+  );
+}
+
+export function WarningNote({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className="flex items-start gap-2 px-3 py-2 text-sm border"
+      style={{
+        backgroundColor: '#FEF7E6',
+        color: '#8A5A00',
+        borderColor: 'rgba(224,139,26,0.4)',
+        borderRadius: 'var(--radius-md)',
+      }}
+    >
+      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+      <div>{children}</div>
+    </div>
+  );
+}
+
+export function ActiveFacetList({
+  facets,
+  onRemove,
+  onClear,
+}: {
+  facets: AccuracyFacet[];
+  onRemove: (index: number) => void;
+  onClear?: () => void;
+}) {
+  if (facets.length === 0) return null;
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between mb-2 text-sm" style={{ color: 'var(--text)' }}>
+        <span>
+          Active facets <span style={{ color: 'var(--muted-foreground)' }}>(AND)</span>
+        </span>
+        {onClear && (
+          <button onClick={onClear} className="text-xs underline" style={{ color: 'var(--accent)' }}>
+            Clear all
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {facets.map((facet, index) => (
+          <span
+            key={`${facet.propUri}::${facet.valueUri || ''}`}
+            className="inline-flex items-center gap-2 px-2 py-1 text-xs border"
+            style={{
+              backgroundColor: 'var(--accent-soft)',
+              color: 'var(--accent)',
+              borderColor: 'var(--border)',
+              borderRadius: 'var(--radius-sm)',
+            }}
+          >
+            <span>
+              <span style={{ color: 'var(--text)' }}>{facet.propLabel}</span>
+              <span style={{ color: 'var(--muted-foreground)' }}> = </span>
+              <span>{facet.valueLabel}</span>
+            </span>
+            <button
+              onClick={() => onRemove(index)}
+              className="inline-flex items-center"
+              style={{ color: 'var(--accent)' }}
+              title="Remove facet"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 

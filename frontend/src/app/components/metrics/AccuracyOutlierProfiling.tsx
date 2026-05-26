@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, MouseEvent } from 'react';
-import { BarChart3, FileText, Search } from 'lucide-react';
+import { BarChart3, FileText, Plus, Search } from 'lucide-react';
 import {
   accuracyApi,
   AccuracyOutlierResult,
@@ -11,7 +11,9 @@ import {
 } from '../../lib/api';
 import { EmptyState, ErrorState, LoadingState, Section } from './_shared';
 import {
+  AccuracyFacet,
   AccuracyScoreDonut,
+  ActiveFacetList,
   DEFAULT_PAGE_SIZE,
   Field,
   FormulaCard,
@@ -21,16 +23,26 @@ import {
   TableFrame,
   TablePager,
   errorMessage,
+  facetsToParam,
   formatCount,
   formatPercent,
   getEntitySource,
   labelForClass,
   labelForProperty,
   shortUri,
+  WarningNote,
 } from './accuracyShared';
 
 type OutlierMode = 'relationship_count' | 'property_presence_anomaly';
 type SortableEntity = AccuracyRelationshipEntity | AccuracyPresenceEntity;
+
+const EMPTY_FACET_DRAFT = {
+  propUri: '',
+  valueUri: '',
+  values: [] as string[],
+  loading: false,
+  error: null as string | null,
+};
 
 function isRelationshipEntity(entity: SortableEntity): entity is AccuracyRelationshipEntity {
   return 'count' in entity;
@@ -420,7 +432,7 @@ function PresenceResult({ result }: { result: AccuracyOutlierResult }) {
 function OutlierSummary({ result }: { result: AccuracyOutlierResult }) {
   const cleanScore = result.total ? ((result.total - result.outlier_count) / result.total) * 100 : null;
   const isRelationship = result.type === 'relationship_count';
-  const scoreTitle = isRelationship ? 'SA1-RC Score' : 'SA1-PPA Score';
+  const scoreTitle = isRelationship ? 'Relationship Count Score' : 'Property-Presence Anomaly Score';
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
       <MetricCard value={formatCount(result.total)} label="Total Entities" sub={result.class} />
@@ -437,6 +449,8 @@ export default function AccuracyOutlierProfiling() {
   const [selectedClassUri, setSelectedClassUri] = useState('');
   const [selectedPropertyUri, setSelectedPropertyUri] = useState('');
   const [mode, setMode] = useState<OutlierMode>('relationship_count');
+  const [facets, setFacets] = useState<AccuracyFacet[]>([]);
+  const [facetDraft, setFacetDraft] = useState(EMPTY_FACET_DRAFT);
   const [result, setResult] = useState<AccuracyOutlierResult | null>(null);
   const [metadataLoading, setMetadataLoading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -445,6 +459,11 @@ export default function AccuracyOutlierProfiling() {
   const selectedClass = useMemo(() => classes.find((cls) => cls.uri === selectedClassUri) || null, [classes, selectedClassUri]);
   const objectProperties = useMemo(() => properties.filter((prop) => prop.type === 'object'), [properties]);
   const selectedProperty = useMemo(() => properties.find((prop) => prop.uri === selectedPropertyUri) || null, [properties, selectedPropertyUri]);
+  const facetString = useMemo(() => facetsToParam(facets), [facets]);
+  const countedPropertyFacet = useMemo(
+    () => mode === 'relationship_count' && facets.some((facet) => facet.propUri === selectedPropertyUri),
+    [facets, mode, selectedPropertyUri],
+  );
 
   useEffect(() => {
     metadataApi.mappedClasses().then((data) => setClasses(data.classes)).catch((err) => setError(errorMessage(err)));
@@ -454,6 +473,8 @@ export default function AccuracyOutlierProfiling() {
     setResult(null);
     setError(null);
     setSelectedPropertyUri('');
+    setFacets([]);
+    setFacetDraft(EMPTY_FACET_DRAFT);
     if (!selectedClassUri) {
       setProperties([]);
       return;
@@ -472,6 +493,53 @@ export default function AccuracyOutlierProfiling() {
       .finally(() => setMetadataLoading(false));
   }, [selectedClassUri]);
 
+  useEffect(() => {
+    setFacetDraft((draft) => ({ ...draft, valueUri: '', values: [], loading: false, error: null }));
+    if (!facetDraft.propUri || !selectedClassUri) return;
+    let cancelled = false;
+    const propUri = facetDraft.propUri;
+    setFacetDraft((draft) => ({ ...draft, loading: true, error: null }));
+    metadataApi
+      .facets(selectedClassUri, propUri)
+      .then((data) => {
+        if (!cancelled) setFacetDraft((draft) => draft.propUri === propUri ? { ...draft, values: data.values, loading: false } : draft);
+      })
+      .catch((err) => {
+        if (!cancelled) setFacetDraft((draft) => draft.propUri === propUri ? { ...draft, values: [], loading: false, error: errorMessage(err) } : draft);
+      });
+    return () => { cancelled = true; };
+  }, [facetDraft.propUri, selectedClassUri]);
+
+  function addFacet() {
+    if (!facetDraft.propUri) return;
+    const propEntry = objectProperties.find((prop) => prop.uri === facetDraft.propUri);
+    if (!propEntry) return;
+    const valueUri = facetDraft.valueUri || null;
+    const duplicate = facets.some((facet) => facet.propUri === facetDraft.propUri && facet.valueUri === valueUri);
+    if (duplicate) return;
+    setFacets((prev) => [
+      ...prev,
+      {
+        propUri: facetDraft.propUri,
+        propLabel: labelForProperty(propEntry),
+        valueUri,
+        valueLabel: valueUri ? shortUri(valueUri) : '(exists)',
+      },
+    ]);
+    setFacetDraft((draft) => ({ ...draft, valueUri: '' }));
+    setResult(null);
+  }
+
+  function removeFacet(index: number) {
+    setFacets((prev) => prev.filter((_, i) => i !== index));
+    setResult(null);
+  }
+
+  function clearFacets() {
+    setFacets([]);
+    setResult(null);
+  }
+
   async function analyze() {
     if (!selectedClassUri) return;
     if (mode === 'relationship_count' && !selectedPropertyUri) return;
@@ -483,6 +551,7 @@ export default function AccuracyOutlierProfiling() {
         class_uri: selectedClassUri,
         type: mode,
         property_uri: mode === 'relationship_count' ? selectedPropertyUri : undefined,
+        filter_facets: facetString,
       });
       setResult(data);
     } catch (err) {
@@ -494,10 +563,10 @@ export default function AccuracyOutlierProfiling() {
 
   return (
     <div className="space-y-6">
-      <Section title="SA1, Outlier Profiling" subtitle="Find entities whose relationship counts or property-presence pattern differ from the class distribution.">
+      <Section title="Outlier Profiling" subtitle="Find entities whose relationship counts or property-presence pattern differ from the class distribution.">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <FormulaCard title="Formula 1, SA1-RC" formula="1 - (RC outlier entities / total entities)" description="Relationship-count outliers are entities outside Tukey fences." />
-          <FormulaCard title="Formula 2, SA1-PPA" formula="1 - (PPA anomaly entities / total entities)" description="Property-presence anomalies differ from the class majority pattern." />
+          <FormulaCard title="Relationship Count Score" formula="1 - (relationship-count outlier entities / total entities)" description="Relationship-count outliers are entities outside Tukey fences." />
+          <FormulaCard title="Property-Presence Anomaly Score" formula="1 - (property-presence anomaly entities / total entities)" description="Property-presence anomalies differ from the class majority pattern." />
         </div>
       </Section>
 
@@ -544,10 +613,63 @@ export default function AccuracyOutlierProfiling() {
             )}
           </div>
 
+          <Field label="Add facet (optional)" hint="Facet filters narrow the evaluated entities before the score is calculated.">
+            <div className="flex gap-2">
+              <select
+                disabled={!selectedClassUri || objectProperties.length === 0 || metadataLoading}
+                value={facetDraft.propUri}
+                onChange={(event) => setFacetDraft((draft) => ({ ...draft, propUri: event.target.value }))}
+                className="flex-1 px-4 py-2 border disabled:opacity-50"
+                style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+              >
+                <option value="">predicate</option>
+                {objectProperties.map((prop) => <option key={prop.uri} value={prop.uri}>{labelForProperty(prop)}</option>)}
+              </select>
+              <select
+                disabled={!facetDraft.propUri || facetDraft.values.length === 0}
+                value={facetDraft.valueUri}
+                onChange={(event) => setFacetDraft((draft) => ({ ...draft, valueUri: event.target.value }))}
+                className="flex-1 px-4 py-2 border disabled:opacity-50"
+                style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+              >
+                <option value="">{facetDraft.loading ? 'Loading...' : 'any value'}</option>
+                {facetDraft.values.map((value) => <option key={value} value={value}>{shortUri(value)}</option>)}
+              </select>
+              <button
+                onClick={addFacet}
+                disabled={!facetDraft.propUri}
+                className="inline-flex items-center gap-1 px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
+                title="Add facet"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+            {facetDraft.error && (
+              <div className="mt-1 text-xs" style={{ color: 'var(--accent)' }}>
+                Failed to load facet values. You can still add an existence facet.
+              </div>
+            )}
+          </Field>
+
+          <ActiveFacetList facets={facets} onRemove={removeFacet} onClear={clearFacets} />
+
+          {countedPropertyFacet && (
+            <WarningNote>
+              A facet uses the same property that Relationship Count is counting. The result is valid, but included entities are already required to have that relationship.
+            </WarningNote>
+          )}
+
+          {mode === 'property_presence_anomaly' && facets.length > 0 && (
+            <WarningNote>
+              Facet properties are forced to be present for included entities. Read their fill rates and matrix cells as scoped by the active facets.
+            </WarningNote>
+          )}
+
           {selectedClass && (
             <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
               Selected class: <span className="font-mono" style={{ color: 'var(--text)' }}>{shortUri(selectedClass.uri)}</span>
-              {selectedProperty && <> , property: <span className="font-mono" style={{ color: 'var(--text)' }}>{shortUri(selectedProperty.uri)}</span></>}
+              {mode === 'relationship_count' && selectedProperty && <> , property: <span className="font-mono" style={{ color: 'var(--text)' }}>{shortUri(selectedProperty.uri)}</span></>}
             </div>
           )}
 

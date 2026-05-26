@@ -432,7 +432,7 @@ function PresenceResult({ result }: { result: AccuracyOutlierResult }) {
 function OutlierSummary({ result }: { result: AccuracyOutlierResult }) {
   const cleanScore = result.total ? ((result.total - result.outlier_count) / result.total) * 100 : null;
   const isRelationship = result.type === 'relationship_count';
-  const scoreTitle = isRelationship ? 'SA1-RC Score' : 'SA1-PPA Score';
+  const scoreTitle = isRelationship ? 'Relationship Count Score' : 'Property-Presence Anomaly Score';
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
       <MetricCard value={formatCount(result.total)} label="Total Entities" sub={result.class} />
@@ -563,10 +563,10 @@ export default function AccuracyOutlierProfiling() {
 
   return (
     <div className="space-y-6">
-      <Section title="SA1, Outlier Profiling" subtitle="Find entities whose relationship counts or property-presence pattern differ from the class distribution.">
+      <Section title="Outlier Profiling" subtitle="Find entities whose relationship counts or property-presence pattern differ from the class distribution.">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <FormulaCard title="Formula 1, SA1-RC" formula="1 - (RC outlier entities / total entities)" description="Relationship-count outliers are entities outside Tukey fences." />
-          <FormulaCard title="Formula 2, SA1-PPA" formula="1 - (PPA anomaly entities / total entities)" description="Property-presence anomalies differ from the class majority pattern." />
+          <FormulaCard title="Relationship Count Score" formula="1 - (relationship-count outlier entities / total entities)" description="Relationship-count outliers are entities outside Tukey fences." />
+          <FormulaCard title="Property-Presence Anomaly Score" formula="1 - (property-presence anomaly entities / total entities)" description="Property-presence anomalies differ from the class majority pattern." />
         </div>
       </Section>
 

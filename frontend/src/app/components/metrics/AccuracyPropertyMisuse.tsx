@@ -63,10 +63,10 @@ export default function AccuracyPropertyMisuse() {
 
   return (
     <div className="space-y-6">
-      <Section title="SA4, Property Misuse" subtitle="Check whether a property is used only by classes where the ontology expects it.">
+      <Section title="Property Misuse" subtitle="Check whether a property is used only by classes where the ontology expects it.">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <FormulaCard title="Property Domain Check" formula="expected property uses / all observed property uses" description="Unexpected class-property combinations are treated as semantic misuse evidence." />
-          <FormulaCard title="SA4 Score" formula="total expected uses / (expected uses + misuse uses)" description="The score decreases when a property appears on classes outside its expected domain." />
+          <FormulaCard title="Property Misuse Score" formula="total expected uses / (expected uses + misuse uses)" description="The score decreases when a property appears on classes outside its expected domain." />
         </div>
       </Section>
 
@@ -101,7 +101,7 @@ export default function AccuracyPropertyMisuse() {
             <MetricCard value={formatCount(result.total_property_uses)} label="Observed Uses" sub={result.property} />
             <MetricCard value={formatCount(result.total_expected_count)} label="Expected Uses" sub="Ontology domain" color="#1F8A4C" />
             <MetricCard value={formatCount(result.total_misuse_count)} label="Misuse Uses" sub="Unexpected domain" color={result.total_misuse_count > 0 ? '#9E2B0A' : '#1F8A4C'} />
-            <AccuracyScoreDonut title="SA4 Score" percentage={result.sa4_score} sub="expected / observed" />
+            <AccuracyScoreDonut title="Property Misuse Score" percentage={result.sa4_score} sub="expected / observed" />
           </div>
 
           <Section title="Expected Domain" subtitle={`Expected domain for ${result.property}.`}>

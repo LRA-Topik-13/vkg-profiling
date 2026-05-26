@@ -18,7 +18,7 @@ const dimensionConfig = {
     title: 'Accuracy',
     description: 'Measure the correctness and precision of your data',
     color: 'var(--accent)',
-    tabs: ['SA1 - Outlier Profiling', 'SA2 - Uniqueness Violation', 'SA4 - Property Misuse'],
+    tabs: ['Outlier Profiling', 'Uniqueness Violation', 'Property Misuse'],
   },
   completeness: {
     title: 'Completeness',

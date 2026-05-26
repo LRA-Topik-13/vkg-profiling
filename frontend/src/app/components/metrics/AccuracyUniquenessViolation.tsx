@@ -430,10 +430,10 @@ export default function AccuracyUniquenessViolation() {
 
   return (
     <div className="space-y-6">
-      <Section title="SA2, Uniqueness Violation" subtitle="Check whether selected identity properties determine one target property.">
+      <Section title="Uniqueness Violation" subtitle="Check whether selected identity properties determine one target property.">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <FormulaCard title="Functional Dependency" formula="identity properties -> target property" description="Pairs with the same identity values should not disagree on the target value." />
-          <FormulaCard title="SA2 Score" formula="1 - (conflicting matched pairs / matched comparable pairs)" description="When no comparable pairs exist, the score is shown as N/A." />
+          <FormulaCard title="Uniqueness Violation Score" formula="1 - (conflicting matched pairs / matched comparable pairs)" description="When no comparable pairs exist, the score is shown as N/A." />
         </div>
       </Section>
 
@@ -563,7 +563,7 @@ export default function AccuracyUniquenessViolation() {
       </Section>
 
       {error && <ErrorState message={error} />}
-      {summaryLoading && <LoadingState message="Calculating SA2 summaries..." />}
+      {summaryLoading && <LoadingState message="Calculating uniqueness summaries..." />}
 
       {(intraSummary || crossSummary) && !summaryLoading && (
         <>
@@ -571,7 +571,7 @@ export default function AccuracyUniquenessViolation() {
             <MetricCard value={formatCount(activeSummary?.total_matched || 0)} label="Matched Pairs" sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : summaryLabel(activeMode)} />
             <MetricCard value={formatCount(activeSummary?.conflicting_pairs || 0)} label="Conflicting Pairs" sub="Evidence rows" color={(activeSummary?.conflicting_pairs || 0) > 0 ? '#9E2B0A' : '#1F8A4C'} />
             <MetricCard value={formatNullablePercent(activeSummary?.conflict_rate)} label="Conflict Rate" sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : 'conflicts / matched pairs'} color={(activeSummary?.conflict_rate || 0) > 0 ? '#9E2B0A' : 'var(--navy)'} />
-            <AccuracyScoreDonut title="SA2 Score" percentage={activeScore} sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : '1 - conflict rate'} />
+            <AccuracyScoreDonut title="Uniqueness Violation Score" percentage={activeScore} sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : '1 - conflict rate'} />
           </div>
 
           {hasCross && (

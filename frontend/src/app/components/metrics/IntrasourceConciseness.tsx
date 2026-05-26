@@ -49,23 +49,6 @@ interface Facet {
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
-function FormulaCard({ title, formula, description }: { title: string; formula: string; description?: string }) {
-  return (
-    <div
-      className="px-4 py-3 border"
-      style={{ backgroundColor: 'var(--muted)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)' }}
-    >
-      <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
-        {title}
-      </p>
-      <p className="text-sm font-mono mt-1" style={{ color: 'var(--text)' }}>{formula}</p>
-      {description && (
-        <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>{description}</p>
-      )}
-    </div>
-  );
-}
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -345,26 +328,10 @@ export default function IntrasourceConciseness() {
 
   return (
     <div className="space-y-6">
-      {/* Formulas */}
-      <Section title="Extensional Conciseness (Intra-Source)" subtitle="Detect duplicate instance representations within a single data source.">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <FormulaCard
-            title="Formula 1"
-            formula="unique_instances / total_representations"
-            description="Ratio of unique instances to total instance representations"
-          />
-          <FormulaCard
-            title="Formula 2"
-            formula="1 - (violating_instances / total)"
-            description="1 minus the ratio of instances violating the uniqueness rule"
-          />
-        </div>
-      </Section>
-
       {/* Configuration */}
       <Section
         title="Configuration"
-        subtitle="Select a class, identity properties, source prefix, and optional facet filters."
+        subtitle="Select a class, identity properties, source prefix, and optional facet filters to detect duplicate instances within a single data source."
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Class">

@@ -49,23 +49,6 @@ interface Facet {
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
-function FormulaCard({ title, formula, description }: { title: string; formula: string; description?: string }) {
-  return (
-    <div
-      className="px-4 py-3 border"
-      style={{ backgroundColor: 'var(--muted)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)' }}
-    >
-      <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>
-        {title}
-      </p>
-      <p className="text-sm font-mono mt-1" style={{ color: 'var(--text)' }}>{formula}</p>
-      {description && (
-        <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>{description}</p>
-      )}
-    </div>
-  );
-}
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -366,19 +349,10 @@ export default function CrosssourceConciseness() {
 
   return (
     <div className="space-y-6">
-      {/* Formulas */}
-      <Section title="Ambiguous Instance Detection (Cross-Source)" subtitle="Detect ambiguous instances across multiple data sources.">
-        <FormulaCard
-          title="Formula"
-          formula="1 - (ambiguous_instances / total_in_semantic_metadata_set)"
-          description="Detects unresolved cross-source identity overlaps across all pairwise source combinations"
-        />
-      </Section>
-
       {/* Configuration */}
       <Section
         title="Configuration"
-        subtitle="Select a class, identity properties, data sources, and optional facet filters."
+        subtitle="Select a class, identity properties, data sources, and optional facet filters to detect ambiguous instances across multiple data sources."
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Class">
@@ -588,8 +562,8 @@ export default function CrosssourceConciseness() {
             />
             <Headline
               value={crossResult.cn3_score}
-              label="CN3 Score"
-              sub="Cross-source conciseness"
+              label="Conciseness Score"
+              sub="1 - (ambiguous instances / total)"
             />
           </div>
 

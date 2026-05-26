@@ -1215,3 +1215,156 @@ async def class_summary():
         "total_entities": total_entities,
         "overall_completeness": overall,
     }
+
+
+@router.get("/population-summary")
+async def population_summary():
+    from app.population import POPULATION_SPECS
+    from app.routers.metadata_router import KNOWN_CLASSES_BY_URI
+    from app.teiid_client import execute_teiid, TeiidUnavailable
+
+    class_uris = list(POPULATION_SPECS.keys())
+    class_list = [
+        KNOWN_CLASSES_BY_URI.get(uri, {"uri": uri, "localName": uri.split("#")[-1].split("/")[-1], "label": None})
+        for uri in class_uris
+    ]
+
+    represented_q = f"""
+        {PREFIXES}
+        SELECT ?class (COUNT(DISTINCT ?e) AS ?n) WHERE {{
+            {_class_union(class_list, "?e a <{class_uri}> .")}
+        }}
+        GROUP BY ?class
+    """
+    try:
+        rep_raw = await execute_sparql(represented_q)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+
+    represented: dict[str, int] = {uri: 0 for uri in class_uris}
+    rep_bindings = rep_raw.get("results", {}).get("bindings", [])
+    if len(class_uris) == 1 and rep_bindings and "class" not in rep_bindings[0]:
+        represented[class_uris[0]] = int(rep_bindings[0]["n"]["value"])
+    else:
+        for row in rep_bindings:
+            uri = row.get("class", {}).get("value")
+            if uri in represented:
+                represented[uri] = int(row["n"]["value"])
+
+    selects: list[str] = []
+    base_tables: dict[tuple[str, str], list[str]] = {}
+    for uri, groups in POPULATION_SPECS.items():
+        for g in groups:
+            base_tables[(uri, g.base)] = g.tables
+            branches = " UNION ALL ".join(
+                f"SELECT {b.key} AS id FROM {b.table}" + (f" WHERE {b.where}" if b.where else "")
+                for b in g.branches
+            )
+            selects.append(
+                f"SELECT CAST('{uri}' AS string) AS cls, "
+                f"CAST('{g.base}' AS string) AS grp, "
+                f"COUNT(DISTINCT id) AS n FROM ({branches}) AS u"
+            )
+    union_sql = "\nUNION ALL\n".join(selects)
+
+    source_total: dict[str, int] = {}
+    source_by_table: dict[str, list[dict]] = {uri: [] for uri in class_uris}
+    source_reachable = True
+    source_error: str | None = None
+    try:
+        rows = await execute_teiid(union_sql)
+        for cls_uri, base, n in rows:
+            n = int(n)
+            source_total[cls_uri] = source_total.get(cls_uri, 0) + n
+            tables = base_tables.get((cls_uri, base), [])
+            source_by_table.setdefault(cls_uri, []).append({
+                "table": ", ".join(tables) if tables else base,
+                "source_population": n,
+            })
+    except TeiidUnavailable as e:
+        source_reachable = False
+        source_error = str(e)
+
+    results = []
+    for cls in class_list:
+        uri = cls["uri"]
+        rep = represented.get(uri, 0)
+        src = source_total.get(uri) if source_reachable else None
+        if src is None:
+            completeness = None
+            missing = None
+        elif src == 0:
+            completeness = 100.0 if rep == 0 else None
+            missing = 0
+        else:
+            completeness = round(rep / src * 100, 2)
+            missing = max(0, src - rep)
+        results.append({
+            "uri": uri,
+            "class": cls.get("localName", uri.split("#")[-1].split("/")[-1]),
+            "label": cls.get("label"),
+            "represented": rep,
+            "source_population": src,
+            "missing": missing,
+            "completeness": completeness,
+            "by_source": sorted(source_by_table.get(uri, []), key=lambda r: r["table"]),
+        })
+    results.sort(key=lambda r: (r["completeness"] is None, r["completeness"] if r["completeness"] is not None else 0))
+
+    total_represented = sum(r["represented"] for r in results)
+    total_source = sum(src for r in results if (src := r["source_population"]) is not None) if source_reachable else None
+    overall = (
+        round(total_represented / total_source * 100, 2)
+        if source_reachable and total_source else None
+    )
+
+    return {
+        "classes": results,
+        "total_represented": total_represented,
+        "total_source_population": total_source,
+        "overall_completeness": overall,
+        "source_reachable": source_reachable,
+        "source_error": source_error,
+    }
+
+
+@router.get("/population-entities")
+async def population_entities(
+    class_uri: str = Query(..., description="Full class URI"),
+    limit: int = Query(25, ge=1, le=MAX_PAGE_LIMIT),
+    offset: int = Query(0, ge=0),
+):
+    class_entry = validate_class_uri(class_uri)
+    limit, offset = _validate_pagination(limit, offset)
+
+    count_q = f"""
+        {PREFIXES}
+        SELECT (COUNT(DISTINCT ?e) AS ?n) WHERE {{ ?e a <{class_uri}> . }}
+    """
+    page_q = f"""
+        {PREFIXES}
+        SELECT DISTINCT ?e WHERE {{ ?e a <{class_uri}> . }}
+        ORDER BY ?e LIMIT {limit} OFFSET {offset}
+    """
+    try:
+        count_raw, page_raw = await asyncio.gather(
+            execute_sparql(count_q),
+            execute_sparql(page_q),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+
+    total = _count_binding(count_raw, "n")
+    uris = [b["e"]["value"] for b in page_raw.get("results", {}).get("bindings", [])]
+    labels = await _labels_for_entities(class_uri, uris)
+
+    def _source_of(uri: str) -> str | None:
+        m = re.search(r"voc#(uni\d+)/", uri)
+        return m.group(1) if m else None
+
+    entities = [{"uri": u, "label": labels.get(u), "source": _source_of(u)} for u in uris]
+    return {
+        "class": class_entry["localName"],
+        "entities": entities,
+        "pagination": {"limit": limit, "offset": offset, "count": len(uris), "total": total},
+    }

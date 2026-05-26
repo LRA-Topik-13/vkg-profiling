@@ -72,6 +72,34 @@ export interface ClassSummary {
   overall_completeness: number;
 }
 
+export interface PopulationSourceBreakdown {
+  table: string;
+  source_population: number;
+}
+export interface PopulationEntry {
+  uri: string;
+  class: string;
+  label?: string | null;
+  represented: number;
+  source_population: number | null;
+  missing: number | null;
+  completeness: number | null;
+  by_source: PopulationSourceBreakdown[];
+}
+export interface PopulationSummary {
+  classes: PopulationEntry[];
+  total_represented: number;
+  total_source_population: number | null;
+  overall_completeness: number | null;
+  source_reachable: boolean;
+  source_error: string | null;
+}
+export interface PopulationEntities {
+  class: string;
+  entities: { uri: string; label?: string | null; source: string | null }[];
+  pagination: { limit: number; offset: number; count: number; total: number | null };
+}
+
 export interface LinkDetail {
   direction: 'outgoing' | 'incoming';
   property: string;
@@ -308,6 +336,9 @@ export const completenessApi = {
   matrix: (params: { class_uri: string; properties: string; filter_facets?: string; limit?: number; offset?: number }) =>
     get<CompletenessMatrix>('/completeness/matrix', params),
   classSummary: () => get<ClassSummary>('/completeness/class-summary'),
+  populationSummary: () => get<PopulationSummary>('/completeness/population-summary'),
+  populationEntities: (params: { class_uri: string; limit?: number; offset?: number }) =>
+    get<PopulationEntities>('/completeness/population-entities', params),
   interlinking: () => get<Interlinking>('/completeness/interlinking'),
   interlinkingEntities: (params: { class_uri: string; status: 'linked' | 'not_linked'; limit?: number; offset?: number }) =>
     get<InterlinkingEntities>('/completeness/interlinking/entities', params),

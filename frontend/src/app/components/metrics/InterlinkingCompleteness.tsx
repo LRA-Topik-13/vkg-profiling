@@ -46,7 +46,6 @@ export default function InterlinkingCompleteness() {
 
       <Section
         title="Linked vs Isolated per Class"
-        subtitle="Stacked horizontal bar — linked count layered against not-linked. Superposition makes proportion immediately readable while parallelism enables ranking across classes."
         collapsible
       >
         <StackedLinkChart classes={data.classes} onSelect={setSelected} selected={selected} />
@@ -72,7 +71,6 @@ export default function InterlinkingCompleteness() {
           ) : (
             <Section
               title="Class Detail"
-              subtitle="Select a class on the left to drill into its outgoing/incoming links and individual entities."
             >
               <div className="py-8 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>No class selected.</div>
             </Section>

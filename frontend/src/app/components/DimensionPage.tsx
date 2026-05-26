@@ -4,7 +4,7 @@ import CrosssourceConciseness from './metrics/CrosssourceConciseness';
 import SchemaCompleteness from './metrics/SchemaCompleteness';
 import PropertyCompleteness from './metrics/PropertyCompleteness';
 import InterlinkingCompleteness from './metrics/InterlinkingCompleteness';
-import ClassCompleteness from './metrics/ClassCompleteness';
+import PopulationCompleteness from './metrics/PopulationCompleteness';
 import AccuracyOutlierProfiling from './metrics/AccuracyOutlierProfiling';
 import AccuracyUniquenessViolation from './metrics/AccuracyUniquenessViolation';
 import AccuracyPropertyMisuse from './metrics/AccuracyPropertyMisuse';
@@ -24,7 +24,7 @@ const dimensionConfig = {
     title: 'Completeness',
     description: 'Assess the presence of all required data elements',
     color: 'var(--navy)',
-    tabs: ['Schema Completeness', 'Property Completeness', 'Interlinking Completeness', 'Class Completeness'],
+    tabs: ['Schema Completeness', 'Property Completeness', 'Interlinking Completeness', 'Population Completeness'],
   },
   conciseness: {
     title: 'Conciseness',
@@ -48,7 +48,7 @@ export default function DimensionPage({ dimension }: DimensionPageProps) {
       if (activeTab === 0) return <SchemaCompleteness />;
       if (activeTab === 1) return <PropertyCompleteness />;
       if (activeTab === 2) return <InterlinkingCompleteness />;
-      if (activeTab === 3) return <ClassCompleteness />;
+      if (activeTab === 3) return <PopulationCompleteness />;
     }
 
     if (dimension === 'conciseness') {

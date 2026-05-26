@@ -7,6 +7,7 @@ import {
   ClassMeta,
   PropertyMeta,
   CompletenessMatrix,
+  ClassSummary,
   statusColor,
 } from '../../lib/api';
 import { Headline, Section, LoadingState, ErrorState, StatusBadge, PaginatedTable, prettyId } from './_shared';
@@ -165,6 +166,8 @@ export default function PropertyCompleteness() {
 
   return (
     <div className="space-y-6">
+      <ClassCompletenessOverview />
+
       <Section
         title="Configuration"
         subtitle="Filter the analysis to one class and a subset of its properties. Optional facets (predicate + object) narrow entities further using AND semantics."
@@ -419,7 +422,6 @@ function ResultsView({
 
       <Section
         title="Completeness per Property"
-        subtitle="Horizontal bar chart; each bar's length encodes the completeness percentage and color encodes status."
       >
         <ResponsiveContainer width="100%" height={Math.max(220, barData.length * 48)}>
           <BarChart data={barData} layout="vertical" margin={{ left: 24, right: 24 }}>
@@ -459,7 +461,6 @@ function ResultsView({
 
       <Section
         title="Entity × Property Matrix"
-        subtitle="Each row is an entity, each column a property. A green check marks a filled value; a dash marks a missing one. Entity and Score columns stay pinned while you scroll horizontally."
       >
         <PaginatedTable
           colSpan={data.properties.length + 2}
@@ -529,6 +530,59 @@ function ResultsView({
         </PaginatedTable>
       </Section>
     </>
+  );
+}
+
+function ClassCompletenessOverview() {
+  const [data, setData] = useState<ClassSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    completenessApi.classSummary()
+      .then(setData)
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const ranked = useMemo(() => {
+    if (!data) return [];
+    return [...data.classes]
+      .filter((c) => c.total_entities > 0)
+      .sort((a, b) => a.completeness - b.completeness)
+      .map((c) => ({ name: c.label || c.class, completeness: c.completeness, entities: c.total_entities }));
+  }, [data]);
+
+  if (loading) {
+    return (
+      <Section title="Completeness by Class" collapsible>
+        <LoadingState />
+      </Section>
+    );
+  }
+
+  if (!data || ranked.length === 0) return null;
+
+  return (
+    <Section title="Completeness by Class" collapsible>
+      <div className="always-scrollbar max-h-[500px] overflow-y-auto">
+        <ResponsiveContainer width="100%" height={Math.max(220, ranked.length * 40)}>
+          <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 24 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+            <XAxis type="number" domain={[0, 100]} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}%`} />
+            <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
+            <Tooltip
+              contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }}
+              formatter={(v: number, _n, p) => [`${v.toFixed(2)}%`, `${p.payload.entities} entities`]}
+            />
+            <Bar dataKey="completeness" radius={[0, 6, 6, 0]}>
+              {ranked.map((d, i) => (
+                <Cell key={i} fill={statusColor(d.completeness)} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </Section>
   );
 }
 

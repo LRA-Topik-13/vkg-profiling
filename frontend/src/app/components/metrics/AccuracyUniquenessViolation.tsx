@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FileText, Search } from 'lucide-react';
+import { FileText, Plus, Search } from 'lucide-react';
 import {
   accuracyApi,
   AccuracyCrossSourceSummaryEntry,
@@ -12,7 +12,9 @@ import {
 } from '../../lib/api';
 import { EmptyState, ErrorState, LoadingState, Section } from './_shared';
 import {
+  AccuracyFacet,
   AccuracyScoreDonut,
+  ActiveFacetList,
   DEFAULT_PAGE_SIZE,
   Field,
   FormulaCard,
@@ -23,15 +25,25 @@ import {
   TableFrame,
   TablePager,
   errorMessage,
+  facetsToParam,
   formatCount,
   formatNullablePercent,
   labelForClass,
   labelForProperty,
   shortUri,
   sortSources,
+  WarningNote,
 } from './accuracyShared';
 
 type EvidenceMode = 'cross' | 'intra';
+
+const EMPTY_FACET_DRAFT = {
+  propUri: '',
+  valueUri: '',
+  values: [] as string[],
+  loading: false,
+  error: null as string | null,
+};
 
 interface RowState {
   rows: AccuracyPairRow[];
@@ -203,6 +215,8 @@ export default function AccuracyUniquenessViolation() {
   const [targetPropUri, setTargetPropUri] = useState('');
   const [identityPropUris, setIdentityPropUris] = useState<string[]>([]);
   const [selectedSources, setSelectedSources] = useState<string[]>([SOURCE_OPTIONS[0].value]);
+  const [facets, setFacets] = useState<AccuracyFacet[]>([]);
+  const [facetDraft, setFacetDraft] = useState(EMPTY_FACET_DRAFT);
   const [metadataLoading, setMetadataLoading] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -214,11 +228,14 @@ export default function AccuracyUniquenessViolation() {
 
   const selectedClass = useMemo(() => classes.find((cls) => cls.uri === selectedClassUri) || null, [classes, selectedClassUri]);
   const dataProperties = useMemo(() => properties.filter((prop) => prop.type === 'data'), [properties]);
+  const objectProperties = useMemo(() => properties.filter((prop) => prop.type === 'object'), [properties]);
   const identityCandidates = useMemo(() => dataProperties.filter((prop) => prop.uri !== targetPropUri), [dataProperties, targetPropUri]);
   const targetProp = useMemo(() => dataProperties.find((prop) => prop.uri === targetPropUri) || null, [dataProperties, targetPropUri]);
   const identityLabels = useMemo(() => identityPropUris.map((uri) => labelForProperty(dataProperties.find((prop) => prop.uri === uri))).filter(Boolean), [identityPropUris, dataProperties]);
+  const facetString = useMemo(() => facetsToParam(facets), [facets]);
   const canAnalyze = Boolean(selectedClassUri && targetPropUri && identityPropUris.length > 0 && selectedSources.length > 0);
   const hasCross = selectedSources.length >= 2;
+  const hasExactFacet = facets.some((facet) => facet.valueUri);
   const activeSummary = activeMode === 'cross' ? crossSummary : intraSummary;
   const activeRows = activeMode === 'cross' ? crossRows : intraRows;
   const activeScore = scoreFromSummary(activeSummary, activeMode);
@@ -232,6 +249,8 @@ export default function AccuracyUniquenessViolation() {
     setProperties([]);
     setTargetPropUri('');
     setIdentityPropUris([]);
+    setFacets([]);
+    setFacetDraft(EMPTY_FACET_DRAFT);
     setIntraSummary(null);
     setCrossSummary(null);
     setIntraRows(emptyRows());
@@ -258,6 +277,23 @@ export default function AccuracyUniquenessViolation() {
   }, [targetPropUri]);
 
   useEffect(() => {
+    setFacetDraft((draft) => ({ ...draft, valueUri: '', values: [], loading: false, error: null }));
+    if (!facetDraft.propUri || !selectedClassUri) return;
+    let cancelled = false;
+    const propUri = facetDraft.propUri;
+    setFacetDraft((draft) => ({ ...draft, loading: true, error: null }));
+    metadataApi
+      .facets(selectedClassUri, propUri)
+      .then((data) => {
+        if (!cancelled) setFacetDraft((draft) => draft.propUri === propUri ? { ...draft, values: data.values, loading: false } : draft);
+      })
+      .catch((err) => {
+        if (!cancelled) setFacetDraft((draft) => draft.propUri === propUri ? { ...draft, values: [], loading: false, error: errorMessage(err) } : draft);
+      });
+    return () => { cancelled = true; };
+  }, [facetDraft.propUri, selectedClassUri]);
+
+  useEffect(() => {
     if (selectedSources.length < 2 && activeMode === 'cross') setActiveMode('intra');
   }, [selectedSources.length, activeMode]);
 
@@ -271,6 +307,7 @@ export default function AccuracyUniquenessViolation() {
         identity_props: identityPropUris.join(','),
         target_prop: targetPropUri,
         sources: selectedSources.join(','),
+        filter_facets: facetString,
         limit,
         offset,
       };
@@ -281,7 +318,7 @@ export default function AccuracyUniquenessViolation() {
     } catch (err) {
       setState((prev) => ({ ...prev, loading: false, error: errorMessage(err) }));
     }
-  }, [selectedClassUri, targetPropUri, identityPropUris, selectedSources]);
+  }, [selectedClassUri, targetPropUri, identityPropUris, selectedSources, facetString]);
 
   async function analyze() {
     if (!canAnalyze) return;
@@ -299,6 +336,7 @@ export default function AccuracyUniquenessViolation() {
         identity_props: identityPropUris.join(','),
         target_prop: targetPropUri,
         sources: selectedSources.join(','),
+        filter_facets: facetString,
       };
       if (hasCross) {
         const [intra, cross] = await Promise.all([
@@ -323,6 +361,45 @@ export default function AccuracyUniquenessViolation() {
 
   function toggleIdentity(uri: string) {
     setIdentityPropUris((prev) => prev.includes(uri) ? prev.filter((item) => item !== uri) : [...prev, uri]);
+  }
+
+  function addFacet() {
+    if (!facetDraft.propUri) return;
+    const propEntry = objectProperties.find((prop) => prop.uri === facetDraft.propUri);
+    if (!propEntry) return;
+    const valueUri = facetDraft.valueUri || null;
+    const duplicate = facets.some((facet) => facet.propUri === facetDraft.propUri && facet.valueUri === valueUri);
+    if (duplicate) return;
+    setFacets((prev) => [
+      ...prev,
+      {
+        propUri: facetDraft.propUri,
+        propLabel: labelForProperty(propEntry),
+        valueUri,
+        valueLabel: valueUri ? shortUri(valueUri) : '(exists)',
+      },
+    ]);
+    setFacetDraft((draft) => ({ ...draft, valueUri: '' }));
+    setIntraSummary(null);
+    setCrossSummary(null);
+    setIntraRows(emptyRows());
+    setCrossRows(emptyRows());
+  }
+
+  function removeFacet(index: number) {
+    setFacets((prev) => prev.filter((_, i) => i !== index));
+    setIntraSummary(null);
+    setCrossSummary(null);
+    setIntraRows(emptyRows());
+    setCrossRows(emptyRows());
+  }
+
+  function clearFacets() {
+    setFacets([]);
+    setIntraSummary(null);
+    setCrossSummary(null);
+    setIntraRows(emptyRows());
+    setCrossRows(emptyRows());
   }
 
   function toggleSource(uri: string) {
@@ -412,6 +489,53 @@ export default function AccuracyUniquenessViolation() {
               </div>
             )}
           </div>
+
+          <Field label="Add facet (optional)" hint="Facet filters narrow the evaluated entities before pair comparison.">
+            <div className="flex gap-2">
+              <select
+                disabled={!selectedClassUri || objectProperties.length === 0 || metadataLoading}
+                value={facetDraft.propUri}
+                onChange={(event) => setFacetDraft((draft) => ({ ...draft, propUri: event.target.value }))}
+                className="flex-1 px-4 py-2 border disabled:opacity-50"
+                style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+              >
+                <option value="">predicate</option>
+                {objectProperties.map((prop) => <option key={prop.uri} value={prop.uri}>{labelForProperty(prop)}</option>)}
+              </select>
+              <select
+                disabled={!facetDraft.propUri || facetDraft.values.length === 0}
+                value={facetDraft.valueUri}
+                onChange={(event) => setFacetDraft((draft) => ({ ...draft, valueUri: event.target.value }))}
+                className="flex-1 px-4 py-2 border disabled:opacity-50"
+                style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+              >
+                <option value="">{facetDraft.loading ? 'Loading...' : 'any value'}</option>
+                {facetDraft.values.map((value) => <option key={value} value={value}>{shortUri(value)}</option>)}
+              </select>
+              <button
+                onClick={addFacet}
+                disabled={!facetDraft.propUri}
+                className="inline-flex items-center gap-1 px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
+                title="Add facet"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+            {facetDraft.error && (
+              <div className="mt-1 text-xs" style={{ color: 'var(--accent)' }}>
+                Failed to load facet values. You can still add an existence facet.
+              </div>
+            )}
+          </Field>
+
+          <ActiveFacetList facets={facets} onRemove={removeFacet} onClear={clearFacets} />
+
+          {hasCross && hasExactFacet && (
+            <WarningNote>
+              Exact-value facets use one object URI. Cross-source results only include pairs where both entities satisfy that same facet value.
+            </WarningNote>
+          )}
 
           <Field label="Data Sources" hint={selectedSources.length === 1 ? 'One selected source runs intra-source checking only.' : 'Two or more selected sources also run cross-source checking.'}>
             <div className="flex flex-wrap gap-3">

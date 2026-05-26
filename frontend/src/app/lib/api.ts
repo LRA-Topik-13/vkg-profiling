@@ -222,15 +222,15 @@ export interface AccuracyPropertyMisuseResult {
 }
 
 export const accuracyApi = {
-  outliers: (params: { class_uri: string; type: string; property_uri?: string }) =>
+  outliers: (params: { class_uri: string; type: string; property_uri?: string; filter_facets?: string }) =>
     get<AccuracyOutlierResult>('/accuracy/outliers', params),
-  valueConflictSummary: (params: { class_uri: string; identity_props: string; target_prop: string; sources?: string }) =>
+  valueConflictSummary: (params: { class_uri: string; identity_props: string; target_prop: string; sources?: string; filter_facets?: string }) =>
     get<AccuracyValueConflictSummary>('/accuracy/value-conflict/summary', params),
-  valueConflictRows: (params: { class_uri: string; identity_props: string; target_prop: string; sources?: string; limit?: number; offset?: number }) =>
+  valueConflictRows: (params: { class_uri: string; identity_props: string; target_prop: string; sources?: string; filter_facets?: string; limit?: number; offset?: number }) =>
     get<AccuracyValueConflictRows>('/accuracy/value-conflict/rows', params),
-  valueConflictCrossSourceSummary: (params: { class_uri: string; identity_props: string; target_prop: string; sources?: string }) =>
+  valueConflictCrossSourceSummary: (params: { class_uri: string; identity_props: string; target_prop: string; sources?: string; filter_facets?: string }) =>
     get<AccuracyValueConflictSummary>('/accuracy/value-conflict/cross-source/summary', params),
-  valueConflictCrossSourceRows: (params: { class_uri: string; identity_props: string; target_prop: string; sources?: string; limit?: number; offset?: number; sample_limit?: number }) =>
+  valueConflictCrossSourceRows: (params: { class_uri: string; identity_props: string; target_prop: string; sources?: string; filter_facets?: string; limit?: number; offset?: number; sample_limit?: number }) =>
     get<AccuracyValueConflictRows>('/accuracy/value-conflict/cross-source/rows', params),
   propertyMisuseByProperty: (property_uri: string) =>
     get<AccuracyPropertyMisuseResult>('/accuracy/property-misuse/by-property', { property_uri }),

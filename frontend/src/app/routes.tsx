@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router';
 import Layout from './components/Layout';
 import LandingPage from './components/LandingPage';
 import DimensionPage from './components/DimensionPage';
+import NotFoundPage from './components/NotFoundPage';
 
 export const router = createBrowserRouter([
   {
@@ -23,6 +24,10 @@ export const router = createBrowserRouter([
       {
         path: 'conciseness',
         element: <DimensionPage dimension="conciseness" />,
+      },
+      {
+        path: '*',
+        element: <NotFoundPage />,
       },
     ],
   },

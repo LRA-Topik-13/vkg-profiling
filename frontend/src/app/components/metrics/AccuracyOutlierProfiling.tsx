@@ -17,7 +17,6 @@ import {
   ActiveFacetList,
   DEFAULT_PAGE_SIZE,
   Field,
-  FormulaCard,
   MetricCard,
   SourceBadge,
   StatusPill,
@@ -463,6 +462,9 @@ export default function AccuracyOutlierProfiling() {
     () => mode === 'relationship_count' && facets.some((facet) => facet.propUri === selectedPropertyUri),
     [facets, mode, selectedPropertyUri],
   );
+  const noExactFacetValues = Boolean(
+    facetDraft.propUri && !facetDraft.loading && !facetDraft.error && facetDraft.values.length === 0,
+  );
 
   useEffect(() => {
     metadataApi.mappedClasses().then((data) => setClasses(data.classes)).catch((err) => setError(errorMessage(err)));
@@ -562,13 +564,6 @@ export default function AccuracyOutlierProfiling() {
 
   return (
     <div className="space-y-6">
-      <Section title="Outlier Profiling" subtitle="Find entities whose relationship counts or property-presence pattern differ from the class distribution.">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <FormulaCard title="Relationship Count Score" formula="1 - (relationship-count outlier entities / total entities)" description="Relationship-count outliers are entities outside Tukey fences." />
-          <FormulaCard title="Property-Presence Anomaly Score" formula="1 - (property-presence anomaly entities / total entities)" description="Property-presence anomalies differ from the class majority pattern." />
-        </div>
-      </Section>
-
       <Section title="Configuration">
         <div className="space-y-4">
           <Field label="Outlier Type">
@@ -625,13 +620,13 @@ export default function AccuracyOutlierProfiling() {
                 {objectProperties.map((prop) => <option key={prop.uri} value={prop.uri}>{labelForProperty(prop)}</option>)}
               </select>
               <select
-                disabled={!facetDraft.propUri || facetDraft.values.length === 0}
+                disabled={!facetDraft.propUri}
                 value={facetDraft.valueUri}
                 onChange={(event) => setFacetDraft((draft) => ({ ...draft, valueUri: event.target.value }))}
                 className="flex-1 px-4 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">{facetDraft.loading ? 'Loading...' : 'any value'}</option>
+                <option value="">{facetDraft.loading ? 'Loading values...' : 'Any value (exists)'}</option>
                 {facetDraft.values.map((value) => <option key={value} value={value}>{shortUri(value)}</option>)}
               </select>
               <button
@@ -647,6 +642,11 @@ export default function AccuracyOutlierProfiling() {
             {facetDraft.error && (
               <div className="mt-1 text-xs" style={{ color: 'var(--accent)' }}>
                 Failed to load facet values. You can still add an existence facet.
+              </div>
+            )}
+            {noExactFacetValues && (
+              <div className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                No exact values were found for this class and property. You can still add an existence facet.
               </div>
             )}
           </Field>

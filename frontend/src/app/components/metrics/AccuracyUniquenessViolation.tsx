@@ -18,7 +18,6 @@ import {
   ActiveFacetList,
   DEFAULT_PAGE_SIZE,
   Field,
-  FormulaCard,
   MetricCard,
   SourceBadge,
   StatusPill,
@@ -238,6 +237,9 @@ export default function AccuracyUniquenessViolation() {
   const canAnalyze = Boolean(selectedClassUri && targetPropUri && identityPropUris.length > 0 && selectedSources.length > 0);
   const hasCross = selectedSources.length >= 2;
   const hasExactFacet = facets.some((facet) => facet.valueUri);
+  const noExactFacetValues = Boolean(
+    facetDraft.propUri && !facetDraft.loading && !facetDraft.error && facetDraft.values.length === 0,
+  );
   const activeSummary = activeMode === 'cross' ? crossSummary : intraSummary;
   const activeRows = activeMode === 'cross' ? crossRows : intraRows;
   const activeScore = scoreFromSummary(activeSummary, activeMode);
@@ -439,13 +441,6 @@ export default function AccuracyUniquenessViolation() {
 
   return (
     <div className="space-y-6">
-      <Section title="Uniqueness Violation" subtitle="Check whether selected identity properties determine one target property.">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <FormulaCard title="Functional Dependency" formula="identity properties -> target property" description="Pairs with the same identity values should not disagree on the target value." />
-          <FormulaCard title="Uniqueness Violation Score" formula="1 - (conflicting matched pairs / matched comparable pairs)" description="When no comparable pairs exist, the score is shown as N/A." />
-        </div>
-      </Section>
-
       <Section title="Configuration">
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -512,13 +507,13 @@ export default function AccuracyUniquenessViolation() {
                 {objectProperties.map((prop) => <option key={prop.uri} value={prop.uri}>{labelForProperty(prop)}</option>)}
               </select>
               <select
-                disabled={!facetDraft.propUri || facetDraft.values.length === 0}
+                disabled={!facetDraft.propUri}
                 value={facetDraft.valueUri}
                 onChange={(event) => setFacetDraft((draft) => ({ ...draft, valueUri: event.target.value }))}
                 className="flex-1 px-4 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">{facetDraft.loading ? 'Loading...' : 'any value'}</option>
+                <option value="">{facetDraft.loading ? 'Loading values...' : 'Any value (exists)'}</option>
                 {facetDraft.values.map((value) => <option key={value} value={value}>{shortUri(value)}</option>)}
               </select>
               <button
@@ -534,6 +529,11 @@ export default function AccuracyUniquenessViolation() {
             {facetDraft.error && (
               <div className="mt-1 text-xs" style={{ color: 'var(--accent)' }}>
                 Failed to load facet values. You can still add an existence facet.
+              </div>
+            )}
+            {noExactFacetValues && (
+              <div className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                No exact values were found for this class and property. You can still add an existence facet.
               </div>
             )}
           </Field>

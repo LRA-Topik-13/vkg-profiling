@@ -11,7 +11,6 @@ import { EmptyState, ErrorState, LoadingState, Section } from './_shared';
 import {
   AccuracyScoreDonut,
   Field,
-  FormulaCard,
   MetricCard,
   StatusPill,
   TableFrame,
@@ -63,13 +62,6 @@ export default function AccuracyPropertyMisuse() {
 
   return (
     <div className="space-y-6">
-      <Section title="Property Misuse" subtitle="Check whether a property is used only by classes where the ontology expects it.">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <FormulaCard title="Property Domain Check" formula="expected property uses / all observed property uses" description="Unexpected class-property combinations are treated as semantic misuse evidence." />
-          <FormulaCard title="Property Misuse Score" formula="total expected uses / (expected uses + misuse uses)" description="The score decreases when a property appears on classes outside its expected domain." />
-        </div>
-      </Section>
-
       <Section title="Configuration">
         <div className="space-y-4">
           <Field label="Property" hint={metadataLoading ? 'Loading properties...' : 'Select one mapped property to evaluate across all mapped classes.'}>

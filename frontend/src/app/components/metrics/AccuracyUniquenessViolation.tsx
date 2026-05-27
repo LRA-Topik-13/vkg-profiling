@@ -20,6 +20,7 @@ import {
   Field,
   MetricCard,
   SourceBadge,
+  ScopeSummary,
   StatusPill,
   TableFrame,
   TablePager,
@@ -30,6 +31,7 @@ import {
   labelForClass,
   labelForProperty,
   shortUri,
+  sourceLabel,
   sortSources,
   WarningNote,
 } from './accuracyShared';
@@ -53,6 +55,10 @@ interface RowState {
 }
 
 const emptyRows = (): RowState => ({ rows: [], offset: 0, pageSize: DEFAULT_PAGE_SIZE, loading: false, error: null });
+
+function formatFacet(facet: AccuracyFacet) {
+  return facet.valueUri ? `${facet.propLabel} = ${facet.valueLabel}` : `${facet.propLabel} exists`;
+}
 
 function scoreFromSummary(summary: AccuracyValueConflictSummary | null, mode: EvidenceMode) {
   if (!summary) return null;
@@ -204,6 +210,29 @@ function BreakdownTable({ summary, mode }: { summary: AccuracyValueConflictSumma
         </table>
       </TableFrame>
     </Section>
+  );
+}
+
+function UniquenessScopeSummary({
+  mode,
+  classLabel,
+  ruleText,
+  sources,
+  facets,
+}: {
+  mode: EvidenceMode;
+  classLabel: string;
+  ruleText: string;
+  sources: string[];
+  facets: AccuracyFacet[];
+}) {
+  const facetText = facets.length > 0 ? `filtered by ${facets.map(formatFacet).join(', ')}` : 'no facet filter';
+  return (
+    <ScopeSummary>
+      {summaryLabel(mode)} uniqueness for <span className="font-medium">{classLabel}</span>
+      {ruleText && <> using <span className="font-mono" style={{ color: 'var(--navy)' }}>{ruleText}</span></>}
+      , sources {sources.map(sourceLabel).join(', ')}, {facetText}.
+    </ScopeSummary>
   );
 }
 
@@ -372,6 +401,10 @@ export default function AccuracyUniquenessViolation() {
 
   function toggleIdentity(uri: string) {
     setIdentityPropUris((prev) => prev.includes(uri) ? prev.filter((item) => item !== uri) : [...prev, uri]);
+    setIntraSummary(null);
+    setCrossSummary(null);
+    setIntraRows(emptyRows());
+    setCrossRows(emptyRows());
   }
 
   function addFacet() {
@@ -461,10 +494,16 @@ export default function AccuracyUniquenessViolation() {
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <div className="text-sm" style={{ color: 'var(--text)' }}>Identity Properties</div>
+              <div className="text-sm font-medium" style={{ color: 'var(--text)' }}>Identity Properties</div>
               {identityCandidates.length > 0 && (
                 <button
-                  onClick={() => setIdentityPropUris(identityPropUris.length === identityCandidates.length ? [] : identityCandidates.map((p) => p.uri))}
+                  onClick={() => {
+                    setIdentityPropUris(identityPropUris.length === identityCandidates.length ? [] : identityCandidates.map((p) => p.uri));
+                    setIntraSummary(null);
+                    setCrossSummary(null);
+                    setIntraRows(emptyRows());
+                    setCrossRows(emptyRows());
+                  }}
                   className="text-xs underline"
                   style={{ color: 'var(--navy)' }}
                 >
@@ -576,6 +615,14 @@ export default function AccuracyUniquenessViolation() {
 
       {(intraSummary || crossSummary) && !summaryLoading && (
         <>
+          <UniquenessScopeSummary
+            mode={activeMode}
+            classLabel={selectedClass ? labelForClass(selectedClass) : shortUri(selectedClassUri)}
+            ruleText={ruleText}
+            sources={selectedSources}
+            facets={facets}
+          />
+
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <MetricCard value={formatCount(activeSummary?.total_matched || 0)} label="Matched Pairs" sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : summaryLabel(activeMode)} />
             <MetricCard value={formatCount(activeSummary?.conflicting_pairs || 0)} label="Conflicting Pairs" sub="Evidence rows" color={(activeSummary?.conflicting_pairs || 0) > 0 ? '#9E2B0A' : '#1F8A4C'} />

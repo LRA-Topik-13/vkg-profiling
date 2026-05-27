@@ -12,6 +12,7 @@ import {
   AccuracyScoreDonut,
   Field,
   MetricCard,
+  ScopeSummary,
   StatusPill,
   TableFrame,
   errorMessage,
@@ -89,6 +90,10 @@ export default function AccuracyPropertyMisuse() {
 
       {result && !loading && (
         <>
+          <ScopeSummary>
+            Property Misuse for <span className="font-medium">{result.property}</span> across all mapped classes.
+          </ScopeSummary>
+
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <MetricCard value={formatCount(result.total_property_uses)} label="Observed Uses" sub={result.property} />
             <MetricCard value={formatCount(result.total_expected_count)} label="Expected Uses" sub="Ontology domain" color="#1F8A4C" />
@@ -96,7 +101,7 @@ export default function AccuracyPropertyMisuse() {
             <AccuracyScoreDonut title="Property Misuse Score" percentage={result.sa4_score} sub="expected / observed" />
           </div>
 
-          <Section title="Expected Domain" subtitle={`Expected domain for ${result.property}.`}>
+          <Section title="Expected Domain" subtitle={`Expected domain for ${result.property} based on the ontology.`}>
             {expectedDomain.length === 0 ? (
               <EmptyState message="No expected classes are defined for this property." />
             ) : (
@@ -113,7 +118,7 @@ export default function AccuracyPropertyMisuse() {
             )}
           </Section>
 
-          <Section title="Class Breakdown" subtitle="Expected classes are shown for context. Misuse rows include sampled entity evidence.">
+          <Section title="Class Breakdown" subtitle="Misuse means the property appears on a class outside the expected ontology domain.">
             <TableFrame>
               <table className="w-full table-fixed">
                 <thead style={{ backgroundColor: 'var(--navy)', borderBottom: '1px solid var(--border)' }}>

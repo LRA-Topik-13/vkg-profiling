@@ -19,6 +19,7 @@ import {
   Field,
   MetricCard,
   SourceBadge,
+  ScopeSummary,
   StatusPill,
   TableFrame,
   TablePager,
@@ -61,6 +62,10 @@ function median(values: number[]) {
 
 function formatStat(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function formatFacet(facet: AccuracyFacet) {
+  return facet.valueUri ? `${facet.propLabel} = ${facet.valueLabel}` : `${facet.propLabel} exists`;
 }
 
 function groupedStats(items: Array<{ label: string; value: number }>) {
@@ -110,7 +115,7 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
   const y = 92;
   const boxH = 42;
   const pointY = 36;
-  const statGroups = groupedStats([
+  const statItems = [
     { label: 'Min', value: min },
     { label: 'Lower Fence', value: lower },
     { label: 'Q1', value: q1 },
@@ -118,7 +123,7 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
     { label: 'Q3', value: q3 },
     { label: 'Upper Fence', value: upper },
     { label: 'Max', value: max },
-  ]);
+  ];
   const fenceGroups = groupedStats([
     { label: 'Lower Fence', value: lower },
     { label: 'Upper Fence', value: upper },
@@ -147,6 +152,20 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
 
   return (
     <Section title="Distribution" subtitle="Relationship counts are evaluated with Tukey fences. Every distinct count is plotted above the box plot.">
+      <div className="mb-3 flex flex-wrap gap-3 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+        <span className="inline-flex items-center gap-1.5">
+          <span style={{ width: 9, height: 9, borderRadius: 999, backgroundColor: 'var(--navy)', opacity: 0.38 }} />
+          Blue dots are relationship counts
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span style={{ width: 9, height: 9, borderRadius: 999, backgroundColor: '#9E2B0A', opacity: 0.88 }} />
+          Red dots are flagged counts
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span style={{ width: 18, borderTop: '2px dashed #9E2B0A' }} />
+          Dashed lines are Tukey fences
+        </span>
+      </div>
       <div className="relative w-full overflow-x-auto">
         <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[760px] w-full" role="img" aria-label="Relationship count box plot">
           <line x1={left} x2={width - right} y1={y} y2={y} stroke="var(--border)" strokeWidth="2" />
@@ -196,9 +215,9 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
         )}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        {statGroups.map((group) => (
-          <span key={group.value} className="px-2.5 py-1 text-xs border" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}>
-            <span style={{ color: 'var(--muted-foreground)' }}>{group.labels.join(' / ')}:</span> {formatStat(group.value)}
+        {statItems.map((item) => (
+          <span key={item.label} className="px-2.5 py-1 text-xs border" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}>
+            <span style={{ color: 'var(--muted-foreground)' }}>{item.label}:</span> {formatStat(item.value)}
           </span>
         ))}
       </div>
@@ -294,19 +313,18 @@ function PresenceMatrix({ result }: { result: AccuracyOutlierResult }) {
     const stat = result.property_stats?.find((item) => item.property === prop);
     if (!stat) return 'No pattern';
     if (stat.fill_rate > 0.5) return 'Usually present';
-    if (stat.fill_rate > 0 && stat.fill_rate < 0.5) return 'Usually absent';
     if (stat.fill_rate === 0.5) return 'No majority';
-    return 'Never present';
+    return 'Usually absent';
   }
 
   function cellState(entity: AccuracyPresenceEntity, prop: string) {
     const anomaly = entity.outlier_properties.find((item) => item.property === prop);
-    if (anomaly && anomaly.has_value) return { label: '! Present', tone: 'bad', title: 'Has a usually absent property' };
-    if (anomaly) return { label: '! Missing', tone: 'bad', title: 'Missing a usually present property' };
+    if (anomaly && anomaly.has_value) return { label: 'Present', tone: 'bad', title: 'Present, but the property is usually absent' };
+    if (anomaly) return { label: 'Absent', tone: 'bad', title: 'Absent, but the property is usually present' };
     const hasValue = entity.prop_status[prop];
     return hasValue
       ? { label: 'Present', tone: 'good', title: 'Present and consistent' }
-      : { label: 'Missing', tone: 'neutral', title: 'Missing and consistent' };
+      : { label: 'Absent', tone: 'neutral', title: 'Absent and consistent' };
   }
 
   function violationText(entity: AccuracyPresenceEntity) {
@@ -389,14 +407,19 @@ function PresenceMatrix({ result }: { result: AccuracyOutlierResult }) {
 function PresenceResult({ result }: { result: AccuracyOutlierResult }) {
   return (
     <>
-      <Section title="Property Fill Rates" subtitle="Properties above 50% are usually present. Properties below 50% are usually absent.">
+      <Section title="Property Presence Rates" subtitle="Properties above 50% are usually present. Properties below 50% are usually absent.">
+        <div className="mb-3 flex flex-wrap gap-2">
+          <StatusPill tone="good">Usually present</StatusPill>
+          <StatusPill tone="neutral">No majority</StatusPill>
+          <StatusPill tone="warn">Usually absent</StatusPill>
+        </div>
         <TableFrame>
           <table className="w-full table-fixed">
             <thead style={{ backgroundColor: 'var(--navy)', borderBottom: '1px solid var(--border)' }}>
               <tr>
                 <th className="px-4 py-3 text-left" style={{ color: 'var(--text-on-dark)' }}>Property</th>
-                <th className="px-4 py-3 text-left" style={{ color: 'var(--text-on-dark)' }}>Filled</th>
-                <th className="px-4 py-3 text-left" style={{ color: 'var(--text-on-dark)' }}>Fill Rate</th>
+                <th className="px-4 py-3 text-left" style={{ color: 'var(--text-on-dark)' }}>Present</th>
+                <th className="px-4 py-3 text-left" style={{ color: 'var(--text-on-dark)' }}>Presence Rate</th>
                 <th className="px-4 py-3 text-left" style={{ color: 'var(--text-on-dark)' }}>Pattern</th>
               </tr>
             </thead>
@@ -406,7 +429,7 @@ function PresenceResult({ result }: { result: AccuracyOutlierResult }) {
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{stat.property}</td>
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{formatCount(stat.fill_count)}</td>
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{formatPercent(stat.fill_rate * 100)}</td>
-                  <td className="px-4 py-3"><StatusPill tone={stat.fill_rate === 0.5 ? 'neutral' : stat.is_majority ? 'good' : 'warn'}>{stat.fill_rate === 0.5 ? 'No majority' : stat.is_majority ? 'Usually present' : stat.fill_rate === 0 ? 'Never present' : 'Usually absent'}</StatusPill></td>
+                  <td className="px-4 py-3"><StatusPill tone={stat.fill_rate === 0.5 ? 'neutral' : stat.is_majority ? 'good' : 'warn'}>{stat.fill_rate === 0.5 ? 'No majority' : stat.is_majority ? 'Usually present' : 'Usually absent'}</StatusPill></td>
                 </tr>
               ))}
             </tbody>
@@ -419,11 +442,31 @@ function PresenceResult({ result }: { result: AccuracyOutlierResult }) {
         style={{ backgroundColor: 'var(--muted)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
       >
         <span className="font-medium" style={{ color: 'var(--navy)' }}>Matrix rule:</span>{' '}
-        Usually present means fill rate is above 50%, so missing it is anomalous. Usually absent means fill rate is below 50%, so having it is anomalous. At exactly 50%, no anomaly is assigned.
+        Usually present means presence rate is above 50%, so absence is anomalous. Usually absent means presence rate is below 50%, so presence is anomalous. At exactly 50%, no anomaly is assigned.
       </div>
 
       <PresenceMatrix result={result} />
     </>
+  );
+}
+
+function OutlierScopeSummary({
+  result,
+  facets,
+}: {
+  result: AccuracyOutlierResult;
+  facets: AccuracyFacet[];
+}) {
+  const modeLabel = result.type === 'relationship_count' ? 'Relationship Count' : 'Property-Presence Anomaly';
+  const facetText = facets.length > 0 ? `filtered by ${facets.map(formatFacet).join(', ')}` : 'no facet filter';
+  return (
+    <ScopeSummary>
+      {modeLabel} for <span className="font-medium">{result.class}</span>
+      {result.type === 'relationship_count' && result.property && (
+        <> counting <span className="font-medium">{result.property}</span></>
+      )}
+      , {facetText}.
+    </ScopeSummary>
   );
 }
 
@@ -599,7 +642,17 @@ export default function AccuracyOutlierProfiling() {
 
             {mode === 'relationship_count' && (
               <Field label="Object Property" hint={metadataLoading ? 'Loading properties...' : objectProperties.length === 0 && selectedClassUri ? 'No object properties found for this class.' : undefined}>
-                <select disabled={!selectedClassUri || objectProperties.length === 0 || metadataLoading} value={selectedPropertyUri} onChange={(e) => setSelectedPropertyUri(e.target.value)} className="w-full px-4 py-2 border disabled:opacity-50" style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}>
+                <select
+                  disabled={!selectedClassUri || objectProperties.length === 0 || metadataLoading}
+                  value={selectedPropertyUri}
+                  onChange={(e) => {
+                    setSelectedPropertyUri(e.target.value);
+                    setResult(null);
+                    setError(null);
+                  }}
+                  className="w-full px-4 py-2 border disabled:opacity-50"
+                  style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+                >
                   <option value="">Choose an object property...</option>
                   {objectProperties.map((prop) => <option key={prop.uri} value={prop.uri}>{labelForProperty(prop)}</option>)}
                 </select>
@@ -684,6 +737,7 @@ export default function AccuracyOutlierProfiling() {
 
       {result && !loading && (
         <>
+          <OutlierScopeSummary result={result} facets={facets} />
           <OutlierSummary result={result} />
           {result.type === 'relationship_count' && <RelationshipCountBoxPlot result={result} />}
           {result.type === 'relationship_count' ? <RelationshipEntityTable result={result} /> : <PresenceResult result={result} />}

@@ -74,19 +74,6 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
   );
 }
 
-export function FormulaCard({ title, formula, description }: { title: string; formula: string; description?: string }) {
-  return (
-    <div
-      className="px-4 py-3 border"
-      style={{ backgroundColor: 'var(--muted)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)' }}
-    >
-      <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--muted-foreground)' }}>{title}</p>
-      <p className="text-sm font-mono mt-1" style={{ color: 'var(--text)' }}>{formula}</p>
-      {description && <p className="text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>{description}</p>}
-    </div>
-  );
-}
-
 export function MetricCard({ value, label, sub, color }: { value: string | number; label: string; sub?: string; color?: string }) {
   return (
     <div

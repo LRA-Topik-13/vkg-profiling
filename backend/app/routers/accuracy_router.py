@@ -466,8 +466,8 @@ async def _sa1_property_presence_anomaly(
     ]
 
     # Bidirectional majority rule:
-    #   fill_rate > 0.5 -> property is common, entity lacking it is unusual
-    #   fill_rate < 0.5 -> property is rare, entity having it is unusual
+    #   fill_rate > 0.5 -> property is usually present, absence is unusual
+    #   fill_rate < 0.5 -> property is usually absent, presence is unusual
     #   fill_rate = 0.5 -> no clear majority, no flag
     entities = []
     for r in rows:
@@ -487,8 +487,7 @@ async def _sa1_property_presence_anomaly(
                 violations.append({
                     "criterion": "missing_common_property",
                     "message": (
-                        f"Missing {name}, present in {round(fill_rate * 100, 1)}% "
-                        f"of {class_name}."
+                        f"{name} is absent here, but usually present for {class_name}."
                     ),
                 })
             elif fill_rate < 0.5 and has_value:
@@ -502,8 +501,7 @@ async def _sa1_property_presence_anomaly(
                 violations.append({
                     "criterion": "has_rare_property",
                     "message": (
-                        f"Has {name}, present in {round(fill_rate * 100, 1)}% "
-                        f"of {class_name}."
+                        f"{name} is present here, but usually absent for {class_name}."
                     ),
                 })
         is_outlier = bool(violations)
@@ -560,9 +558,9 @@ async def accuracy_outliers(
 
     property_presence_anomaly checks each expected property of the class and
       calculates the fill rate. Bidirectional majority rule:
-        - fill_rate > 50%: property is common, entity lacking it is flagged
+        - fill_rate > 50%: property is usually present, absence is flagged
           (criterion: missing_common_property).
-        - fill_rate < 50%: property is rare, entity having it is flagged
+        - fill_rate < 50%: property is usually absent, presence is flagged
           (criterion: has_rare_property).
         - fill_rate = 50%: no clear majority, no flag.
     """

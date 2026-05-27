@@ -63,12 +63,15 @@ CREATE TABLE public.registration (
 --
 
 COPY public.course (cid, lecturer, lab_teacher, topic) FROM stdin;
-1	1	3	Information security
-2	8	5	Software factory
-3	7	8	Software process management
-4	7	9	Introduction to programming
-5	1	8	Discrete mathematics and logic
-6	7	4	Intelligent Systems
+1	1	3	Data Exploration and Visualization
+2	8	5	Introduction to Multivariate Analysis
+3	7	8	Linear Models
+4	7	9	Nonparametric Statistics
+5	1	8	Statistical Computing
+6	7	4	Probability Theory
+7	8	3	Time Series Analysis
+8	1	9	Bayesian Statistics
+9	7	5	Mathematical Statistics
 \.
 
 
@@ -107,6 +110,11 @@ COPY public.registration (pid, cid) FROM stdin;
 3	2
 3	3
 9	2
+11	7
+6	8
+10	9
+2	7
+9	6
 \.
 
 

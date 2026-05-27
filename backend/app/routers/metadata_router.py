@@ -22,10 +22,10 @@ def _parse_obda(obda_path: str) -> dict[str, set[str]]:
     Parse an Ontop OBDA mapping file and return {class_uri: set(property_uris)}.
 
     Mappings are grouped by subject template base (the template URI with column
-    variables stripped, e.g. "…voc#uni1/academic/" for {a_id} templates).
+    variables stripped, e.g. "…voc#compsci/academic/" for {a_id} templates).
     All entries sharing the same base pool their class assertions and property
-    assertions, so subclass mappings like uni1-fullProfessor automatically
-    inherit the properties from uni1-academic.
+    assertions, so subclass mappings like compsci-fullProfessor automatically
+    inherit the properties from compsci-academic.
     """
     RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
@@ -57,10 +57,10 @@ def _parse_obda(obda_path: str) -> dict[str, set[str]]:
         return None
 
     def _subject_base(subject_term: str) -> str | None:
-        # Handle blank node templates like _:uni1student{s_id}
+        # Handle blank node templates like _:compscistudent{s_id}
         raw = re.sub(r"\{[^}]+\}", "", subject_term).strip()
         if raw.startswith("_:"):
-            return raw  # e.g. "_:uni1student"
+            return raw  # e.g. "_:compscistudent"
         expanded = _expand(subject_term)
         if expanded is None:
             return None
@@ -181,7 +181,7 @@ def _build_metadata(ttl_path: str, obda_path: str):
       :teaches whose domain is :Teacher.  Under OBDA template grouping these
       properties were incorrectly listed as expected on non-Teacher classes such
       as :GraduateStudent (because the lecturer / lab_teacher mapping shares the
-      same uni2/person/ URI template base).  The domain-constraint approach
+      same mathsci/person/ URI template base).  The domain-constraint approach
       correctly excludes them.
     - Ontop performs sub-property inference: querying ?entity :teaches ?val also
       returns entities with :givesLecture (a sub-property).  So AssistantProfessor
@@ -328,13 +328,19 @@ def _build_metadata(ttl_path: str, obda_path: str):
     return known_classes, known_properties, ontology_classes, ontology_properties
 
 
+def _source_local_name(uri: str) -> str:
+    """Short name for a source URI prefix, e.g. "…voc#compsci/" → "compsci"."""
+    frag = uri.split("#")[-1] if "#" in uri else uri.rstrip("/").split("/")[-1]
+    return frag.strip("/")
+
+
 def _extract_source_prefixes(obda_path: str) -> list[str]:
     """
     Extract unique source URI prefixes from OBDA mapping file.
 
     Looks at subject templates in target lines and extracts the common
     prefix up to the first path segment after the namespace fragment.
-    E.g. "http://example.org/voc#uni1/academic/{a_id}" → "http://example.org/voc#uni1/"
+    E.g. "http://example.org/voc#compsci/academic/{a_id}" → "http://example.org/voc#compsci/"
     """
     with open(obda_path, encoding="utf-8") as f:
         content = f.read()
@@ -374,7 +380,10 @@ def _extract_source_prefixes(obda_path: str) -> list[str]:
 KNOWN_CLASSES, KNOWN_PROPERTIES, ONTOLOGY_CLASSES, ONTOLOGY_PROPERTIES = (
     _build_metadata(ONTOLOGY_FILE, OBDA_FILE)
 )
-KNOWN_SOURCES = _extract_source_prefixes(OBDA_FILE)
+KNOWN_SOURCES = [
+    {"uri": prefix, "localName": _source_local_name(prefix)}
+    for prefix in _extract_source_prefixes(OBDA_FILE)
+]
 
 # O(1) class lookup by URI — replaces linear scans of KNOWN_CLASSES list
 KNOWN_CLASSES_BY_URI: dict[str, dict] = {c["uri"]: c for c in KNOWN_CLASSES}
@@ -466,7 +475,7 @@ def get_schema_properties():
 
 @router.get("/sources")
 def get_sources():
-    """Returns all registered data source URI prefixes discovered from the OBDA mapping."""
+    """Registered data sources from the OBDA mapping, each as {uri, localName}."""
     return {"sources": KNOWN_SOURCES}
 
 

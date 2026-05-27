@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Plus, Search } from 'lucide-react';
 import {
   accuracyApi,
@@ -10,6 +10,7 @@ import {
   metadataApi,
   PropertyMeta,
 } from '../../lib/api';
+import { useSources } from '../../lib/sources';
 import { EmptyState, ErrorState, LoadingState, Section } from './_shared';
 import {
   AccuracyFacet,
@@ -19,7 +20,6 @@ import {
   Field,
   FormulaCard,
   MetricCard,
-  SOURCE_OPTIONS,
   SourceBadge,
   StatusPill,
   TableFrame,
@@ -214,7 +214,9 @@ export default function AccuracyUniquenessViolation() {
   const [selectedClassUri, setSelectedClassUri] = useState('');
   const [targetPropUri, setTargetPropUri] = useState('');
   const [identityPropUris, setIdentityPropUris] = useState<string[]>([]);
-  const [selectedSources, setSelectedSources] = useState<string[]>([SOURCE_OPTIONS[0].value]);
+  const sources = useSources();
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  const sourcesInit = useRef(false);
   const [facets, setFacets] = useState<AccuracyFacet[]>([]);
   const [facetDraft, setFacetDraft] = useState(EMPTY_FACET_DRAFT);
   const [metadataLoading, setMetadataLoading] = useState(false);
@@ -244,6 +246,13 @@ export default function AccuracyUniquenessViolation() {
   useEffect(() => {
     metadataApi.mappedClasses().then((data) => setClasses(data.classes)).catch((err) => setError(errorMessage(err)));
   }, []);
+
+  useEffect(() => {
+    if (!sourcesInit.current && sources.length > 0) {
+      sourcesInit.current = true;
+      setSelectedSources([sources[0].uri]);
+    }
+  }, [sources]);
 
   useEffect(() => {
     setProperties([]);
@@ -539,10 +548,10 @@ export default function AccuracyUniquenessViolation() {
 
           <Field label="Data Sources" hint={selectedSources.length === 1 ? 'One selected source runs intra-source checking only.' : 'Two or more selected sources also run cross-source checking.'}>
             <div className="flex flex-wrap gap-3">
-              {SOURCE_OPTIONS.map((source) => (
-                <label key={source.value} className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={selectedSources.includes(source.value)} onChange={() => toggleSource(source.value)} className="w-4 h-4" style={{ accentColor: 'var(--navy)' }} />
-                  <span className="text-sm" style={{ color: 'var(--text)' }}>{source.label}</span>
+              {sources.map((source) => (
+                <label key={source.uri} className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={selectedSources.includes(source.uri)} onChange={() => toggleSource(source.uri)} className="w-4 h-4" style={{ accentColor: 'var(--navy)' }} />
+                  <span className="text-sm" style={{ color: 'var(--text)' }}>{source.localName}</span>
                 </label>
               ))}
             </div>

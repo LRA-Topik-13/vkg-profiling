@@ -78,26 +78,26 @@ COURSE_URI = "http://example.org/voc#Course"
 FIRST_NAME_URI = "http://xmlns.com/foaf/0.1/firstName"
 LAST_NAME_URI = "http://xmlns.com/foaf/0.1/lastName"
 IS_GIVEN_AT_URI = "http://example.org/voc#isGivenAt"
-UNI3_UNIVERSITY_URI = "http://example.org/voc#uni3/university"
-UNI1_DEPARTMENT_URI = "http://example.org/voc#uni1/department/1"
+ACADEMICS_UNIVERSITY_URI = "http://example.org/voc#academics/university"
+COMPSCI_DEPARTMENT_URI = "http://example.org/voc#compsci/department/1"
 WORKS_FOR_URI = "http://example.org/voc#worksFor"
 
 
 def test_build_facet_clauses_emits_one_triple_per_facet():
     clauses = completeness_router.build_facet_clauses(
         [
-            (IS_GIVEN_AT_URI, UNI3_UNIVERSITY_URI),
-            (WORKS_FOR_URI, UNI1_DEPARTMENT_URI),
+            (IS_GIVEN_AT_URI, ACADEMICS_UNIVERSITY_URI),
+            (WORKS_FOR_URI, COMPSCI_DEPARTMENT_URI),
         ]
     )
 
-    assert f"<{IS_GIVEN_AT_URI}> <{UNI3_UNIVERSITY_URI}>" in clauses
-    assert f"<{WORKS_FOR_URI}> <{UNI1_DEPARTMENT_URI}>" in clauses
+    assert f"<{IS_GIVEN_AT_URI}> <{ACADEMICS_UNIVERSITY_URI}>" in clauses
+    assert f"<{WORKS_FOR_URI}> <{COMPSCI_DEPARTMENT_URI}>" in clauses
 
 
 def test_parse_facets_rejects_non_uri_predicate():
     with pytest.raises(HTTPException) as exc:
-        completeness_router.parse_facets("isGivenAt::http://example.org/voc#uni3/university")
+        completeness_router.parse_facets("isGivenAt::http://example.org/voc#academics/university")
 
     assert exc.value.status_code == 400
 
@@ -105,7 +105,7 @@ def test_parse_facets_rejects_non_uri_predicate():
 def test_parse_facets_rejects_data_property_predicate():
     with pytest.raises(HTTPException) as exc:
         completeness_router.parse_facets(
-            f"{FIRST_NAME_URI}::{UNI3_UNIVERSITY_URI}"
+            f"{FIRST_NAME_URI}::{ACADEMICS_UNIVERSITY_URI}"
         )
 
     assert exc.value.status_code == 400
@@ -115,7 +115,7 @@ def test_parse_facets_rejects_data_property_predicate():
 def test_parse_facets_rejects_unknown_predicate():
     with pytest.raises(HTTPException) as exc:
         completeness_router.parse_facets(
-            f"http://example.org/voc#notReal::{UNI3_UNIVERSITY_URI}"
+            f"http://example.org/voc#notReal::{ACADEMICS_UNIVERSITY_URI}"
         )
 
     assert exc.value.status_code == 404
@@ -206,10 +206,10 @@ async def test_property_completeness_applies_multi_facet(monkeypatch):
     data = await completeness_router.completeness_by_property(
         class_uri=COURSE_URI,
         properties=IS_GIVEN_AT_URI,
-        filter_facets=f"{IS_GIVEN_AT_URI}::{UNI3_UNIVERSITY_URI}",
+        filter_facets=f"{IS_GIVEN_AT_URI}::{ACADEMICS_UNIVERSITY_URI}",
     )
 
-    assert any(f"<{IS_GIVEN_AT_URI}> <{UNI3_UNIVERSITY_URI}>" in q for q in queries)
+    assert any(f"<{IS_GIVEN_AT_URI}> <{ACADEMICS_UNIVERSITY_URI}>" in q for q in queries)
     assert data["total_entities"] == 2
 
 
@@ -229,7 +229,7 @@ async def test_entity_completeness_is_paginated(monkeypatch):
             "results": {
                 "bindings": [
                     {
-                        "entity": {"type": "uri", "value": "http://example.org/voc#uni1/academic/1"},
+                        "entity": {"type": "uri", "value": "http://example.org/voc#compsci/academic/1"},
                         "prop0Exists": {"type": "literal", "value": "TRUE"},
                     }
                 ]
@@ -328,7 +328,7 @@ async def test_interlinking_entities_drilldown_is_paginated(monkeypatch):
                 "results": {
                     "bindings": [
                         {
-                            "e": {"type": "uri", "value": "http://example.org/voc#uni1/course/1234"},
+                            "e": {"type": "uri", "value": "http://example.org/voc#compsci/course/1234"},
                             "val0": {"type": "literal", "value": "Linear Algebra"},
                         }
                     ]
@@ -339,7 +339,7 @@ async def test_interlinking_entities_drilldown_is_paginated(monkeypatch):
         return {
             "results": {
                 "bindings": [
-                    {"e": {"type": "uri", "value": "http://example.org/voc#uni1/course/1234"}}
+                    {"e": {"type": "uri", "value": "http://example.org/voc#compsci/course/1234"}}
                 ]
             }
         }
@@ -356,7 +356,7 @@ async def test_interlinking_entities_drilldown_is_paginated(monkeypatch):
     assert len(queries) == 3
     assert data["pagination"] == {"limit": 1, "offset": 1, "count": 1, "total": 3}
     assert data["entities"] == [
-        {"uri": "http://example.org/voc#uni1/course/1234", "label": "Linear Algebra"}
+        {"uri": "http://example.org/voc#compsci/course/1234", "label": "Linear Algebra"}
     ]
 
 

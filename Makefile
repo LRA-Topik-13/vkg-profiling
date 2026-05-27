@@ -73,4 +73,4 @@ ps: ## List running containers across all profiles
 	$(COMPOSE) $(PROFILE_ALL) ps
 
 shell-mssql: ## Open MSSQL shell (healthy dataset)
-	$(COMPOSE) $(PROFILE_HEALTHY) exec mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U uni3 -P uni3pwd
+	$(COMPOSE) $(PROFILE_HEALTHY) exec mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U academics -P academicspwd

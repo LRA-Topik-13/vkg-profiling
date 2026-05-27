@@ -10,14 +10,9 @@ import {
   IntraDuplicateGroup,
   PaginationInfo,
 } from '../../lib/api';
+import { useSources } from '../../lib/sources';
 
 // ── Constants ────────────────────────────────────────────────────────────────
-
-const SOURCE_OPTIONS = [
-  { value: 'http://example.org/voc#uni1/', label: 'uni1 (MySQL)' },
-  { value: 'http://example.org/voc#uni2/', label: 'uni2 (PostgreSQL)' },
-  { value: 'http://example.org/voc#uni3/', label: 'uni3 (MSSQL)' },
-];
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
@@ -139,9 +134,10 @@ export default function IntrasourceConciseness() {
   const [allProperties, setAllProperties] = useState<PropertyMeta[]>([]);
 
   // Selection
+  const sources = useSources();
   const [selectedClassUri, setSelectedClassUri] = useState('');
   const [selectedProps, setSelectedProps] = useState<string[]>([]);
-  const [sourcePrefix, setSourcePrefix] = useState(SOURCE_OPTIONS[0].value);
+  const [sourcePrefix, setSourcePrefix] = useState('');
 
   // Facets
   const [facets, setFacets] = useState<Facet[]>([]);
@@ -183,6 +179,12 @@ export default function IntrasourceConciseness() {
       .then((d) => setClasses(d.classes))
       .catch(() => setClasses([]));
   }, []);
+
+  useEffect(() => {
+    if (!sourcePrefix && sources.length > 0) {
+      setSourcePrefix(sources[0].uri);
+    }
+  }, [sources, sourcePrefix]);
 
   // Fetch properties when class changes
   useEffect(() => {
@@ -432,9 +434,9 @@ export default function IntrasourceConciseness() {
               className="w-full md:w-1/2 px-3 py-2 border"
               style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
             >
-              {SOURCE_OPTIONS.map((src) => (
-                <option key={src.value} value={src.value}>
-                  {src.label} -- {src.value}
+              {sources.map((src) => (
+                <option key={src.uri} value={src.uri}>
+                  {src.localName} -- {src.uri}
                 </option>
               ))}
             </select>

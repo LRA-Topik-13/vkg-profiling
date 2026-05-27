@@ -9,6 +9,7 @@ import {
   metadataApi,
   PropertyMeta,
 } from '../../lib/api';
+import { useSources } from '../../lib/sources';
 import { EmptyState, ErrorState, LoadingState, Section } from './_shared';
 import {
   AccuracyFacet,
@@ -207,6 +208,7 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
 }
 
 function RelationshipEntityTable({ result }: { result: AccuracyOutlierResult }) {
+  const sources = useSources();
   const [sourceFilter, setSourceFilter] = useState('all');
   const [onlyOutliers, setOnlyOutliers] = useState(false);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -231,9 +233,7 @@ function RelationshipEntityTable({ result }: { result: AccuracyOutlierResult }) 
         <div className="flex flex-wrap items-center gap-2">
           <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="px-3 py-2 border text-sm" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}>
             <option value="all">All sources</option>
-            <option value="http://example.org/voc#uni1/">uni1</option>
-            <option value="http://example.org/voc#uni2/">uni2</option>
-            <option value="http://example.org/voc#uni3/">uni3</option>
+            {sources.map((s) => <option key={s.uri} value={s.uri}>{s.localName}</option>)}
           </select>
           <button onClick={() => setOnlyOutliers((v) => !v)} className="px-3 py-2 border text-sm" style={{ backgroundColor: onlyOutliers ? 'var(--accent-soft)' : 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: onlyOutliers ? 'var(--accent)' : 'var(--text)' }}>
             {onlyOutliers ? 'Showing outliers' : 'Show outliers'}
@@ -275,6 +275,7 @@ function RelationshipEntityTable({ result }: { result: AccuracyOutlierResult }) 
 }
 
 function PresenceMatrix({ result }: { result: AccuracyOutlierResult }) {
+  const sources = useSources();
   const [sourceFilter, setSourceFilter] = useState('all');
   const [onlyOutliers, setOnlyOutliers] = useState(false);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -321,9 +322,7 @@ function PresenceMatrix({ result }: { result: AccuracyOutlierResult }) {
         <div className="flex flex-wrap items-center gap-2">
           <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="px-3 py-2 border text-sm" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}>
             <option value="all">All sources</option>
-            <option value="http://example.org/voc#uni1/">uni1</option>
-            <option value="http://example.org/voc#uni2/">uni2</option>
-            <option value="http://example.org/voc#uni3/">uni3</option>
+            {sources.map((s) => <option key={s.uri} value={s.uri}>{s.localName}</option>)}
           </select>
           <button onClick={() => setOnlyOutliers((v) => !v)} className="px-3 py-2 border text-sm" style={{ backgroundColor: onlyOutliers ? 'var(--accent-soft)' : 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: onlyOutliers ? 'var(--accent)' : 'var(--text)' }}>
             {onlyOutliers ? 'Showing anomalies' : 'Show anomalies'}

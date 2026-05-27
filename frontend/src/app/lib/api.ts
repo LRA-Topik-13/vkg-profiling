@@ -127,7 +127,7 @@ export interface Interlinking {
 export interface InterlinkingEntities {
   class: string;
   status: 'linked' | 'not_linked';
-  entities: { uri: string; label?: string | null }[];
+  entities: { uri: string; label?: string | null; direction?: 'outgoing' | 'incoming' | 'both' | null }[];
   pagination: { limit: number; offset: number; count: number; total: number | null };
 }
 

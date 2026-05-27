@@ -241,6 +241,28 @@ def _not_linked_filters(obj_prop_uris: list[str]) -> str:
     """
 
 
+def _direction_optionals(obj_prop_uris: list[str]) -> str:
+    """Binds ?hasOut/?hasIn per entity via OPTIONAL (no EXISTS); distinct prop vars avoid a cross-join."""
+    if not obj_prop_uris:
+        return ""
+    vals = _property_values(obj_prop_uris)
+    return f"""
+        OPTIONAL {{
+            VALUES ?pOut {{ {vals} }}
+            ?e ?pOut ?oOut .
+            FILTER(isIRI(?oOut))
+            FILTER(?pOut != rdf:type)
+            BIND(true AS ?hasOut)
+        }}
+        OPTIONAL {{
+            VALUES ?pIn {{ {vals} }}
+            ?sIn ?pIn ?e .
+            FILTER(?pIn != rdf:type)
+            BIND(true AS ?hasIn)
+        }}
+    """
+
+
 def _get_property_labels(class_uri: str) -> dict[str, str | None]:
     """Returns {property_uri: label} for all properties of the given class."""
     from app.routers.metadata_router import KNOWN_PROPERTIES
@@ -774,16 +796,24 @@ async def interlinking_entities(
 
     class_entry = validate_class_uri(class_uri)
     _, obj_prop_uris, _, _ = _interlinking_metadata()
+
     if status == "linked":
-        status_body = _linked_body(obj_prop_uris)
+        select_clause = "SELECT DISTINCT ?e ?hasOut ?hasIn"
+        page_body = f"""
+            {_direction_optionals(obj_prop_uris)}
+            FILTER(BOUND(?hasOut) || BOUND(?hasIn))
+        """
+        count_body = _linked_body(obj_prop_uris)
     else:
-        status_body = _not_linked_filters(obj_prop_uris)
+        select_clause = "SELECT DISTINCT ?e"
+        page_body = _not_linked_filters(obj_prop_uris)
+        count_body = page_body
 
     page_q = f"""
         {PREFIXES}
-        SELECT DISTINCT ?e WHERE {{
+        {select_clause} WHERE {{
             ?e a <{class_uri}> .
-            {status_body}
+            {page_body}
         }}
         ORDER BY ?e
         LIMIT {limit}
@@ -793,7 +823,7 @@ async def interlinking_entities(
         {PREFIXES}
         SELECT (COUNT(DISTINCT ?e) AS ?total) WHERE {{
             ?e a <{class_uri}> .
-            {status_body}
+            {count_body}
         }}
     """
 
@@ -807,10 +837,20 @@ async def interlinking_entities(
         else:
             page_raw = await execute_sparql(page_q)
             total = None
-        entity_uris = [
-            b["e"]["value"]
-            for b in page_raw.get("results", {}).get("bindings", [])
-        ]
+        bindings = page_raw.get("results", {}).get("bindings", [])
+        entity_uris = [b["e"]["value"] for b in bindings]
+        directions = (
+            {
+                b["e"]["value"]: (
+                    "both" if ("hasOut" in b and "hasIn" in b)
+                    else "outgoing" if "hasOut" in b
+                    else "incoming"
+                )
+                for b in bindings
+            }
+            if status == "linked"
+            else {}
+        )
         labels = await _labels_for_entities(class_uri, entity_uris)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
@@ -820,7 +860,7 @@ async def interlinking_entities(
         "class": class_entry["localName"],
         "status": status,
         "entities": [
-            {"uri": uri, "label": labels.get(uri)}
+            {"uri": uri, "label": labels.get(uri), "direction": directions.get(uri)}
             for uri in entity_uris
         ],
         "pagination": {

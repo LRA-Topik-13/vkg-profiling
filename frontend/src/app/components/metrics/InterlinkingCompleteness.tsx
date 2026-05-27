@@ -168,8 +168,8 @@ function ClassDetail({ entry, onClose }: { entry: InterlinkingClass; onClose: ()
 
   return (
     <Section
-      title={`Detail · ${entry.label || entry.class}`}
-      subtitle="Drill-down: breakdown of outgoing/incoming object properties and per-entity link status."
+      title={entry.label || entry.class}
+      subtitle={entry.label ? entry.class : undefined}
       right={
         <button onClick={onClose} className="text-sm" style={{ color: 'var(--accent)' }}>
           Clear selection
@@ -222,18 +222,32 @@ function LinkList({ title, links, icon }: { title: string; links: import('../../
         <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>None</div>
       ) : (
         <ul className="always-scrollbar space-y-2 max-h-72 overflow-y-scroll pr-1">
-          {links.map((l, i) => (
-            <li key={`${l.direction}-${l.property}-${i}`} className="text-sm">
-              <div style={{ color: 'var(--text)' }}>{l.propertyLabel || l.property}</div>
-              <div className="text-xs flex items-center gap-1" style={{ color: 'var(--muted-foreground)' }}>
-                {l.direction === 'outgoing' ? (
-                  <>→ {l.targetClass || '?'} · {l.count} links</>
-                ) : (
-                  <>← {l.sourceClass || '?'} · {l.count} links</>
-                )}
-              </div>
-            </li>
-          ))}
+          {links.map((l, i) => {
+            const otherClass = l.direction === 'outgoing' ? l.targetClass : l.sourceClass;
+            const arrow = l.direction === 'outgoing' ? '→' : '←';
+            return (
+              <li key={`${l.direction}-${l.property}-${i}`} className="text-sm">
+                <div style={{ color: 'var(--text)' }}>{l.propertyLabel || l.property}</div>
+                <div className="text-xs flex items-center gap-2" style={{ color: 'var(--muted-foreground)' }}>
+                  <span className="truncate">
+                    {arrow}{' '}
+                    {otherClass ? (
+                      otherClass
+                    ) : (
+                      <span
+                        className="italic"
+                        style={{ opacity: 0.6 }}
+                        title="Linked resource has no known class in the data (not resolved from the source)"
+                      >
+                        Unknown
+                      </span>
+                    )}
+                  </span>
+                  <span className="ml-auto tabular-nums whitespace-nowrap">{l.count} links</span>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -305,13 +319,13 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
           <ul className="space-y-1 text-sm">
             {data.entities.map((e) => (
               <li key={e.uri} className="flex items-center gap-2">
-                <StatusBadge percent={status === 'linked' ? 100 : 0} />
                 <span className="truncate" style={{ color: 'var(--text)' }} title={e.uri}>
                   {e.label || prettyId(e.uri)}
                 </span>
                 <span className="text-xs ml-auto" style={{ color: 'var(--muted-foreground)' }}>
                   {prettyId(e.uri)}
                 </span>
+                {e.direction && <DirectionBadge direction={e.direction} />}
               </li>
             ))}
           </ul>
@@ -347,5 +361,23 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+function DirectionBadge({ direction }: { direction: 'outgoing' | 'incoming' | 'both' }) {
+  const map = {
+    outgoing: { sym: '→', label: 'out' },
+    incoming: { sym: '←', label: 'in' },
+    both: { sym: '↔', label: 'both' },
+  } as const;
+  const { sym, label } = map[direction];
+  return (
+    <span
+      className="text-xs px-2 py-0.5 shrink-0 whitespace-nowrap"
+      style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 'var(--radius-sm)' }}
+      title={`Has ${direction} link${direction === 'both' ? 's (incoming and outgoing)' : ''}`}
+    >
+      {sym} {label}
+    </span>
   );
 }

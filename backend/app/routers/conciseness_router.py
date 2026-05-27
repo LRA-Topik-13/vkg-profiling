@@ -149,7 +149,7 @@ def _parse_facets(filter_facets: Optional[str], class_uri: str) -> list[tuple[st
       - "predicate"         — filter to entities that have any value for predicate
 
     Entries are comma-separated. Both predicate and object must be full URIs.
-    Example: "http://example.org/voc#teaches,http://example.org/voc#worksFor::http://example.org/voc#uni1/department/1"
+    Example: "http://example.org/voc#teaches,http://example.org/voc#worksFor::http://example.org/voc#compsci/department/1"
     """
     if not filter_facets:
         return []
@@ -243,8 +243,8 @@ def _parse_identity_props(identity_props: str, class_uri: str) -> list[str]:
 async def conciseness_intra_source(
     class_uri:      str = Query(..., description="Full URI of class to evaluate, e.g. http://example.org/voc#FullProfessor"),
     identity_props: str = Query(..., description="Comma-separated full property URIs defining identity, e.g. http://xmlns.com/foaf/0.1/firstName,http://xmlns.com/foaf/0.1/lastName"),
-    source_prefix:  str = Query(..., description="URI prefix scoping to one source, e.g. http://example.org/voc#uni1/"),
-    filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters. Use 'prop_uri' for existence or 'prop_uri::value_uri' for exact match, e.g. http://example.org/voc#teaches,http://example.org/voc#worksFor::http://example.org/voc#uni1/department/1"),
+    source_prefix:  str = Query(..., description="URI prefix scoping to one source, e.g. http://example.org/voc#compsci/"),
+    filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters. Use 'prop_uri' for existence or 'prop_uri::value_uri' for exact match, e.g. http://example.org/voc#teaches,http://example.org/voc#worksFor::http://example.org/voc#compsci/department/1"),
 ):
     """
     CN2 — Extensional conciseness, intra-source (scores only).
@@ -426,7 +426,7 @@ async def conciseness_cross_source(
     class_uri:      str = Query(..., description="Full URI of class to evaluate"),
     identity_props: str = Query(..., description="Comma-separated full property URIs defining identity"),
     sources:        str = Query(None, description="Comma-separated source URI prefixes. Default: first 2 registered sources. Max: all registered sources."),
-    filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters. Use 'prop_uri' for existence or 'prop_uri::value_uri' for exact match, e.g. http://example.org/voc#teaches,http://example.org/voc#worksFor::http://example.org/voc#uni1/department/1"),
+    filter_facets:  Optional[str] = Query(None, description="Comma-separated facet filters. Use 'prop_uri' for existence or 'prop_uri::value_uri' for exact match, e.g. http://example.org/voc#teaches,http://example.org/voc#worksFor::http://example.org/voc#compsci/department/1"),
 ):
     """
     CN3 — Ambiguous instance detection across multiple sources (scores only).

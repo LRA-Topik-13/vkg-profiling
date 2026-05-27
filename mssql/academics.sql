@@ -1,24 +1,24 @@
 -- ============================================================
--- uni3 (Microsoft SQL Server)
+-- academics (Microsoft SQL Server)
 -- 2 existing concepts: course, teacher
 -- 2 new concepts:      place, time_slot
 -- 2 mapping tables:    teaching, schedule
 -- ============================================================
 
--- EXISTING CONCEPT (mirrors uni1.course, uni2.course)
+-- EXISTING CONCEPT (mirrors compsci.course, mathsci.course)
 CREATE TABLE course (
     c_id    INT             NOT NULL,
     title   VARCHAR(100)    NOT NULL,
     CONSTRAINT pk_course PRIMARY KEY (c_id)
 );
 
--- EXISTING CONCEPT (mirrors uni1.academic, uni2.person where status=teacher)
+-- EXISTING CONCEPT (mirrors compsci.academic, mathsci.person where status=teacher)
 CREATE TABLE teacher (
     t_id        INT         NOT NULL,
     first_name  VARCHAR(40) NOT NULL,
     last_name   VARCHAR(40) NOT NULL,
     position    INT         NOT NULL,
-    -- position mapping (consistent with uni1 pattern from obda):
+    -- position mapping (consistent with compsci pattern from obda):
     -- 1 = FullProfessor, 2 = AssociateProfessor, 3 = AssistantProfessor
     -- 8 = ExternalTeacher, 9 = PostDoc
     CONSTRAINT pk_teacher PRIMARY KEY (t_id)
@@ -65,9 +65,9 @@ CREATE TABLE schedule (
 -- ============================================================
 
 -- Teachers (8 total)
--- NOTE: t_id 1 "Anna Chambers"  overlaps uni1 academic a_id=1 (FullProfessor)
--- NOTE: t_id 3 "Rachel Ward"    overlaps uni1 a_id=3 AND uni2 pid=4
--- NOTE: t_id 4 "Victor Scott"   overlaps uni2 pid=6 (FullProfessor)
+-- NOTE: t_id 1 "Anna Chambers"  overlaps compsci academic a_id=1 (FullProfessor)
+-- NOTE: t_id 3 "Rachel Ward"    overlaps compsci a_id=3 AND mathsci pid=4
+-- NOTE: t_id 4 "Victor Scott"   overlaps mathsci pid=6 (FullProfessor)
 INSERT INTO teacher VALUES (1, 'Anna',      'Chambers',   1);
 INSERT INTO teacher VALUES (2, 'Diego',     'Vargas',     2);
 INSERT INTO teacher VALUES (3, 'Rachel',    'Ward',       3);
@@ -78,8 +78,8 @@ INSERT INTO teacher VALUES (7, 'Marcus',    'Lindqvist',  2);
 INSERT INTO teacher VALUES (8, 'Fatima',    'Al-Hassan',  1);
 
 -- Courses (8 total)
--- NOTE: c_id 1 "Linear Algebra"       overlaps uni1 c_id=1234
--- NOTE: c_id 2 "Information security"  overlaps uni1 c_id=1602 and uni2 cid=1
+-- NOTE: c_id 1 "Linear Algebra"       overlaps compsci c_id=1234
+-- NOTE: c_id 2 "Information security"  overlaps compsci c_id=1602 and mathsci cid=1
 INSERT INTO course VALUES (1, 'Linear Algebra');
 INSERT INTO course VALUES (2, 'Information security');
 INSERT INTO course VALUES (3, 'Cloud Computing');

@@ -2,12 +2,9 @@ import { ReactNode } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
 import { ClassMeta, PropertyMeta, statusColor } from '../../lib/api';
+import { sourceLabel, getEntitySource, sortSources } from '../../lib/sources';
 
-export const SOURCE_OPTIONS = [
-  { value: 'http://example.org/voc#uni1/', label: 'uni1 (MySQL)', short: 'uni1' },
-  { value: 'http://example.org/voc#uni2/', label: 'uni2 (PostgreSQL)', short: 'uni2' },
-  { value: 'http://example.org/voc#uni3/', label: 'uni3 (MSSQL)', short: 'uni3' },
-];
+export { sourceLabel, getEntitySource, sortSources };
 
 export const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 export const DEFAULT_PAGE_SIZE = 10;
@@ -33,20 +30,6 @@ export function labelForClass(cls?: ClassMeta | null) {
 
 export function labelForProperty(prop?: PropertyMeta | null) {
   return prop ? prop.label || prop.localName : '';
-}
-
-export function sourceLabel(source: string) {
-  const found = SOURCE_OPTIONS.find((s) => s.value === source || source.startsWith(s.value));
-  return found?.short || shortUri(source).replace(/\/$/, '');
-}
-
-export function getEntitySource(uri: string) {
-  return SOURCE_OPTIONS.find((source) => uri.startsWith(source.value))?.value || 'unknown';
-}
-
-export function sortSources(values: string[]) {
-  const order = new Map(SOURCE_OPTIONS.map((source, index) => [source.value, index]));
-  return [...values].sort((a, b) => (order.get(a) ?? 999) - (order.get(b) ?? 999));
 }
 
 export function formatCount(value: number | undefined | null) {

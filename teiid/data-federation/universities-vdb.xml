@@ -1,6 +1,6 @@
 <vdb name="universities"  version="1">
-    <model visible="true" name="uni1">
-        <source name="uni1" translator-name="mysql5" connection-jndi-name="java:/mysql-uni1"/>
+    <model visible="true" name="compsci">
+        <source name="compsci" translator-name="mysql5" connection-jndi-name="java:/mysql-compsci"/>
         <metadata type="DDL"><![CDATA[
                 CREATE FOREIGN TABLE student (
                   s_id  integer not null primary key,
@@ -31,8 +31,8 @@
                  )OPTIONS(UPDATABLE 'FALSE');
             ]]> </metadata>   
       </model> 
-      <model visible="true" name="uni2">
-        <source name="uni2" translator-name="postgresql" connection-jndi-name="java:/pgsql-uni2"/>
+      <model visible="true" name="mathsci">
+        <source name="mathsci" translator-name="postgresql" connection-jndi-name="java:/pgsql-mathsci"/>
         <metadata type="DDL"><![CDATA[
                 CREATE FOREIGN TABLE person (
                   pid integer not null primary key,
@@ -54,8 +54,8 @@
               )OPTIONS(UPDATABLE 'FALSE');
             ]]> </metadata>
       </model>
-      <model visible="true" name="uni3">
-        <source name="uni3" translator-name="sqlserver" connection-jndi-name="java:/mssql-uni3"/>
+      <model visible="true" name="academics">
+        <source name="academics" translator-name="sqlserver" connection-jndi-name="java:/mssql-academics"/>
         <metadata type="DDL"><![CDATA[
                 CREATE FOREIGN TABLE course (
                   c_id integer not null primary key,

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Search, Plus, X, FileText } from 'lucide-react';
 import { Headline, Section, LoadingState, ErrorState, PaginatedTable } from './_shared';
 import {
@@ -10,14 +10,9 @@ import {
   CrossDuplicateGroup,
   PaginationInfo,
 } from '../../lib/api';
+import { useSources } from '../../lib/sources';
 
 // ── Constants ────────────────────────────────────────────────────────────────
-
-const SOURCE_OPTIONS = [
-  { value: 'http://example.org/voc#uni1/', label: 'uni1 (MySQL)' },
-  { value: 'http://example.org/voc#uni2/', label: 'uni2 (PostgreSQL)' },
-  { value: 'http://example.org/voc#uni3/', label: 'uni3 (MSSQL)' },
-];
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
@@ -147,12 +142,11 @@ export default function CrosssourceConciseness() {
   const [allProperties, setAllProperties] = useState<PropertyMeta[]>([]);
 
   // Selection
+  const sources = useSources();
   const [selectedClassUri, setSelectedClassUri] = useState('');
   const [selectedProps, setSelectedProps] = useState<string[]>([]);
-  const [selectedSources, setSelectedSources] = useState<string[]>([
-    SOURCE_OPTIONS[0].value,
-    SOURCE_OPTIONS[1].value,
-  ]);
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  const sourcesInit = useRef(false);
 
   // Facets
   const [facets, setFacets] = useState<Facet[]>([]);
@@ -194,6 +188,13 @@ export default function CrosssourceConciseness() {
       .then((d) => setClasses(d.classes))
       .catch(() => setClasses([]));
   }, []);
+
+  useEffect(() => {
+    if (!sourcesInit.current && sources.length > 0) {
+      sourcesInit.current = true;
+      setSelectedSources(sources.slice(0, 2).map((s) => s.uri));
+    }
+  }, [sources]);
 
   // Fetch properties when class changes
   useEffect(() => {
@@ -450,16 +451,16 @@ export default function CrosssourceConciseness() {
             Data Sources (select 2 or more)
           </div>
           <div className="flex flex-wrap gap-3">
-            {SOURCE_OPTIONS.map((src) => (
-              <label key={src.value} className="flex items-center gap-2 cursor-pointer">
+            {sources.map((src) => (
+              <label key={src.uri} className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={selectedSources.includes(src.value)}
-                  onChange={() => toggleSource(src.value)}
+                  checked={selectedSources.includes(src.uri)}
+                  onChange={() => toggleSource(src.uri)}
                   className="w-4 h-4"
                   style={{ accentColor: 'var(--navy)' }}
                 />
-                <span className="text-sm" style={{ color: 'var(--text)' }}>{src.label}</span>
+                <span className="text-sm" style={{ color: 'var(--text)' }}>{src.localName}</span>
               </label>
             ))}
           </div>

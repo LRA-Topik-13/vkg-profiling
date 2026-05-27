@@ -1,6 +1,6 @@
 -- MySQL dump 10.13  Distrib 8.0.21, for macos10.15 (x86_64)
 --
--- Host: localhost    Database: uni1
+-- Host: localhost    Database: compsci
 -- ------------------------------------------------------
 -- Server version	8.0.21
 

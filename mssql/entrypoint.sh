@@ -22,27 +22,27 @@ for i in $(seq 1 60); do
 done
 
 # Create database
-echo "[mssql-init] Creating database uni3..."
+echo "[mssql-init] Creating database academics..."
 $SQLCMD -S localhost -U sa -P "$MSSQL_SA_PASSWORD" \
-    -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'uni3') CREATE DATABASE uni3"
+    -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'academics') CREATE DATABASE academics"
 
-# Create application login uni3/uni3pwd (consistent with uni1/uni2 pattern)
+# Create application login academics/academicspwd (consistent with compsci/mathsci pattern)
 echo "[mssql-init] Creating login ${MSSQL_USER}..."
 $SQLCMD -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -Q "
 IF NOT EXISTS (SELECT name FROM sys.server_principals WHERE name = N'${MSSQL_USER}')
     CREATE LOGIN [${MSSQL_USER}] WITH PASSWORD = N'${MSSQL_PASSWORD}', CHECK_POLICY = OFF;
 "
 
-$SQLCMD -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -d uni3 -Q "
+$SQLCMD -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -d academics -Q "
 IF NOT EXISTS (SELECT name FROM sys.database_principals WHERE name = N'${MSSQL_USER}')
     CREATE USER [${MSSQL_USER}] FOR LOGIN [${MSSQL_USER}];
 ALTER ROLE db_owner ADD MEMBER [${MSSQL_USER}];
 "
 
 # Run init script
-echo "[mssql-init] Running uni3.sql..."
+echo "[mssql-init] Running academics.sql..."
 $SQLCMD -S localhost -U sa -P "$MSSQL_SA_PASSWORD" \
-    -d uni3 -i /docker-entrypoint-initdb.d/uni3.sql
+    -d academics -i /docker-entrypoint-initdb.d/academics.sql
 
 echo "[mssql-init] Initialization complete."
 

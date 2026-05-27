@@ -1,0 +1,55 @@
+[PrefixDeclaration]
+:		http://example.org/voc#
+ex:		http://example.org/
+owl:		http://www.w3.org/2002/07/owl#
+rdf:		http://www.w3.org/1999/02/22-rdf-syntax-ns#
+xml:		http://www.w3.org/XML/1998/namespace
+xsd:		http://www.w3.org/2001/XMLSchema#
+foaf:		http://xmlns.com/foaf/0.1/
+obda:		https://w3id.org/obda/vocabulary#
+rdfs:		http://www.w3.org/2000/01/rdf-schema#
+
+[MappingDeclaration] @collection [[
+mappingId	compsci-student
+target		:compsci/student/{s_id} a :Student ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string .
+source		SELECT * FROM student
+
+mappingId	compsci-academic
+target		:compsci/academic/{a_id} a :FacultyMember ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string .
+source		SELECT * FROM academic
+
+mappingId	compsci-fullProfessor
+target		:compsci/academic/{a_id} a :FullProfessor .
+source		SELECT * FROM academic
+			WHERE position = 1
+
+mappingId	compsci-AssociateProfessor
+target		:compsci/academic/{a_id} a :AssociateProfessor .
+source		SELECT * FROM academic
+			WHERE position = 2
+
+mappingId	compsci-PostDoc
+target		:compsci/academic/{a_id} a :PostDoc .
+source		SELECT * FROM academic
+			WHERE position = 9
+
+mappingId	compsci-externalTeacher
+target		:compsci/academic/{a_id} a :ExternalTeacher .
+source		SELECT * FROM academic
+			WHERE position = 8
+
+mappingId	compsci-course
+target		:compsci/course/{c_id} a :Course ; :title {title} ; :isGivenAt :compsci/university .
+source		SELECT * FROM course
+
+mappingId	compsci-teaching
+target		:compsci/academic/{a_id} :teaches :compsci/course/{c_id} .
+source		SELECT * FROM teaching
+
+mappingId	compsci-registration
+target		:compsci/student/{s_id} :attends :compsci/course/{c_id} .
+source		SELECT *
+			FROM course_registration
+
+]]
+

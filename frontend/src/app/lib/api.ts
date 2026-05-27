@@ -17,9 +17,10 @@ async function get<T>(path: string, params?: Record<string, string | number | bo
 
 export interface ClassMeta { localName: string; uri: string; label?: string | null }
 export interface PropertyMeta { localName: string; uri: string; type: 'data' | 'object'; label?: string | null; range?: string | null; rangeClass?: string | null }
+export interface SourceMeta { uri: string; localName: string }
 
 export const metadataApi = {
-  sources: () => get<{ sources: string[] }>('/metadata/sources'),
+  sources: () => get<{ sources: SourceMeta[] }>('/metadata/sources'),
   mappedClasses: () => get<{ classes: ClassMeta[] }>('/metadata/mapped-classes'),
   mappedProperties: (classUri?: string) =>
     get<{ properties: PropertyMeta[]; class?: string }>('/metadata/mapped-properties', { class_uri: classUri }),

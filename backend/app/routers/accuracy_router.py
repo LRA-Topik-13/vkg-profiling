@@ -237,7 +237,7 @@ async def _fetch_property_presence_rows(
 
     Rationale: Ontop's SQL generation for OPTIONAL+BIND fails when a property
     has multiple OBDA source mappings that span different databases (e.g. attends
-    maps to both uni1.course_registration and uni2.registration). With INNER
+    maps to both compsci.course_registration and mathsci.registration). With INNER
     JOIN semantics Ontop can eliminate impossible cross-database joins via
     URI-template matching and Teiid executes each query cleanly.
 

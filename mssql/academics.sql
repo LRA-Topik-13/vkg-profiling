@@ -64,10 +64,13 @@ CREATE TABLE schedule (
 -- Sample data
 -- ============================================================
 
--- Teachers (8 total)
+-- Teachers (14 total)
 -- NOTE: t_id 1 "Anna Chambers"  overlaps compsci academic a_id=1 (FullProfessor)
 -- NOTE: t_id 3 "Rachel Ward"    overlaps compsci a_id=3 AND mathsci pid=4
 -- NOTE: t_id 4 "Victor Scott"   overlaps mathsci pid=6 (FullProfessor)
+-- NOTE: t_id 9 "Zak Lane"       overlaps mathsci pid=1 (lecturer)
+-- NOTE: t_id 10 "Kellie Griffin" overlaps mathsci pid=7 (lecturer)
+-- NOTE: t_id 11 "Sueann Samora" overlaps mathsci pid=8 (lecturer)
 INSERT INTO teacher VALUES (1, 'Anna',      'Chambers',   1);
 INSERT INTO teacher VALUES (2, 'Diego',     'Vargas',     2);
 INSERT INTO teacher VALUES (3, 'Rachel',    'Ward',       3);
@@ -76,33 +79,58 @@ INSERT INTO teacher VALUES (5, 'Tomoko',    'Nakamura',   9);
 INSERT INTO teacher VALUES (6, 'Eleni',     'Papadaki',   8);
 INSERT INTO teacher VALUES (7, 'Marcus',    'Lindqvist',  2);
 INSERT INTO teacher VALUES (8, 'Fatima',    'Al-Hassan',  1);
+INSERT INTO teacher VALUES (9, 'Zak',       'Lane',       1);
+INSERT INTO teacher VALUES (10, 'Kellie',   'Griffin',    2);
+INSERT INTO teacher VALUES (11, 'Sueann',   'Samora',     9);
+INSERT INTO teacher VALUES (12, 'Henrik',   'Johansson',  3);
+INSERT INTO teacher VALUES (13, 'Mei',      'Tanaka',     2);
+INSERT INTO teacher VALUES (14, 'Carlos',   'Rivera',     1);
 
--- Courses (8 total)
--- NOTE: c_id 1 "Linear Algebra"       overlaps compsci c_id=1234
--- NOTE: c_id 2 "Information security"  overlaps compsci c_id=1602 and mathsci cid=1
+-- Courses (14 total)
+-- NOTE: c_id 1 "Linear Algebra"                        overlaps compsci c_id=1234
+-- NOTE: c_id 2 "Data Exploration and Visualization"     overlaps mathsci cid=1
+-- NOTE: c_id 9 "Introduction to Multivariate Analysis"  overlaps mathsci cid=2
+-- NOTE: c_id 10 "Linear Models"                         overlaps mathsci cid=3
+-- NOTE: c_id 11 "Nonparametric Statistics"              overlaps mathsci cid=4
+-- NOTE: c_id 12 "Statistical Computing"                 overlaps mathsci cid=5
+-- NOTE: c_id 13 "Probability Theory"                    overlaps mathsci cid=6
+-- NOTE: c_id 14 "Bayesian Statistics"                   overlaps mathsci cid=8
 INSERT INTO course VALUES (1, 'Linear Algebra');
-INSERT INTO course VALUES (2, 'Information security');
+INSERT INTO course VALUES (2, 'Data Exploration and Visualization');
 INSERT INTO course VALUES (3, 'Cloud Computing');
 INSERT INTO course VALUES (4, 'Embedded Systems');
 INSERT INTO course VALUES (5, 'Compiler Design');
 INSERT INTO course VALUES (6, 'Computer Networks');
 INSERT INTO course VALUES (7, 'Human-Computer Interaction');
 INSERT INTO course VALUES (8, 'Parallel Computing');
+INSERT INTO course VALUES (9, 'Introduction to Multivariate Analysis');
+INSERT INTO course VALUES (10, 'Linear Models');
+INSERT INTO course VALUES (11, 'Nonparametric Statistics');
+INSERT INTO course VALUES (12, 'Statistical Computing');
+INSERT INTO course VALUES (13, 'Probability Theory');
+INSERT INTO course VALUES (14, 'Bayesian Statistics');
 
--- Places (5)
+-- Places (7)
 INSERT INTO place VALUES (1, 'Engineering Building',  'E-101');
 INSERT INTO place VALUES (2, 'Engineering Building',  'E-202');
 INSERT INTO place VALUES (3, 'Science Hall',          'S-310');
 INSERT INTO place VALUES (4, 'Library Annex',         'L-015');
 INSERT INTO place VALUES (5, 'Computing Center',      'C-401');
+INSERT INTO place VALUES (6, 'Mathematics Pavilion',  'M-201');
+INSERT INTO place VALUES (7, 'Statistics Laboratory',  'ST-105');
+INSERT INTO place VALUES (8, 'Statistics Laboratory',  'ST-106');
 
--- Time slots (6)
+-- Time slots (10)
 INSERT INTO time_slot VALUES (1, 'Monday',    '08:00', '09:30');
 INSERT INTO time_slot VALUES (2, 'Monday',    '10:00', '11:30');
 INSERT INTO time_slot VALUES (3, 'Tuesday',   '13:00', '14:30');
 INSERT INTO time_slot VALUES (4, 'Wednesday', '08:00', '09:30');
 INSERT INTO time_slot VALUES (5, 'Thursday',  '10:00', '11:30');
 INSERT INTO time_slot VALUES (6, 'Friday',    '14:00', '15:30');
+INSERT INTO time_slot VALUES (7, 'Tuesday',   '08:00', '09:30');
+INSERT INTO time_slot VALUES (8, 'Wednesday', '13:00', '14:30');
+INSERT INTO time_slot VALUES (9, 'Thursday',  '08:00', '09:30');
+INSERT INTO time_slot VALUES (10, 'Friday',   '10:00', '11:30');
 
 -- Teaching assignments
 INSERT INTO teaching VALUES (1, 1);
@@ -114,6 +142,14 @@ INSERT INTO teaching VALUES (5, 7);
 INSERT INTO teaching VALUES (6, 8);
 INSERT INTO teaching VALUES (7, 6);
 INSERT INTO teaching VALUES (8, 2);
+INSERT INTO teaching VALUES (9, 11);
+INSERT INTO teaching VALUES (9, 13);
+INSERT INTO teaching VALUES (10, 10);
+INSERT INTO teaching VALUES (11, 9);
+INSERT INTO teaching VALUES (12, 12);
+INSERT INTO teaching VALUES (12, 14);
+INSERT INTO teaching VALUES (13, 10);
+INSERT INTO teaching VALUES (14, 14);
 
 -- Schedules (course at place and time)
 INSERT INTO schedule VALUES (1, 1, 1);
@@ -126,3 +162,12 @@ INSERT INTO schedule VALUES (6, 2, 1);
 INSERT INTO schedule VALUES (7, 3, 3);
 INSERT INTO schedule VALUES (8, 5, 5);
 INSERT INTO schedule VALUES (3, 5, 6);
+INSERT INTO schedule VALUES (9, 6, 7);
+INSERT INTO schedule VALUES (9, 7, 8);
+INSERT INTO schedule VALUES (10, 6, 9);
+INSERT INTO schedule VALUES (11, 7, 10);
+INSERT INTO schedule VALUES (12, 7, 7);
+INSERT INTO schedule VALUES (12, 6, 3);
+INSERT INTO schedule VALUES (13, 6, 2);
+INSERT INTO schedule VALUES (14, 7, 9);
+INSERT INTO schedule VALUES (13, 8, 10);

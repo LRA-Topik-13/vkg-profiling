@@ -61,7 +61,7 @@ CREATE TABLE `course` (
 
 LOCK TABLES `course` WRITE;
 /*!40000 ALTER TABLE `course` DISABLE KEYS */;
-INSERT INTO `course` VALUES (1,'abc'),(2,'abc'),(1234,'Linear Algebra'),(1235,'Analysis'),(1236,'Operating Systems'),(1500,'Data Mining'),(1501,'Theory of Computing'),(1502,'Research Methods'),(1601,'Intelligent Systems'),(1602,'Information security');
+INSERT INTO `course` VALUES (1,'Computer Networks'),(2,'Computer Networks'),(1234,'Linear Algebra'),(1235,'Analysis'),(1236,'Operating Systems'),(1500,'Data Mining'),(1501,'Theory of Computing'),(1502,'Research Methods'),(1601,'Intelligent Systems'),(1602,'Information security');
 /*!40000 ALTER TABLE `course` ENABLE KEYS */;
 UNLOCK TABLES;
 

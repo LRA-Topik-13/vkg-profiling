@@ -81,6 +81,8 @@ def _find_source(uri: str, sources: list[str]) -> str:
 
 def _parse_sources(sources_param: str | None) -> list[str]:
     """Parse and validate the sources query parameter."""
+    known_uris = {src["uri"] for src in KNOWN_SOURCES}
+
     if sources_param:
         source_list = [s.strip() for s in sources_param.split(",") if s.strip()]
     else:
@@ -90,7 +92,7 @@ def _parse_sources(sources_param: str | None) -> list[str]:
                 detail="At least 2 registered data sources are required. "
                        f"Currently registered: {KNOWN_SOURCES}",
             )
-        source_list = KNOWN_SOURCES[:2]
+        source_list = [src["uri"] for src in KNOWN_SOURCES[:2]]
 
     if len(source_list) < 2:
         raise HTTPException(
@@ -119,7 +121,7 @@ def _parse_sources(sources_param: str | None) -> list[str]:
 
     # Validate all sources are registered
     for s in source_list:
-        if s not in KNOWN_SOURCES:
+        if s not in known_uris:
             raise HTTPException(
                 status_code=400,
                 detail=f"Source '{s}' is not a registered data source. "

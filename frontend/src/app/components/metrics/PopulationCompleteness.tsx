@@ -176,7 +176,8 @@ function ClassDetail({ entry, reachable, onClose }: { entry: PopulationEntry; re
 
   return (
     <Section
-      title={`Detail · ${entry.label || entry.class}`}
+      title={entry.label || entry.class}
+      subtitle={entry.label ? entry.class : undefined}
       right={
         <button onClick={onClose} className="text-sm" style={{ color: 'var(--accent)' }}>
           Clear selection

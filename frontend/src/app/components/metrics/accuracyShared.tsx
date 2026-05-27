@@ -162,23 +162,6 @@ export function WarningNote({ children }: { children: ReactNode }) {
   );
 }
 
-export function ScopeSummary({ children }: { children: ReactNode }) {
-  return (
-    <div
-      className="px-4 py-3 text-sm border"
-      style={{
-        backgroundColor: 'var(--muted)',
-        borderColor: 'var(--border)',
-        borderRadius: 'var(--radius-md)',
-        color: 'var(--text)',
-      }}
-    >
-      <span className="font-medium" style={{ color: 'var(--navy)' }}>Current scope:</span>{' '}
-      {children}
-    </div>
-  );
-}
-
 export function ActiveFacetList({
   facets,
   onRemove,

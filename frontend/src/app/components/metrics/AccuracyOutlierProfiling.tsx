@@ -19,7 +19,6 @@ import {
   Field,
   MetricCard,
   SourceBadge,
-  ScopeSummary,
   StatusPill,
   TableFrame,
   TablePager,
@@ -62,10 +61,6 @@ function median(values: number[]) {
 
 function formatStat(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-}
-
-function formatFacet(facet: AccuracyFacet) {
-  return facet.valueUri ? `${facet.propLabel} = ${facet.valueLabel}` : `${facet.propLabel} exists`;
 }
 
 function groupedStats(items: Array<{ label: string; value: number }>) {
@@ -450,26 +445,6 @@ function PresenceResult({ result }: { result: AccuracyOutlierResult }) {
   );
 }
 
-function OutlierScopeSummary({
-  result,
-  facets,
-}: {
-  result: AccuracyOutlierResult;
-  facets: AccuracyFacet[];
-}) {
-  const modeLabel = result.type === 'relationship_count' ? 'Relationship Count' : 'Property-Presence Anomaly';
-  const facetText = facets.length > 0 ? `filtered by ${facets.map(formatFacet).join(', ')}` : 'no facet filter';
-  return (
-    <ScopeSummary>
-      {modeLabel} for <span className="font-medium">{result.class}</span>
-      {result.type === 'relationship_count' && result.property && (
-        <> counting <span className="font-medium">{result.property}</span></>
-      )}
-      , {facetText}.
-    </ScopeSummary>
-  );
-}
-
 function OutlierSummary({ result }: { result: AccuracyOutlierResult }) {
   const cleanScore = result.total ? ((result.total - result.outlier_count) / result.total) * 100 : null;
   const isRelationship = result.type === 'relationship_count';
@@ -737,7 +712,6 @@ export default function AccuracyOutlierProfiling() {
 
       {result && !loading && (
         <>
-          <OutlierScopeSummary result={result} facets={facets} />
           <OutlierSummary result={result} />
           {result.type === 'relationship_count' && <RelationshipCountBoxPlot result={result} />}
           {result.type === 'relationship_count' ? <RelationshipEntityTable result={result} /> : <PresenceResult result={result} />}

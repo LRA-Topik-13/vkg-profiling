@@ -12,7 +12,6 @@ import {
   AccuracyScoreDonut,
   Field,
   MetricCard,
-  ScopeSummary,
   StatusPill,
   TableFrame,
   errorMessage,
@@ -90,10 +89,6 @@ export default function AccuracyPropertyMisuse() {
 
       {result && !loading && (
         <>
-          <ScopeSummary>
-            Property Misuse for <span className="font-medium">{result.property}</span> across all mapped classes.
-          </ScopeSummary>
-
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <MetricCard value={formatCount(result.total_property_uses)} label="Observed Uses" sub={result.property} />
             <MetricCard value={formatCount(result.total_expected_count)} label="Expected Uses" sub="Ontology domain" color="#1F8A4C" />

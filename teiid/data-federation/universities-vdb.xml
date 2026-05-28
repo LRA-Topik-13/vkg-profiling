@@ -29,6 +29,12 @@
                   c_id integer not null,
                   s_id integer not null
                  )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE legacy_student (
+                  s_id integer not null primary key,
+                  first_name varchar(40) not null,
+                  last_name varchar(40) not null
+                 )OPTIONS(UPDATABLE 'FALSE');
             ]]> </metadata>   
       </model> 
       <model visible="true" name="mathsci">

@@ -211,6 +211,19 @@ def _parse_ontology(ttl_path: str):
     return desc, eff_domain, eff_range
 
 
+# Source rows that are intentionally outside the OBDA mapping but should count
+# as expected population for completeness profiling.
+EXTERNAL_SOURCE_TABLES: dict[str, list[tuple[str, str, str]]] = {
+    "http://example.org/voc#Student": [
+        ("compsci.legacy_student", "s_id", "http://example.org/voc#compsci/student/"),
+    ],
+}
+
+EXTERNAL_SOURCE_TABLE_LABELS: dict[str, str] = {
+    "compsci.legacy_student": "unmapped student rows",
+}
+
+
 def _build_specs(obda_path: str, ttl_path: str) -> dict[str, list[BaseGroup]]:
     mappings = _parse_mappings(obda_path)
     desc, eff_domain, eff_range = _parse_ontology(ttl_path)
@@ -235,6 +248,11 @@ def _build_specs(obda_path: str, ttl_path: str) -> dict[str, list[BaseGroup]]:
                 rng = eff_range.get(prop)
                 if rng and rng in cls_desc and obj_base and obj_key:
                     add(obj_base, m.table, obj_key, m.where)
+
+        for ext_cls, entries in EXTERNAL_SOURCE_TABLES.items():
+            if ext_cls in cls_desc:
+                for table, key, base in entries:
+                    add(base, table, key, None)
 
         groups: list[BaseGroup] = []
         for base, branches in by_base.items():

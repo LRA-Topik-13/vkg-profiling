@@ -71,6 +71,13 @@ def _class_union(
     return "\nUNION\n".join(branches)
 
 
+def _population_source_label(tables: list[str], fallback: str, labels: dict[str, str]) -> str:
+    if not tables:
+        return fallback
+    display = sorted({labels.get(table, table) for table in tables}, key=lambda label: (label.startswith("unmapped "), label))
+    return ", ".join(display)
+
+
 def _property_count_union(
     class_uri: str,
     prop_uris: list[str],
@@ -1348,7 +1355,7 @@ async def class_summary():
 
 @router.get("/population-summary")
 async def population_summary():
-    from app.population import POPULATION_SPECS
+    from app.population import EXTERNAL_SOURCE_TABLE_LABELS, POPULATION_SPECS
     from app.routers.metadata_router import KNOWN_CLASSES_BY_URI
     from app.teiid_client import execute_teiid, TeiidUnavailable
 
@@ -1407,7 +1414,7 @@ async def population_summary():
             source_total[cls_uri] = source_total.get(cls_uri, 0) + n
             tables = base_tables.get((cls_uri, base), [])
             source_by_table.setdefault(cls_uri, []).append({
-                "table": ", ".join(tables) if tables else base,
+                "table": _population_source_label(tables, base, EXTERNAL_SOURCE_TABLE_LABELS),
                 "source_population": n,
             })
     except TeiidUnavailable as e:

@@ -37,7 +37,7 @@ export function SearchInput({
   compact?: boolean;
 }) {
   return (
-    <div className="relative">
+    <div className={`relative max-w-full overflow-hidden ${width}`}>
       <Search
         className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
         style={{ color: 'var(--muted-foreground)' }}
@@ -47,7 +47,7 @@ export function SearchInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={`pl-9 pr-3 text-sm border ${compact ? 'py-1.5' : 'py-2'} ${width}`}
+        className={`w-full pl-9 pr-3 text-sm border ${compact ? 'py-1.5' : 'py-2'}`}
         style={{
           backgroundColor: 'var(--card)',
           borderColor: 'var(--border)',
@@ -409,6 +409,50 @@ export function ScoreDonut({
       {sub && (
         <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{sub}</div>
       )}
+    </div>
+  );
+}
+
+export function EntityRow({
+  uri,
+  label,
+  right,
+  onClick,
+}: {
+  uri: string;
+  label?: string | null;
+  right?: ReactNode;
+  onClick?: () => void;
+}) {
+  const labelEl = (
+    <span className="truncate" style={{ color: 'var(--text)' }} title={uri}>
+      {label || prettyId(uri)}
+    </span>
+  );
+  const rightCluster = (right || onClick) ? (
+    <span className="ml-auto flex items-center gap-2 shrink-0">
+      {right}
+      {onClick && <ChevronRight className="w-4 h-4" style={{ color: 'var(--muted-foreground)' }} />}
+    </span>
+  ) : null;
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="w-full text-left flex items-center gap-2 py-0.5 px-1 font-normal transition-colors hover:bg-[var(--muted)]"
+        style={{ borderRadius: 'var(--radius-sm)' }}
+      >
+        {labelEl}
+        {rightCluster}
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2">
+      {labelEl}
+      {rightCluster}
     </div>
   );
 }

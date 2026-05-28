@@ -132,6 +132,26 @@ export interface InterlinkingEntities {
   pagination: { limit: number; offset: number; count: number; total: number | null };
 }
 
+export interface InterlinkingPropertyUse {
+  uri: string;
+  localName: string;
+  label?: string | null;
+  count: number;
+}
+export interface InterlinkingEntityGroup {
+  class: { uri: string; label?: string | null };
+  count: number;
+  properties: InterlinkingPropertyUse[];
+}
+export interface InterlinkingEntityDetail {
+  uri: string;
+  label?: string | null;
+  class: string;
+  class_uri: string;
+  outgoing: InterlinkingEntityGroup[];
+  incoming: InterlinkingEntityGroup[];
+}
+
 
 export interface AccuracyViolation {
   criterion?: string;
@@ -343,6 +363,8 @@ export const completenessApi = {
   interlinking: () => get<Interlinking>('/completeness/interlinking'),
   interlinkingEntities: (params: { class_uri: string; status: 'linked' | 'not_linked'; limit?: number; offset?: number }) =>
     get<InterlinkingEntities>('/completeness/interlinking/entities', params),
+  interlinkingEntity: (params: { class_uri: string; entity_uri: string }) =>
+    get<InterlinkingEntityDetail>('/completeness/interlinking/entity', params),
 };
 
 export function statusFor(percent: number): 'good' | 'warn' | 'bad' {

@@ -71,6 +71,13 @@ def _class_union(
     return "\nUNION\n".join(branches)
 
 
+def _population_source_label(tables: list[str], fallback: str, labels: dict[str, str]) -> str:
+    if not tables:
+        return fallback
+    display = sorted({labels.get(table, table) for table in tables}, key=lambda label: (label.startswith("unmapped "), label))
+    return ", ".join(display)
+
+
 def _property_count_union(
     class_uri: str,
     prop_uris: list[str],
@@ -872,6 +879,95 @@ async def interlinking_entities(
     }
 
 
+@router.get("/interlinking/entity")
+async def interlinking_entity(
+    entity_uri: str = Query(..., description="Full entity URI"),
+    class_uri: str = Query(..., description="Full class URI of the entity"),
+):
+    _validate_http_uri(entity_uri, "entity URI")
+    class_entry = validate_class_uri(class_uri)
+    _, obj_prop_uris, prop_meta, cls_lookup = _interlinking_metadata()
+
+    if not obj_prop_uris:
+        return {
+            "uri": entity_uri,
+            "label": None,
+            "class": class_entry["localName"],
+            "class_uri": class_uri,
+            "outgoing": [],
+            "incoming": [],
+        }
+
+    prop_values = _property_values(obj_prop_uris)
+    breakdown_q = f"""
+        {PREFIXES}
+        SELECT ?dir ?p ?otherClass (COUNT(DISTINCT ?other) AS ?n) WHERE {{
+            VALUES ?p {{ {prop_values} }}
+            {{
+                <{entity_uri}> ?p ?other .
+                FILTER(isIRI(?other))
+                FILTER(?p != rdf:type)
+                ?other a ?otherClass .
+                BIND("out" AS ?dir)
+            }} UNION {{
+                ?other ?p <{entity_uri}> .
+                FILTER(?p != rdf:type)
+                ?other a ?otherClass .
+                BIND("in" AS ?dir)
+            }}
+        }}
+        GROUP BY ?dir ?p ?otherClass
+    """
+
+    try:
+        raw, labels = await asyncio.gather(
+            execute_sparql(breakdown_q),
+            _labels_for_entities(class_uri, [entity_uri]),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+
+    grouped: dict[str, dict[str, dict]] = {"outgoing": {}, "incoming": {}}
+    for b in raw.get("results", {}).get("bindings", []):
+        direction = "outgoing" if b["dir"]["value"] == "out" else "incoming"
+        p_uri = b["p"]["value"]
+        cls_uri = b["otherClass"]["value"]
+        count = int(b["n"]["value"])
+        column = grouped[direction]
+        entry = column.get(cls_uri)
+        if entry is None:
+            entry = {
+                "class": {"uri": cls_uri, "label": cls_lookup.get(cls_uri) or _ln(cls_uri)},
+                "count": 0,
+                "properties": [],
+            }
+            column[cls_uri] = entry
+        entry["count"] += count
+        meta = prop_meta.get(p_uri, {})
+        entry["properties"].append({
+            "uri": p_uri,
+            "localName": meta.get("localName") or _ln(p_uri),
+            "label": meta.get("label"),
+            "count": count,
+        })
+
+    def _serialize(column: dict[str, dict]) -> list[dict]:
+        out = list(column.values())
+        for entry in out:
+            entry["properties"].sort(key=lambda p: (-p["count"], p["localName"]))
+        out.sort(key=lambda e: (-e["count"], e["class"]["label"] or ""))
+        return out
+
+    return {
+        "uri": entity_uri,
+        "label": labels.get(entity_uri),
+        "class": class_entry["localName"],
+        "class_uri": class_uri,
+        "outgoing": _serialize(grouped["outgoing"]),
+        "incoming": _serialize(grouped["incoming"]),
+    }
+
+
 @router.get("/distinct-properties")
 async def distinct_properties(
     class_uri: Optional[str] = Query(None, description="Full class URI. If given, count properties for this class only. Otherwise all mapped classes."),
@@ -1259,7 +1355,7 @@ async def class_summary():
 
 @router.get("/population-summary")
 async def population_summary():
-    from app.population import POPULATION_SPECS
+    from app.population import EXTERNAL_SOURCE_TABLE_LABELS, POPULATION_SPECS
     from app.routers.metadata_router import KNOWN_CLASSES_BY_URI
     from app.teiid_client import execute_teiid, TeiidUnavailable
 
@@ -1318,7 +1414,7 @@ async def population_summary():
             source_total[cls_uri] = source_total.get(cls_uri, 0) + n
             tables = base_tables.get((cls_uri, base), [])
             source_by_table.setdefault(cls_uri, []).append({
-                "table": ", ".join(tables) if tables else base,
+                "table": _population_source_label(tables, base, EXTERNAL_SOURCE_TABLE_LABELS),
                 "source_population": n,
             })
     except TeiidUnavailable as e:

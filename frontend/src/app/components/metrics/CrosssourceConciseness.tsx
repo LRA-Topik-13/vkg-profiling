@@ -379,19 +379,19 @@ export default function CrosssourceConciseness() {
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">— predicate —</option>
+                <option value="">predicate</option>
                 {objectProps.map((p) => (
                   <option key={p.uri} value={p.uri}>{p.label || p.localName}</option>
                 ))}
               </select>
               <select
-                disabled={!draftPropUri || draftValues.length === 0}
+                disabled={!draftPropUri}
                 value={draftValueUri}
                 onChange={(e) => setDraftValueUri(e.target.value)}
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">— object —</option>
+                <option value="">Any value (exists)</option>
                 {draftValues.map((v) => (
                   <option key={v} value={v}>{shortUri(v)}</option>
                 ))}

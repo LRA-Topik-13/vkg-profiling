@@ -3,7 +3,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { ChevronLeft, ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { statusColor, PaginationInfo } from '../../lib/api';
 
-const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
+const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 25, 50];
 
 export function prettyId(uri: string): string {
   if (!uri) return '';

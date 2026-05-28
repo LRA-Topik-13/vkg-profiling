@@ -37,7 +37,7 @@ export function SearchInput({
   compact?: boolean;
 }) {
   return (
-    <div className="relative">
+    <div className={`relative max-w-full overflow-hidden ${width}`}>
       <Search
         className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
         style={{ color: 'var(--muted-foreground)' }}
@@ -47,7 +47,7 @@ export function SearchInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={`pl-9 pr-3 text-sm border ${compact ? 'py-1.5' : 'py-2'} ${width}`}
+        className={`w-full pl-9 pr-3 text-sm border ${compact ? 'py-1.5' : 'py-2'}`}
         style={{
           backgroundColor: 'var(--card)',
           borderColor: 'var(--border)',

@@ -161,19 +161,24 @@ def _parse_source_list(
     """Parse, validate, deduplicate, and canonically order selected source prefixes."""
     from app.routers.metadata_router import KNOWN_SOURCES
 
+    known_source_uris = [
+        source["uri"] if isinstance(source, dict) else source
+        for source in KNOWN_SOURCES
+    ]
+
     if sources_param:
         raw_sources = [s.strip() for s in sources_param.split(",") if s.strip()]
     else:
-        raw_sources = KNOWN_SOURCES[:2] if default_first_two else list(KNOWN_SOURCES)
+        raw_sources = known_source_uris[:2] if default_first_two else list(known_source_uris)
 
     unique_sources = list(dict.fromkeys(raw_sources))
-    unknown = sorted(set(unique_sources) - set(KNOWN_SOURCES))
+    unknown = sorted(set(unique_sources) - set(known_source_uris))
     if unknown:
         raise HTTPException(
             status_code=400,
             detail=f"Unknown source prefix(es): {', '.join(unknown)}",
         )
-    source_list = [source for source in KNOWN_SOURCES if source in unique_sources]
+    source_list = [source for source in known_source_uris if source in unique_sources]
     if len(source_list) < min_count:
         raise HTTPException(
             status_code=400,

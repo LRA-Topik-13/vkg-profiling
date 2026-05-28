@@ -169,7 +169,12 @@ function PairEvidenceTable({
 }
 
 function BreakdownTable({ summary, mode }: { summary: AccuracyValueConflictSummary; mode: EvidenceMode }) {
-  const rows: Array<AccuracyCrossSourceSummaryEntry | AccuracyWithinSourceSummaryEntry> = mode === 'cross' ? summary.source_pair_summary || [] : summary.source_summary || [];
+  const rows: Array<AccuracyCrossSourceSummaryEntry | AccuracyWithinSourceSummaryEntry> = [
+    ...(mode === 'cross' ? summary.source_pair_summary || [] : summary.source_summary || []),
+  ].sort((a, b) => (
+    b.conflicting_pairs - a.conflicting_pairs
+    || b.total_matched - a.total_matched
+  ));
   if (rows.length === 0) return null;
 
   return (
@@ -582,7 +587,7 @@ export default function AccuracyUniquenessViolation() {
       </Section>
 
       {error && <ErrorState message={error} />}
-      {summaryLoading && <LoadingState message="Calculating uniqueness summaries..." />}
+      {summaryLoading && <LoadingState message="Calculating value conflict summaries..." />}
 
       {(intraSummary || crossSummary) && !summaryLoading && (
         <>
@@ -590,7 +595,7 @@ export default function AccuracyUniquenessViolation() {
             <MetricCard value={formatCount(activeSummary?.total_matched || 0)} label="Matched Pairs" sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : summaryLabel(activeMode)} />
             <MetricCard value={formatCount(activeSummary?.conflicting_pairs || 0)} label="Conflicting Pairs" sub="Evidence rows" color={(activeSummary?.conflicting_pairs || 0) > 0 ? '#9E2B0A' : '#1F8A4C'} />
             <MetricCard value={formatNullablePercent(activeSummary?.conflict_rate)} label="Conflict Rate" sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : 'conflicts / matched pairs'} color={(activeSummary?.conflict_rate || 0) > 0 ? '#9E2B0A' : 'var(--navy)'} />
-            <AccuracyScoreDonut title="Uniqueness Violation Score" percentage={activeScore} sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : '1 - conflict rate'} />
+            <AccuracyScoreDonut title="Value Conflict Score" percentage={activeScore} sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : '1 - conflict rate'} />
           </div>
 
           {hasCross && (

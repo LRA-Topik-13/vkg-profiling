@@ -31,6 +31,14 @@ export default function AccuracyPropertyMisuse() {
 
   const selectedProperty = useMemo(() => properties.find((prop) => prop.uri === selectedPropertyUri) || null, [properties, selectedPropertyUri]);
   const classByUri = useMemo(() => new Map(classes.map((cls) => [cls.uri, cls])), [classes]);
+  const classRows = useMemo(() => {
+    if (!result) return [];
+    return [...result.classes].sort((a, b) => (
+      Number(a.expected) - Number(b.expected)
+      || b.count - a.count
+      || a.class.localeCompare(b.class)
+    ));
+  }, [result]);
 
   useEffect(() => {
     setMetadataLoading(true);
@@ -125,7 +133,7 @@ export default function AccuracyPropertyMisuse() {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.classes.map((row) => {
+                  {classRows.map((row) => {
                     const remaining = Math.max(0, row.count - row.entity_uris.length);
                     return (
                       <tr key={row.uri} style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}>

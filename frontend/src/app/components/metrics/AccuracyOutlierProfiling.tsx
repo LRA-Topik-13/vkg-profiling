@@ -231,7 +231,8 @@ function RelationshipEntityTable({ result }: { result: AccuracyOutlierResult }) 
     return result.entities
       .filter(isRelationshipEntity)
       .filter((row) => sourceFilter === 'all' || getEntitySource(row.uri) === sourceFilter)
-      .filter((row) => !onlyOutliers || row.is_outlier);
+      .filter((row) => !onlyOutliers || row.is_outlier)
+      .sort((a, b) => Number(b.is_outlier) - Number(a.is_outlier) || a.uri.localeCompare(b.uri));
   }, [result.entities, sourceFilter, onlyOutliers]);
 
   useEffect(() => setOffset(0), [sourceFilter, onlyOutliers, pageSize, result]);
@@ -297,7 +298,8 @@ function PresenceMatrix({ result }: { result: AccuracyOutlierResult }) {
   const rows = useMemo(() => result.entities
     .filter(isPresenceEntity)
     .filter((row) => sourceFilter === 'all' || getEntitySource(row.uri) === sourceFilter)
-    .filter((row) => !onlyOutliers || row.is_outlier), [result.entities, sourceFilter, onlyOutliers]);
+    .filter((row) => !onlyOutliers || row.is_outlier)
+    .sort((a, b) => Number(b.is_outlier) - Number(a.is_outlier) || a.uri.localeCompare(b.uri)), [result.entities, sourceFilter, onlyOutliers]);
 
   useEffect(() => setOffset(0), [sourceFilter, onlyOutliers, pageSize, result]);
 

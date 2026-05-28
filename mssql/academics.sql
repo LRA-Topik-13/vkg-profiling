@@ -109,6 +109,8 @@ INSERT INTO course VALUES (11, 'Nonparametric Statistics');
 INSERT INTO course VALUES (12, 'Statistical Computing');
 INSERT INTO course VALUES (13, 'Probability Theory');
 INSERT INTO course VALUES (14, 'Bayesian Statistics');
+INSERT INTO course VALUES (15, 'Linear Algebra');
+INSERT INTO course VALUES (16, 'Cloud Computing');
 
 -- Places (7)
 INSERT INTO place VALUES (1, 'Engineering Building',  'E-101');
@@ -171,3 +173,4 @@ INSERT INTO schedule VALUES (12, 6, 3);
 INSERT INTO schedule VALUES (13, 6, 2);
 INSERT INTO schedule VALUES (14, 7, 9);
 INSERT INTO schedule VALUES (13, 8, 10);
+INSERT INTO schedule VALUES (16, 5, 10);

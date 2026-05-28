@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { completenessApi, PopulationSummary, PopulationEntry, PopulationEntities, statusColor } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList, prettyId } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList, EntityRow } from './_shared';
 
 const PAGE = 25;
 
@@ -266,18 +266,19 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
     <>
       <ul className="space-y-1 text-sm">
         {data.entities.map((e) => (
-          <li key={e.uri} className="flex items-center gap-2">
-            <span className="truncate" style={{ color: 'var(--text)' }} title={e.uri}>
-              {e.label || prettyId(e.uri)}
-            </span>
-            {e.source && (
-              <span
-                className="text-xs ml-auto px-2 py-0.5 shrink-0"
-                style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 'var(--radius-sm)' }}
-              >
-                {e.source}
-              </span>
-            )}
+          <li key={e.uri}>
+            <EntityRow
+              uri={e.uri}
+              label={e.label}
+              right={e.source ? (
+                <span
+                  className="text-xs px-2 py-0.5"
+                  style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 'var(--radius-sm)' }}
+                >
+                  {e.source}
+                </span>
+              ) : undefined}
+            />
           </li>
         ))}
       </ul>

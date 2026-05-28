@@ -6,9 +6,12 @@ import {
   Interlinking,
   InterlinkingClass,
   InterlinkingEntities,
+  InterlinkingEntityDetail,
+  InterlinkingEntityGroup,
+  LinkDetail,
   statusColor,
 } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList, prettyId } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList, EntityRow, prettyId } from './_shared';
 
 const PAGE = 25;
 
@@ -205,7 +208,7 @@ function Stat({ label, value, color, sub }: { label: string; value: number; colo
   );
 }
 
-function LinkList({ title, links, icon }: { title: string; links: import('../../lib/api').LinkDetail[]; icon: React.ReactNode }) {
+function LinkCard({ title, icon, count, children }: { title: string; icon: React.ReactNode; count: number; children: React.ReactNode }) {
   return (
     <div
       className="p-4 border"
@@ -214,12 +217,22 @@ function LinkList({ title, links, icon }: { title: string; links: import('../../
       <div className="flex items-center gap-2 mb-3" style={{ color: 'var(--navy)' }}>
         {icon}
         <span>{title}</span>
-        <span className="ml-auto text-xs" style={{ color: 'var(--muted-foreground)' }}>
-          {links.length}
-        </span>
+        <span className="ml-auto text-xs" style={{ color: 'var(--muted-foreground)' }}>{count}</span>
       </div>
+      {children}
+    </div>
+  );
+}
+
+function EmptyText({ text = 'None' }: { text?: string }) {
+  return <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>{text}</div>;
+}
+
+function LinkList({ title, links, icon }: { title: string; links: LinkDetail[]; icon: React.ReactNode }) {
+  return (
+    <LinkCard title={title} icon={icon} count={links.length}>
       {links.length === 0 ? (
-        <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>None</div>
+        <EmptyText />
       ) : (
         <ul className="always-scrollbar space-y-2 max-h-72 overflow-y-scroll pr-1">
           {links.map((l, i) => {
@@ -250,6 +263,108 @@ function LinkList({ title, links, icon }: { title: string; links: import('../../
           })}
         </ul>
       )}
+    </LinkCard>
+  );
+}
+
+function EntityLinkColumn({ title, icon, groups }: { title: string; icon: React.ReactNode; groups: InterlinkingEntityGroup[] }) {
+  const total = groups.reduce((s, g) => s + g.count, 0);
+  return (
+    <LinkCard title={title} icon={icon} count={total}>
+      {groups.length === 0 ? (
+        <EmptyText />
+      ) : (
+        <ul className="always-scrollbar space-y-3 max-h-96 overflow-y-scroll pr-1">
+          {groups.map((g) => (
+            <li key={g.class.uri}>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="truncate" style={{ color: 'var(--text)' }}>
+                  {g.class.label || prettyId(g.class.uri)}
+                </span>
+                <span className="ml-auto text-xs tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
+                  {g.count}
+                </span>
+              </div>
+              <ul className="mt-1 ml-3 space-y-1">
+                {g.properties.map((p) => (
+                  <li
+                    key={p.uri}
+                    className="text-xs flex items-center gap-2"
+                    style={{ color: 'var(--muted-foreground)' }}
+                  >
+                    <span className="truncate">{p.label || p.localName}</span>
+                    <span className="ml-auto tabular-nums whitespace-nowrap">{p.count}</span>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      )}
+    </LinkCard>
+  );
+}
+
+function EntityDetailCard({
+  classUri,
+  entityUri,
+  fallbackLabel,
+  onBack,
+}: {
+  classUri: string;
+  entityUri: string;
+  fallbackLabel?: string | null;
+  onBack: () => void;
+}) {
+  const [data, setData] = useState<InterlinkingEntityDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setData(null);
+    setError(null);
+    completenessApi
+      .interlinkingEntity({ class_uri: classUri, entity_uri: entityUri })
+      .then((r) => !cancelled && setData(r))
+      .catch((e) => !cancelled && setError(String(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [classUri, entityUri]);
+
+  const displayLabel = data?.label || fallbackLabel || prettyId(entityUri);
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-1 px-3 py-1 border shrink-0"
+          style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+        >
+          <ChevronLeft className="w-4 h-4" /> Back
+        </button>
+        <div className="min-w-0">
+          <div className="truncate" style={{ color: 'var(--text)' }} title={entityUri}>
+            {displayLabel}
+          </div>
+          <div className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>
+            {prettyId(entityUri)}
+            {data?.class ? ` · ${data.class}` : ''}
+          </div>
+        </div>
+      </div>
+
+      {error ? (
+        <ErrorState message={error} />
+      ) : !data ? (
+        <LoadingState />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <EntityLinkColumn title="Outgoing" icon={<ArrowRight className="w-4 h-4" />} groups={data.outgoing} />
+          <EntityLinkColumn title="Incoming" icon={<ArrowLeft className="w-4 h-4" />} groups={data.incoming} />
+        </div>
+      )}
     </div>
   );
 }
@@ -259,10 +374,12 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<InterlinkingEntities | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState<{ uri: string; label?: string | null } | null>(null);
 
   useEffect(() => {
     setOffset(0);
     setData(null);
+    setSelected(null);
   }, [classUri, status]);
 
   useEffect(() => {
@@ -277,6 +394,17 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
       cancelled = true;
     };
   }, [classUri, status, offset]);
+
+  if (selected) {
+    return (
+      <EntityDetailCard
+        classUri={classUri}
+        entityUri={selected.uri}
+        fallbackLabel={selected.label}
+        onBack={() => setSelected(null)}
+      />
+    );
+  }
 
   const total = data?.pagination.total ?? null;
 
@@ -318,14 +446,13 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
         <>
           <ul className="space-y-1 text-sm">
             {data.entities.map((e) => (
-              <li key={e.uri} className="flex items-center gap-2">
-                <span className="truncate" style={{ color: 'var(--text)' }} title={e.uri}>
-                  {e.label || prettyId(e.uri)}
-                </span>
-                <span className="text-xs ml-auto" style={{ color: 'var(--muted-foreground)' }}>
-                  {prettyId(e.uri)}
-                </span>
-                {e.direction && <DirectionBadge direction={e.direction} />}
+              <li key={e.uri}>
+                <EntityRow
+                  uri={e.uri}
+                  label={e.label}
+                  onClick={() => setSelected({ uri: e.uri, label: e.label })}
+                  right={e.direction ? <DirectionBadge direction={e.direction} /> : undefined}
+                />
               </li>
             ))}
           </ul>

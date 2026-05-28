@@ -15,44 +15,4 @@ jobs:
           username: farrelayman
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            sudo -iu fikri_risyad10 bash -c '
-              set -euo pipefail
-              cd vkg-profiling
-              git pull origin main
-
-              set -a
-              . ./.env
-              set +a
-
-              docker compose --profile healthy up -d mysql
-              for i in {1..30}; do
-                if docker compose --profile healthy exec -T mysql mysqladmin ping -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent; then
-                  break
-                fi
-                sleep 2
-              done
-
-              docker compose --profile healthy exec -T mysql mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "
-                CREATE TABLE IF NOT EXISTS legacy_student (
-                  s_id int NOT NULL,
-                  first_name varchar(40) NOT NULL,
-                  last_name varchar(40) NOT NULL,
-                  PRIMARY KEY (s_id)
-                );
-
-                INSERT INTO legacy_student VALUES
-                  (9001,0x416c696365,0x4c6567616379),
-                  (9002,0x426f62,0x4c6567616379),
-                  (9003,0x4361726f6c,0x4c6567616379)
-                ON DUPLICATE KEY UPDATE
-                  first_name = VALUES(first_name),
-                  last_name = VALUES(last_name);
-              "
-
-              docker compose --profile healthy stop teiid ontop-teiid || true
-              docker compose --profile healthy rm -f teiid || true
-              project="$(basename "$PWD")"
-              docker volume rm "${project}_teiid-standalone-configuration" "${project}_teiid-domain-configuration" || true
-
-              docker compose --profile healthy --profile shared up -d --build
-            '
+            sudo -iu fikri_risyad10 bash -lc 'cd vkg-profiling && git pull origin main && bash scripts/deploy-backend.sh'

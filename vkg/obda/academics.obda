@@ -6,12 +6,13 @@ rdf:		http://www.w3.org/1999/02/22-rdf-syntax-ns#
 xml:		http://www.w3.org/XML/1998/namespace
 xsd:		http://www.w3.org/2001/XMLSchema#
 foaf:		http://xmlns.com/foaf/0.1/
+schema:		http://schema.org/
 obda:		https://w3id.org/obda/vocabulary#
 rdfs:		http://www.w3.org/2000/01/rdf-schema#
 
 [MappingDeclaration] @collection [[
 mappingId	academics-teacher
-target		ex:voc#academics/teacher/{t_id} a ex:voc#FacultyMember ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string .
+target		ex:voc#academics/teacher/{t_id} a ex:voc#FacultyMember ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string ; schema:birthDate {birth_date}^^xsd:date ; schema:email {email}^^xsd:string .
 source		SELECT * FROM teacher
 
 mappingId	academics-fullProfessor

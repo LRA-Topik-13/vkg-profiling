@@ -16,7 +16,10 @@ import {
   TableFrame,
   errorMessage,
   formatCount,
+  labelFromLookup,
   labelForProperty,
+  makeClassLabelLookup,
+  makePropertyLabelLookup,
   shortUri,
 } from './accuracyShared';
 
@@ -31,7 +34,11 @@ export default function AccuracyPropertyMisuse() {
   const [showAllClasses, setShowAllClasses] = useState(false);
 
   const selectedProperty = useMemo(() => properties.find((prop) => prop.uri === selectedPropertyUri) || null, [properties, selectedPropertyUri]);
-  const classByUri = useMemo(() => new Map(classes.map((cls) => [cls.uri, cls])), [classes]);
+  const classLabelLookup = useMemo(() => makeClassLabelLookup(classes), [classes]);
+  const propertyLabelLookup = useMemo(() => makePropertyLabelLookup(properties), [properties]);
+  const selectedPropertyLabel = selectedProperty ? labelForProperty(selectedProperty) : '';
+  const resultPropertyLabel = result ? selectedPropertyLabel || labelFromLookup(result.property, propertyLabelLookup) : selectedPropertyLabel;
+  const classLabelFor = (value: string) => labelFromLookup(value, classLabelLookup);
   const classRows = useMemo(() => {
     if (!result) return [];
     return result.classes
@@ -39,9 +46,9 @@ export default function AccuracyPropertyMisuse() {
       .sort((a, b) => (
         Number(a.expected) - Number(b.expected)
         || b.count - a.count
-        || a.class.localeCompare(b.class)
+        || classLabelFor(a.uri || a.class).localeCompare(classLabelFor(b.uri || b.class))
       ));
-  }, [result, showAllClasses]);
+  }, [result, showAllClasses, classLabelLookup]);
 
   useEffect(() => {
     setMetadataLoading(true);
@@ -74,7 +81,13 @@ export default function AccuracyPropertyMisuse() {
 
   return (
     <div className="space-y-6">
-      <Section title="Configuration">
+      <Section title="How It Works">
+        <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
+          This check compares observed property usage with the property domain defined in the ontology. A misuse is reported when the property appears on a class outside its expected domain.
+        </p>
+      </Section>
+
+      <Section title="Property Misuse of a Property">
         <div className="space-y-4">
           <Field label="Property" hint={metadataLoading ? 'Loading properties...' : undefined}>
             <select disabled={metadataLoading} value={selectedPropertyUri} onChange={(e) => { setSelectedPropertyUri(e.target.value); setResult(null); setError(null); setShowAllClasses(false); }} className="w-full px-4 py-2 border disabled:opacity-50" style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}>
@@ -82,12 +95,6 @@ export default function AccuracyPropertyMisuse() {
               {properties.map((prop) => <option key={prop.uri} value={prop.uri}>{labelForProperty(prop)} ({prop.type})</option>)}
             </select>
           </Field>
-
-          {selectedProperty && (
-            <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-              Selected property: <span className="font-mono" style={{ color: 'var(--text)' }}>{shortUri(selectedProperty.uri)}</span>
-            </div>
-          )}
 
           <button onClick={analyze} disabled={!selectedPropertyUri || loading} className="px-6 py-2.5 inline-flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}>
             <Search className="w-4 h-4" />
@@ -102,22 +109,21 @@ export default function AccuracyPropertyMisuse() {
       {result && !loading && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <MetricCard value={formatCount(result.total_property_uses)} label="Observed Uses" sub={result.property} />
+            <MetricCard value={formatCount(result.total_property_uses)} label="Observed Uses" sub={resultPropertyLabel} />
             <MetricCard value={formatCount(result.total_expected_count)} label="Expected Uses" sub="Ontology domain" color="#1F8A4C" />
             <MetricCard value={formatCount(result.total_misuse_count)} label="Misuse Uses" sub="Unexpected domain" color={result.total_misuse_count > 0 ? '#9E2B0A' : '#1F8A4C'} />
             <AccuracyScoreDonut title="Property Misuse Score" percentage={result.sa4_score} sub="expected / observed" />
           </div>
 
-          <Section title="Expected Domain" subtitle={`Expected domain for ${result.property} based on the ontology.`}>
+          <Section title="Expected Domain" subtitle={`Expected domain for ${resultPropertyLabel} based on the ontology.`}>
             {expectedDomain.length === 0 ? (
               <EmptyState message="No expected classes are defined for this property." />
             ) : (
               <div className="flex flex-wrap gap-2">
                 {expectedDomain.map((uri) => {
-                  const cls = classByUri.get(uri);
                   return (
                     <span key={uri} className="px-3 py-1.5 text-sm border" style={{ backgroundColor: 'var(--info-soft)', color: 'var(--navy)', borderColor: 'rgba(0,54,99,0.2)', borderRadius: 'var(--radius-sm)' }} title={uri}>
-                      {cls?.label || cls?.localName || shortUri(uri)}
+                      {classLabelFor(uri)}
                     </span>
                   );
                 })}
@@ -162,7 +168,7 @@ export default function AccuracyPropertyMisuse() {
                       return (
                         <tr key={row.uri} style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
                           <td className="px-4 py-3">
-                            <div className="text-sm" style={{ color: 'var(--text)' }}>{classByUri.get(row.uri)?.label || row.class}</div>
+                            <div className="text-sm" style={{ color: 'var(--text)' }}>{classLabelFor(row.uri || row.class)}</div>
                             <div className="text-xs font-mono truncate" style={{ color: 'var(--muted-foreground)' }} title={row.uri}>{shortUri(row.uri)}</div>
                           </td>
                           <td className="px-4 py-3"><StatusPill tone={row.expected ? 'good' : 'bad'}>{row.expected ? 'Expected' : 'Misuse'}</StatusPill></td>

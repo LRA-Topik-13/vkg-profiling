@@ -87,7 +87,7 @@ export default function AccuracyPropertyMisuse() {
         </p>
       </Section>
 
-      <Section title="Configuration">
+      <Section title="Property Misuse of a Property">
         <div className="space-y-4">
           <Field label="Property" hint={metadataLoading ? 'Loading properties...' : undefined}>
             <select disabled={metadataLoading} value={selectedPropertyUri} onChange={(e) => { setSelectedPropertyUri(e.target.value); setResult(null); setError(null); setShowAllClasses(false); }} className="w-full px-4 py-2 border disabled:opacity-50" style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}>

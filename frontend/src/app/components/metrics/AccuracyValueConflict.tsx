@@ -466,7 +466,7 @@ export default function AccuracyValueConflict() {
         </p>
       </Section>
 
-      <Section title="Configuration">
+      <Section title="Value Conflict of a Class">
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="Class">

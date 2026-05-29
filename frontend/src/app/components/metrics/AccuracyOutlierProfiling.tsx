@@ -643,7 +643,7 @@ export default function AccuracyOutlierProfiling() {
         </p>
       </Section>
 
-      <Section title="Configuration">
+      <Section title="Outlier Profiling of a Class">
         <div className="space-y-4">
           <Field label="Outlier Type">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

@@ -27,8 +27,10 @@ import {
   facetsToParam,
   formatCount,
   formatNullablePercent,
+  labelFromLookup,
   labelForClass,
   labelForProperty,
+  makePropertyLabelLookup,
   shortUri,
   sortSources,
 } from './accuracyShared';
@@ -77,6 +79,7 @@ function PairEvidenceTable({
   onPageSizeChange,
   onPrev,
   onNext,
+  propertyLabelFor,
 }: {
   mode: EvidenceMode;
   summary: AccuracyValueConflictSummary | null;
@@ -84,6 +87,7 @@ function PairEvidenceTable({
   onPageSizeChange: (size: number) => void;
   onPrev: () => void;
   onNext: () => void;
+  propertyLabelFor: (property: string) => string;
 }) {
   if (!summary) return null;
   const total = summary.conflicting_pairs;
@@ -133,7 +137,7 @@ function PairEvidenceTable({
                   <div className="space-y-1">
                     {Object.entries(pair.identity_values).map(([key, value]) => (
                       <div key={key} className="text-xs px-2 py-1" style={{ backgroundColor: 'var(--muted)', borderRadius: 'var(--radius-sm)', color: 'var(--muted-foreground)' }}>
-                        <span>{key}: </span><span style={{ color: 'var(--text)' }}>{value}</span>
+                        <span>{propertyLabelFor(key)}: </span><span style={{ color: 'var(--text)' }}>{value}</span>
                       </div>
                     ))}
                   </div>
@@ -237,6 +241,8 @@ export default function AccuracyValueConflict() {
   const objectProperties = useMemo(() => properties.filter((prop) => prop.type === 'object'), [properties]);
   const identityCandidates = useMemo(() => dataProperties.filter((prop) => prop.uri !== targetPropUri), [dataProperties, targetPropUri]);
   const targetProp = useMemo(() => dataProperties.find((prop) => prop.uri === targetPropUri) || null, [dataProperties, targetPropUri]);
+  const propertyLabelLookup = useMemo(() => makePropertyLabelLookup(properties), [properties]);
+  const propertyLabelFor = (property: string) => labelFromLookup(property, propertyLabelLookup);
   const identityLabels = useMemo(() => identityPropUris.map((uri) => labelForProperty(dataProperties.find((prop) => prop.uri === uri))).filter(Boolean), [identityPropUris, dataProperties]);
   const facetString = useMemo(() => facetsToParam(facets), [facets]);
   const canAnalyze = Boolean(selectedClassUri && targetPropUri && identityPropUris.length > 0 && selectedSources.length > 0);
@@ -620,6 +626,7 @@ export default function AccuracyValueConflict() {
             onPageSizeChange={(size) => pageSizeChange(activeMode, size)}
             onPrev={() => fetchRows(activeMode, Math.max(0, activeRows.offset - activeRows.pageSize), activeRows.pageSize)}
             onNext={() => fetchRows(activeMode, activeRows.offset + activeRows.pageSize, activeRows.pageSize)}
+            propertyLabelFor={propertyLabelFor}
           />
         </>
       )}

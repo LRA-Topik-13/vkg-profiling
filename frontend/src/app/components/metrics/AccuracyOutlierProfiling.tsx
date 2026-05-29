@@ -27,8 +27,11 @@ import {
   formatCount,
   formatPercent,
   getEntitySource,
+  labelFromLookup,
   labelForClass,
   labelForProperty,
+  makeClassLabelLookup,
+  makePropertyLabelLookup,
   shortUri,
 } from './accuracyShared';
 
@@ -213,7 +216,7 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
   );
 }
 
-function RelationshipEntityTable({ result }: { result: AccuracyOutlierResult }) {
+function RelationshipEntityTable({ result, propertyLabel }: { result: AccuracyOutlierResult; propertyLabel: string }) {
   const sources = useSources();
   const [sourceFilter, setSourceFilter] = useState('all');
   const [onlyOutliers, setOnlyOutliers] = useState(true);
@@ -231,6 +234,19 @@ function RelationshipEntityTable({ result }: { result: AccuracyOutlierResult }) 
   useEffect(() => setOffset(0), [sourceFilter, onlyOutliers, pageSize, result]);
 
   const page = rows.slice(offset, offset + pageSize);
+  const label = propertyLabel || 'Property';
+
+  function violationText(entity: AccuracyRelationshipEntity) {
+    const violation = entity.violations?.[0];
+    if (!violation) return 'No violation';
+    if (violation.criterion === 'tukey_lower_bound') {
+      return `${label} count is ${entity.count}, expected at least ${formatStat(Number(result.statistics.lower_fence ?? entity.count))}.`;
+    }
+    if (violation.criterion === 'tukey_upper_bound') {
+      return `${label} count is ${entity.count}, expected at most ${formatStat(Number(result.statistics.upper_fence ?? entity.count))}.`;
+    }
+    return violation.message;
+  }
 
   return (
     <Section
@@ -269,7 +285,7 @@ function RelationshipEntityTable({ result }: { result: AccuracyOutlierResult }) 
                   <td className="px-4 py-3"><SourceBadge source={getEntitySource(entity.uri)} /></td>
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{entity.count}</td>
                   <td className="px-4 py-3"><StatusPill tone={entity.is_outlier ? 'warn' : 'good'}>{entity.is_outlier ? 'Outlier' : 'OK'}</StatusPill></td>
-                  <td className="px-4 py-3 text-sm" style={{ color: entity.is_outlier ? 'var(--accent)' : 'var(--muted-foreground)' }}>{entity.violations?.[0]?.message || 'No violation'}</td>
+                  <td className="px-4 py-3 text-sm" style={{ color: entity.is_outlier ? 'var(--accent)' : 'var(--muted-foreground)' }}>{violationText(entity)}</td>
                 </tr>
               ))}
             </tbody>
@@ -281,7 +297,15 @@ function RelationshipEntityTable({ result }: { result: AccuracyOutlierResult }) 
   );
 }
 
-function PresenceMatrix({ result }: { result: AccuracyOutlierResult }) {
+function PresenceMatrix({
+  result,
+  classLabel,
+  propertyLabelFor,
+}: {
+  result: AccuracyOutlierResult;
+  classLabel: string;
+  propertyLabelFor: (property: string) => string;
+}) {
   const sources = useSources();
   const [sourceFilter, setSourceFilter] = useState('all');
   const [onlyOutliers, setOnlyOutliers] = useState(true);
@@ -309,16 +333,21 @@ function PresenceMatrix({ result }: { result: AccuracyOutlierResult }) {
 
   function cellState(entity: AccuracyPresenceEntity, prop: string) {
     const anomaly = entity.outlier_properties.find((item) => item.property === prop);
-    if (anomaly && anomaly.has_value) return { label: 'Present', tone: 'bad', title: 'Present, but the property is usually absent' };
-    if (anomaly) return { label: 'Absent', tone: 'bad', title: 'Absent, but the property is usually present' };
+    const label = propertyLabelFor(prop);
+    if (anomaly && anomaly.has_value) return { label: 'Present', tone: 'bad', title: `${label} is present here, but usually absent` };
+    if (anomaly) return { label: 'Absent', tone: 'bad', title: `${label} is absent here, but usually present` };
     const hasValue = entity.prop_status[prop];
     return hasValue
       ? { label: 'Present', tone: 'good', title: 'Present and consistent' }
       : { label: 'Absent', tone: 'neutral', title: 'Absent and consistent' };
   }
 
-  function violationText(entity: AccuracyPresenceEntity) {
-    return entity.violations?.map((violation) => violation.message).join(' | ') || 'No violation';
+  function violationItems(entity: AccuracyPresenceEntity) {
+    return entity.outlier_properties.map((item) => {
+      const actual = item.has_value ? 'present' : 'absent';
+      const usual = item.is_majority ? 'present' : 'absent';
+      return `${propertyLabelFor(item.property)} is ${actual} here, but usually ${usual} for ${classLabel}.`;
+    });
   }
 
   return (
@@ -349,7 +378,7 @@ function PresenceMatrix({ result }: { result: AccuracyOutlierResult }) {
                   <th className="px-4 py-3 text-left w-[90px]" style={{ color: 'var(--text-on-dark)' }}>Source</th>
                   {props.map((prop) => (
                     <th key={prop} className="px-3 py-3 text-left text-sm" style={{ color: 'var(--text-on-dark)' }}>
-                      <div>{prop}</div>
+                      <div title={prop}>{propertyLabelFor(prop)}</div>
                       <div className="text-xs font-normal opacity-80">{propertyPattern(prop)}</div>
                     </th>
                   ))}
@@ -381,7 +410,15 @@ function PresenceMatrix({ result }: { result: AccuracyOutlierResult }) {
                       );
                     })}
                     <td className="px-4 py-3"><StatusPill tone={entity.is_outlier ? 'warn' : 'good'}>{entity.is_outlier ? 'Anomaly' : 'OK'}</StatusPill></td>
-                    <td className="px-4 py-3 text-sm" style={{ color: entity.is_outlier ? 'var(--accent)' : 'var(--muted-foreground)' }}>{violationText(entity)}</td>
+                    <td className="px-4 py-3 text-sm" style={{ color: entity.is_outlier ? 'var(--accent)' : 'var(--muted-foreground)' }}>
+                      {entity.outlier_properties.length === 0 ? (
+                        'No violation'
+                      ) : (
+                        <ul className="list-disc pl-4 space-y-1">
+                          {violationItems(entity).map((message) => <li key={message}>{message}</li>)}
+                        </ul>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -394,7 +431,15 @@ function PresenceMatrix({ result }: { result: AccuracyOutlierResult }) {
   );
 }
 
-function PresenceResult({ result }: { result: AccuracyOutlierResult }) {
+function PresenceResult({
+  result,
+  classLabel,
+  propertyLabelFor,
+}: {
+  result: AccuracyOutlierResult;
+  classLabel: string;
+  propertyLabelFor: (property: string) => string;
+}) {
   return (
     <>
       <Section title="Property Presence Rates" subtitle="Properties above 50% are usually present. Properties below 50% are usually absent.">
@@ -416,7 +461,7 @@ function PresenceResult({ result }: { result: AccuracyOutlierResult }) {
             <tbody>
               {(result.property_stats || []).map((stat) => (
                 <tr key={stat.property} style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{stat.property}</td>
+                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }} title={stat.property}>{propertyLabelFor(stat.property)}</td>
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{formatCount(stat.fill_count)}</td>
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{formatPercent(stat.fill_rate * 100)}</td>
                   <td className="px-4 py-3"><StatusPill tone={stat.fill_rate === 0.5 ? 'neutral' : stat.is_majority ? 'good' : 'warn'}>{stat.fill_rate === 0.5 ? 'No majority' : stat.is_majority ? 'Usually present' : 'Usually absent'}</StatusPill></td>
@@ -435,21 +480,29 @@ function PresenceResult({ result }: { result: AccuracyOutlierResult }) {
         Usually present means presence rate is above 50%, so absence is anomalous. Usually absent means presence rate is below 50%, so presence is anomalous. At exactly 50%, no anomaly is assigned.
       </div>
 
-      <PresenceMatrix result={result} />
+      <PresenceMatrix result={result} classLabel={classLabel} propertyLabelFor={propertyLabelFor} />
     </>
   );
 }
 
-function OutlierSummary({ result }: { result: AccuracyOutlierResult }) {
+function OutlierSummary({
+  result,
+  classLabel,
+  propertyLabel,
+}: {
+  result: AccuracyOutlierResult;
+  classLabel: string;
+  propertyLabel: string;
+}) {
   const cleanScore = result.total ? ((result.total - result.outlier_count) / result.total) * 100 : null;
   const isRelationship = result.type === 'relationship_count';
   const scoreTitle = isRelationship ? 'Relationship Count Score' : 'Property-Presence Anomaly Score';
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <MetricCard value={formatCount(result.total)} label="Total Entities" sub={result.class} />
+      <MetricCard value={formatCount(result.total)} label="Total Entities" sub={classLabel} />
       <MetricCard value={formatCount(result.outlier_count)} label="Flagged Entities" sub="Potential semantic anomalies" color={result.outlier_count > 0 ? '#9E2B0A' : '#1F8A4C'} />
       <AccuracyScoreDonut title={scoreTitle} percentage={cleanScore} sub="Entities without flags" />
-      <MetricCard value={isRelationship ? result.property || '-' : formatCount(result.properties_checked?.length || 0)} label={isRelationship ? 'Property' : 'Properties Checked'} sub={isRelationship ? 'Object property' : 'Mapped class properties'} />
+      <MetricCard value={isRelationship ? propertyLabel || '-' : formatCount(result.properties_checked?.length || 0)} label={isRelationship ? 'Property' : 'Properties Checked'} sub={isRelationship ? 'Object property' : 'Mapped class properties'} />
     </div>
   );
 }
@@ -470,6 +523,13 @@ export default function AccuracyOutlierProfiling() {
   const selectedClass = useMemo(() => classes.find((cls) => cls.uri === selectedClassUri) || null, [classes, selectedClassUri]);
   const objectProperties = useMemo(() => properties.filter((prop) => prop.type === 'object'), [properties]);
   const selectedProperty = useMemo(() => properties.find((prop) => prop.uri === selectedPropertyUri) || null, [properties, selectedPropertyUri]);
+  const classLabelLookup = useMemo(() => makeClassLabelLookup(classes), [classes]);
+  const propertyLabelLookup = useMemo(() => makePropertyLabelLookup(properties), [properties]);
+  const selectedClassLabel = selectedClass ? labelForClass(selectedClass) : '';
+  const selectedPropertyLabel = selectedProperty ? labelForProperty(selectedProperty) : '';
+  const resultClassLabel = result ? selectedClassLabel || labelFromLookup(result.class, classLabelLookup) : selectedClassLabel;
+  const resultPropertyLabel = result ? selectedPropertyLabel || labelFromLookup(result.property, propertyLabelLookup) : selectedPropertyLabel;
+  const propertyLabelFor = (property: string) => labelFromLookup(property, propertyLabelLookup);
   const facetString = useMemo(() => facetsToParam(facets), [facets]);
   const noExactFacetValues = Boolean(
     facetDraft.propUri && !facetDraft.loading && !facetDraft.error && facetDraft.values.length === 0,
@@ -682,13 +742,6 @@ export default function AccuracyOutlierProfiling() {
 
           <ActiveFacetList facets={facets} onRemove={removeFacet} onClear={clearFacets} />
 
-          {selectedClass && (
-            <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-              Selected class: <span className="font-mono" style={{ color: 'var(--text)' }}>{shortUri(selectedClass.uri)}</span>
-              {mode === 'relationship_count' && selectedProperty && <> , property: <span className="font-mono" style={{ color: 'var(--text)' }}>{shortUri(selectedProperty.uri)}</span></>}
-            </div>
-          )}
-
           <button onClick={analyze} disabled={!selectedClassUri || loading || (mode === 'relationship_count' && !selectedPropertyUri)} className="px-6 py-2.5 inline-flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}>
             <Search className="w-4 h-4" />
             {loading ? 'Analyzing...' : 'Analyze'}
@@ -701,9 +754,11 @@ export default function AccuracyOutlierProfiling() {
 
       {result && !loading && (
         <>
-          <OutlierSummary result={result} />
+          <OutlierSummary result={result} classLabel={resultClassLabel} propertyLabel={resultPropertyLabel} />
           {result.type === 'relationship_count' && <RelationshipCountBoxPlot result={result} />}
-          {result.type === 'relationship_count' ? <RelationshipEntityTable result={result} /> : <PresenceResult result={result} />}
+          {result.type === 'relationship_count'
+            ? <RelationshipEntityTable result={result} propertyLabel={resultPropertyLabel} />
+            : <PresenceResult result={result} classLabel={resultClassLabel} propertyLabelFor={propertyLabelFor} />}
         </>
       )}
 

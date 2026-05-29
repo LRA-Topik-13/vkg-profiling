@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FileText, Plus, Search } from 'lucide-react';
+import { FileText, Search } from 'lucide-react';
 import {
   accuracyApi,
   AccuracyCrossSourceSummaryEntry,
@@ -254,7 +254,6 @@ export default function AccuracyValueConflict() {
   const noExactFacetValues = Boolean(
     facetDraft.propUri && !facetDraft.loading && !facetDraft.error && facetDraft.values.length === 0,
   );
-  const canAddFacet = Boolean(facetDraft.propUri && facetDraft.valueUri && !facetDraft.loading);
   const activeSummary = activeMode === 'cross' ? crossSummary : intraSummary;
   const activeRows = activeMode === 'cross' ? crossRows : intraRows;
   const activeScore = scoreFromSummary(activeSummary, activeMode);
@@ -393,27 +392,28 @@ export default function AccuracyValueConflict() {
     setCrossRows(emptyRows());
   }
 
-  function addFacet() {
-    if (!canAddFacet) return;
+  function addFacet(value: string) {
+    if (!facetDraft.propUri || !value || facetDraft.loading) return;
     const propEntry = objectProperties.find((prop) => prop.uri === facetDraft.propUri);
     if (!propEntry) return;
-    const valueUri = facetDraft.valueUri === FACET_ANY_VALUE ? null : facetDraft.valueUri;
+    const valueUri = value === FACET_ANY_VALUE ? null : value;
     const duplicate = facets.some((facet) => facet.propUri === facetDraft.propUri && facet.valueUri === valueUri);
-    if (duplicate) return;
-    setFacets((prev) => [
-      ...prev,
-      {
-        propUri: facetDraft.propUri,
-        propLabel: labelForProperty(propEntry),
-        valueUri,
-        valueLabel: valueUri ? shortUri(valueUri) : '(exists)',
-      },
-    ]);
-    setFacetDraft((draft) => ({ ...draft, valueUri: '' }));
-    setIntraSummary(null);
-    setCrossSummary(null);
-    setIntraRows(emptyRows());
-    setCrossRows(emptyRows());
+    if (!duplicate) {
+      setFacets((prev) => [
+        ...prev,
+        {
+          propUri: facetDraft.propUri,
+          propLabel: labelForProperty(propEntry),
+          valueUri,
+          valueLabel: valueUri ? shortUri(valueUri) : '(exists)',
+        },
+      ]);
+      setIntraSummary(null);
+      setCrossSummary(null);
+      setIntraRows(emptyRows());
+      setCrossRows(emptyRows());
+    }
+    setFacetDraft(EMPTY_FACET_DRAFT);
   }
 
   function removeFacet(index: number) {
@@ -525,7 +525,7 @@ export default function AccuracyValueConflict() {
             )}
           </div>
 
-          <Field label="Add facet (optional)">
+          <Field label="Add facet filter (optional)">
             <p className="mb-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>
               Facet filters limit which entities are checked before the score is calculated.
             </p>
@@ -543,7 +543,11 @@ export default function AccuracyValueConflict() {
               <select
                 disabled={!facetDraft.propUri || facetDraft.loading}
                 value={facetDraft.valueUri}
-                onChange={(event) => setFacetDraft((draft) => ({ ...draft, valueUri: event.target.value }))}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (value) addFacet(value);
+                  else setFacetDraft((draft) => ({ ...draft, valueUri: '' }));
+                }}
                 className="flex-1 px-4 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
@@ -551,20 +555,6 @@ export default function AccuracyValueConflict() {
                 <option value={FACET_ANY_VALUE}>Any value (exists)</option>
                 {facetDraft.values.map((value) => <option key={value} value={value}>{shortUri(value)}</option>)}
               </select>
-              <button
-                onClick={addFacet}
-                disabled={!canAddFacet}
-                className="inline-flex items-center gap-1 px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  backgroundColor: canAddFacet ? 'var(--accent)' : 'var(--muted)',
-                  color: canAddFacet ? 'var(--text-on-accent)' : 'var(--muted-foreground)',
-                  borderRadius: 'var(--radius-md)',
-                }}
-                title="Add facet"
-              >
-                <Plus className="w-4 h-4" />
-                Add
-              </button>
             </div>
             {facetDraft.error && (
               <div className="mt-1 text-xs" style={{ color: 'var(--accent)' }}>

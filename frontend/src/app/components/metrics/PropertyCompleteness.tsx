@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Plus, X, AlertTriangle, Check } from 'lucide-react';
+import { Search, Plus, X, AlertTriangle, Check, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import {
   completenessApi,
@@ -174,48 +174,49 @@ export default function PropertyCompleteness() {
 
       <div ref={configRef}>
       <Section
-        title="Configuration"
+        title="Property Completeness of a Class"
         subtitle="Filter the analysis to one class and a subset of its properties. Optional facets (predicate + object) narrow entities further using AND semantics."
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="Class">
-            <select
-              value={selectedClassUri}
-              onChange={(e) => setSelectedClassUri(e.target.value)}
-              className="w-full px-3 py-2 border"
-              style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
-            >
-              <option value="">Choose a class…</option>
-              {classes.map((c) => (
-                <option key={c.uri} value={c.uri}>{c.label || c.localName}</option>
-              ))}
-            </select>
-          </Field>
+        <Field label="Class">
+          <select
+            value={selectedClassUri}
+            onChange={(e) => setSelectedClassUri(e.target.value)}
+            className="w-full md:w-1/2 px-3 py-2 border"
+            style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+          >
+            <option value="">Choose a class…</option>
+            {classes.map((c) => (
+              <option key={c.uri} value={c.uri}>{c.label || c.localName}</option>
+            ))}
+          </select>
+        </Field>
 
-          <Field label="Add facet (optional)">
-            <div className="flex gap-2">
+        <div className="mt-4">
+          <Field label="Add facet filter (optional)">
+            <p className="mb-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              Facet filters limit which entities are evaluated before completeness is calculated.
+            </p>
+            <div className="flex gap-2 w-full">
               <select
                 disabled={!selectedClassUri || objectProps.length === 0}
                 value={draft.propUri}
                 onChange={(e) => setDraft((d) => ({ ...d, propUri: e.target.value }))}
-                className="flex-1 px-3 py-2 border disabled:opacity-50"
+                className="w-1/2 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">— predicate —</option>
+                <option value="">Select predicate...</option>
                 {objectProps.map((p) => (
                   <option key={p.uri} value={p.uri}>{p.label || p.localName}</option>
                 ))}
               </select>
               <select
-                disabled={!draft.propUri || draft.values.length === 0}
+                disabled={!draft.propUri || draft.loading}
                 value={draft.valueUri}
                 onChange={(e) => setDraft((d) => ({ ...d, valueUri: e.target.value }))}
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">
-                  {draft.loading ? 'Loading…' : draft.error ? 'Failed to load' : '— object —'}
-                </option>
+                <option value="">{draft.loading ? 'Loading values...' : 'Select a value...'}</option>
                 {draft.values.map((v) => (
                   <option key={v} value={v}>{shortenUri(v)}</option>
                 ))}
@@ -223,11 +224,17 @@ export default function PropertyCompleteness() {
               <button
                 onClick={addFacet}
                 disabled={!draft.propUri || !draft.valueUri}
-                className="inline-flex items-center gap-1 px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
+                className="inline-flex items-center gap-1 px-3 py-2 shrink-0"
+                style={{
+                  backgroundColor: draft.propUri && draft.valueUri ? 'var(--accent)' : 'var(--muted)',
+                  color: draft.propUri && draft.valueUri ? 'var(--text-on-accent)' : 'var(--muted-foreground)',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: draft.propUri && draft.valueUri ? 'pointer' : 'not-allowed',
+                }}
                 title="Add facet"
               >
                 <Plus className="w-4 h-4" />
+                Add
               </button>
             </div>
             {draft.error && (
@@ -386,6 +393,13 @@ export default function PropertyCompleteness() {
           onPage={(o) => analyze(o)}
           onPageSizeChange={(s) => analyze(0, s)}
         />
+      )}
+
+      {!data && !loading && !error && (
+        <div className="text-center py-16" style={{ color: 'var(--muted-foreground)' }}>
+          <FileText className="mx-auto mb-4 w-12 h-12 opacity-40" />
+          <p className="text-sm font-medium">Select a class and properties, then click Analyze.</p>
+        </div>
       )}
     </div>
   );
@@ -585,7 +599,7 @@ function ClassCompletenessOverview({ onBarClick }: { onBarClick: (classUri: stri
 
   if (loading) {
     return (
-      <Section title="Completeness by Class" collapsible>
+      <Section title="Property Completeness of All Classes" collapsible>
         <LoadingState />
       </Section>
     );
@@ -594,7 +608,7 @@ function ClassCompletenessOverview({ onBarClick }: { onBarClick: (classUri: stri
   if (!data || ranked.length === 0) return null;
 
   return (
-    <Section title="Completeness by Class" subtitle="Click a bar to load that class into the configuration below." collapsible>
+    <Section title="Property Completeness of All Classes" subtitle="Click a bar to select that class below, then Analyze." collapsible>
       <div className="always-scrollbar max-h-[340px] overflow-y-auto">
         <ResponsiveContainer width="100%" height={Math.max(200, ranked.length * 36)}>
           <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 24 }}>

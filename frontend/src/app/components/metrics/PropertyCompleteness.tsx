@@ -435,8 +435,21 @@ function ResultsView({
             <XAxis type="number" domain={[0, 100]} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}%`} />
             <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
             <Tooltip
-              contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }}
-              formatter={(v: number) => `${v.toFixed(2)}%`}
+              content={(props) => {
+                if (!props.active || !props.payload?.length) return null;
+                const d = props.payload[0].payload;
+                const total = d.filled + d.missing;
+                return (
+                  <div style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', fontSize: 13 }}>
+                    <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 6 }}>{d.name}</div>
+                    <ul style={{ color: 'var(--text)', margin: 0, paddingLeft: '1.25rem', listStyleType: 'disc' }}>
+                      <li>{Number(d.filled).toLocaleString()} of {Number(total).toLocaleString()} entities filled</li>
+                      <li>{Number(d.missing).toLocaleString()} missing</li>
+                      <li>completeness: {Number(d.completeness).toFixed(2)}%</li>
+                    </ul>
+                  </div>
+                );
+              }}
             />
             <Bar dataKey="completeness" radius={[0, 6, 6, 0]}>
               {barData.map((d, i) => (
@@ -555,13 +568,19 @@ function ClassCompletenessOverview({ onBarClick }: { onBarClick: (classUri: stri
     return [...data.classes]
       .filter((c) => c.total_entities > 0)
       .sort((a, b) => a.completeness - b.completeness)
-      .map((c) => ({
-        name: c.label || c.class,
-        uri: c.uri,
-        completeness: c.completeness,
-        entities: c.total_entities,
-        properties: c.properties_count,
-      }));
+      .map((c) => {
+        const filled = c.by_property.reduce((s, p) => s + p.filled, 0);
+        const missing = c.by_property.reduce((s, p) => s + p.missing, 0);
+        return {
+          name: c.label || c.class,
+          uri: c.uri,
+          completeness: c.completeness,
+          entities: c.total_entities,
+          properties: c.properties_count,
+          filled,
+          missing,
+        };
+      });
   }, [data]);
 
   if (loading) {
@@ -593,6 +612,11 @@ function ClassCompletenessOverview({ onBarClick }: { onBarClick: (classUri: stri
                     </div>
                     <ul style={{ color: 'var(--text)', margin: 0, paddingLeft: '1.25rem', listStyleType: 'disc' }}>
                       <li>{Number(d.entities).toLocaleString()} total entities</li>
+                      <li>
+                        {Number(d.filled).toLocaleString()} of {Number(d.filled + d.missing).toLocaleString()} property values filled
+                        <span style={{ color: 'var(--muted-foreground)' }}> ({Number(d.entities).toLocaleString()} entities × {Number(d.properties).toLocaleString()} properties)</span>
+                      </li>
+                      <li>{Number(d.missing).toLocaleString()} missing</li>
                       <li>completeness: {Number(d.completeness).toFixed(2)}%</li>
                     </ul>
                   </div>

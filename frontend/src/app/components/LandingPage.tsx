@@ -36,7 +36,7 @@ export default function LandingPage() {
       description: 'Evaluate the efficiency and brevity of data representation',
       icon: FileText,
       path: '/conciseness',
-      tabs: ['Intrasource', 'Cross-source'],
+      tabs: ['Intrasource Duplicates', 'Cross-source Duplicates'],
     },
   ];
 

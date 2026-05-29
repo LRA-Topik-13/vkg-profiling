@@ -6,16 +6,17 @@ rdf:		http://www.w3.org/1999/02/22-rdf-syntax-ns#
 xml:		http://www.w3.org/XML/1998/namespace
 xsd:		http://www.w3.org/2001/XMLSchema#
 foaf:		http://xmlns.com/foaf/0.1/
+schema:		http://schema.org/
 obda:		https://w3id.org/obda/vocabulary#
 rdfs:		http://www.w3.org/2000/01/rdf-schema#
 
 [MappingDeclaration] @collection [[
 mappingId	compsci-student
-target		ex:voc#compsci/student/{s_id} a ex:voc#Student ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string . 
+target		ex:voc#compsci/student/{s_id} a ex:voc#Student ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string ; schema:birthDate {birth_date}^^xsd:date ; schema:email {email}^^xsd:string .
 source		SELECT * FROM compsci.student
 
 mappingId	compsci-academic
-target		ex:voc#compsci/academic/{a_id} a ex:voc#FacultyMember ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string . 
+target		ex:voc#compsci/academic/{a_id} a ex:voc#FacultyMember ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string ; schema:birthDate {birth_date}^^xsd:date ; schema:email {email}^^xsd:string .
 source		SELECT * FROM compsci.academic
 
 mappingId	compsci-fullProfessor
@@ -52,7 +53,7 @@ source		SELECT *
 			FROM compsci.course_registration
 
 mappingId	mathsci-person
-target		ex:voc#mathsci/person/{pid} a foaf:Person ; foaf:firstName {fname}^^xsd:string ; foaf:lastName {lname}^^xsd:string . 
+target		ex:voc#mathsci/person/{pid} a foaf:Person ; foaf:firstName {fname}^^xsd:string ; foaf:lastName {lname}^^xsd:string ; schema:birthDate {birth_date}^^xsd:date ; schema:email {email}^^xsd:string .
 source		SELECT * FROM mathsci.person
 
 mappingId	mathsci-undergraduate
@@ -103,7 +104,7 @@ source		SELECT *
 			FROM mathsci.registration
 
 mappingId	academics-teacher
-target		ex:voc#academics/teacher/{t_id} a ex:voc#FacultyMember ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string .
+target		ex:voc#academics/teacher/{t_id} a ex:voc#FacultyMember ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string ; schema:birthDate {birth_date}^^xsd:date ; schema:email {email}^^xsd:string .
 source		SELECT * FROM academics.teacher
 
 mappingId	academics-fullProfessor

@@ -27,6 +27,8 @@ CREATE TABLE `academic` (
   `first_name` varchar(40) NOT NULL,
   `last_name` varchar(40) NOT NULL,
   `position` int NOT NULL,
+  `birth_date` date NOT NULL,
+  `email` varchar(100) NOT NULL,
   PRIMARY KEY (`a_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -37,7 +39,21 @@ CREATE TABLE `academic` (
 
 LOCK TABLES `academic` WRITE;
 /*!40000 ALTER TABLE `academic` DISABLE KEYS */;
-INSERT INTO `academic` VALUES (1,'Anna','Chambers',1),(2,'Edward','May',9),(3,'Rachel','Ward',8),(4,'Priscilla','Hildr',2),(5,'Zlata','Richmal',3),(6,'Nathaniel','Abolfazl',4),(7,'Sergei','Elian',5),(8,'Alois','Jayant',6),(9,'Torborg','Chernobog',7),(10,'Udi','Heinrike',8),(11,'Alvena','Merry',9),(12,'Kyler','Josephina',1),(13,'Gerard','Cosimo',2),(14,'Karine','Attilio',3);
+INSERT INTO `academic` VALUES
+(1,'Anna','Chambers',1,'1982-03-15','anna.chambers@gmail.com'),
+(2,'Edward','May',9,'1989-07-22','edward.may@gmail.com'),
+(3,'Rachel','Ward',8,'1985-11-08','rachel.ward@gmail.com'),
+(4,'Priscilla','Hildr',2,'1983-05-30','priscilla.hildr@gmail.com'),
+(5,'Zlata','Richmal',3,'1987-09-14','zlata.richmal@gmail.com'),
+(6,'Nathaniel','Abolfazl',4,'1981-12-03','nathaniel.abolfazl@gmail.com'),
+(7,'Sergei','Elian',5,'1984-04-19','sergei.elian@gmail.com'),
+(8,'Alois','Jayant',6,'1986-08-25','alois.jayant@gmail.com'),
+(9,'Torborg','Chernobog',7,'1980-02-11','torborg.chernobog@gmail.com'),
+(10,'Udi','Heinrike',8,'1988-06-07','udi.heinrike@gmail.com'),
+(11,'Alvena','Merry',9,'1990-10-28','alvena.merry@gmail.com'),
+(12,'Kyler','Josephina',1,'1983-01-17','kyler.josephina@gmail.com'),
+(13,'Gerard','Cosimo',2,'1985-07-04','gerard.cosimo@gmail.com'),
+(14,'Karine','Attilio',3,'1988-03-22','karine.attilio@gmail.com');
 /*!40000 ALTER TABLE `academic` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -103,6 +119,8 @@ CREATE TABLE `student` (
   `s_id` int NOT NULL,
   `first_name` varchar(40) NOT NULL,
   `last_name` varchar(40) NOT NULL,
+  `birth_date` date NOT NULL,
+  `email` varchar(100) NOT NULL,
   PRIMARY KEY (`s_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -113,7 +131,12 @@ CREATE TABLE `student` (
 
 LOCK TABLES `student` WRITE;
 /*!40000 ALTER TABLE `student` DISABLE KEYS */;
-INSERT INTO `student` VALUES (1,'Mary','Smith'),(2,'John','Doe'),(3,'Franck','Combs'),(4,'Billy','Hinkley'),(5,'Alison','Robards');
+INSERT INTO `student` VALUES
+(1,'Mary','Smith','2001-04-12','mary.smith@gmail.com'),
+(2,'John','Doe','2002-09-18','john.doe@gmail.com'),
+(3,'Franck','Combs','2003-01-25','franck.combs@gmail.com'),
+(4,'Billy','Hinkley','2001-11-07','billy.hinkley@gmail.com'),
+(5,'Alison','Robards','2002-06-14','alison.robards@gmail.com');
 /*!40000 ALTER TABLE `student` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -153,13 +176,15 @@ CREATE TABLE `legacy_student` (
   `s_id` int NOT NULL,
   `first_name` varchar(40) NOT NULL,
   `last_name` varchar(40) NOT NULL,
+  `birth_date` date NOT NULL,
+  `email` varchar(100) NOT NULL,
   PRIMARY KEY (`s_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 INSERT INTO `legacy_student` VALUES
-  (9001,'Alice','Legacy'),
-  (9002,'Bob','Legacy'),
-  (9003,'Carol','Legacy');
+  (9001,'Alice','Legacy','2000-03-21','alice.legacy@gmail.com'),
+  (9002,'Bob','Legacy','2001-07-14','bob.legacy@gmail.com'),
+  (9003,'Carol','Legacy','2002-11-30','carol.legacy@gmail.com');
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;

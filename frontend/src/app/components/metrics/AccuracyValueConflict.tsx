@@ -201,7 +201,7 @@ function BreakdownTable({ summary, mode }: { summary: AccuracyValueConflictSumma
             {rows.map((row, index) => {
               const isCrossRow = 'source_a_label' in row;
               const score = isCrossRow ? row.sa2_cross_score : row.sa2_score;
-              const label = isCrossRow ? `${row.source_a_label} to ${row.source_b_label}` : row.source_label;
+              const label = isCrossRow ? `${row.source_a_label} and ${row.source_b_label}` : row.source_label;
               return (
                 <tr key={index} style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{label}</td>

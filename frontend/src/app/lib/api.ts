@@ -142,6 +142,8 @@ export interface InterlinkingEntityGroup {
   class: { uri: string; label?: string | null };
   count: number;
   properties: InterlinkingPropertyUse[];
+  entities: { uri: string; label?: string | null }[];
+  entity_count: number;
 }
 export interface InterlinkingEntityDetail {
   uri: string;

@@ -5,6 +5,7 @@
 @prefix xml: <http://www.w3.org/XML/1998/namespace> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix schema: <http://schema.org/> .
 @prefix obda: <https://w3id.org/obda/vocabulary#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @base <http://example.org/voc#> .
@@ -123,6 +124,20 @@
          rdfs:label "End Time" ;
          rdfs:domain :TimeSlot ;
          rdfs:range xsd:time .
+
+
+###  http://schema.org/birthDate
+schema:birthDate rdf:type owl:DatatypeProperty ;
+                 rdfs:label "Birth Date" ;
+                 rdfs:domain foaf:Person ;
+                 rdfs:range xsd:date .
+
+
+###  http://schema.org/email
+schema:email rdf:type owl:DatatypeProperty ;
+             rdfs:label "Email" ;
+             rdfs:domain foaf:Person ;
+             rdfs:range xsd:string .
 
 
 ###  http://xmlns.com/foaf/0.1/firstName

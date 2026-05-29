@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Search, Plus, X, AlertTriangle, Check } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Search, Plus, X, AlertTriangle, Check, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import {
   completenessApi,
@@ -49,6 +49,7 @@ export default function PropertyCompleteness() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [analyzedSignature, setAnalyzedSignature] = useState<string | null>(null);
+  const configRef = useRef<HTMLDivElement>(null);
 
   const currentSignature = useMemo(() => {
     if (!selectedClassUri || selectedPropUris.length === 0) return null;
@@ -166,51 +167,56 @@ export default function PropertyCompleteness() {
 
   return (
     <div className="space-y-6">
-      <ClassCompletenessOverview />
+      <ClassCompletenessOverview onBarClick={(classUri) => {
+        setSelectedClassUri(classUri);
+        setTimeout(() => configRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+      }} />
 
+      <div ref={configRef}>
       <Section
-        title="Configuration"
+        title="Property Completeness of a Class"
         subtitle="Filter the analysis to one class and a subset of its properties. Optional facets (predicate + object) narrow entities further using AND semantics."
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="Class">
-            <select
-              value={selectedClassUri}
-              onChange={(e) => setSelectedClassUri(e.target.value)}
-              className="w-full px-3 py-2 border"
-              style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
-            >
-              <option value="">Choose a class…</option>
-              {classes.map((c) => (
-                <option key={c.uri} value={c.uri}>{c.label || c.localName}</option>
-              ))}
-            </select>
-          </Field>
+        <Field label="Class">
+          <select
+            value={selectedClassUri}
+            onChange={(e) => setSelectedClassUri(e.target.value)}
+            className="w-full md:w-1/2 px-3 py-2 border"
+            style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+          >
+            <option value="">Choose a class…</option>
+            {classes.map((c) => (
+              <option key={c.uri} value={c.uri}>{c.label || c.localName}</option>
+            ))}
+          </select>
+        </Field>
 
-          <Field label="Add facet (optional)">
-            <div className="flex gap-2">
+        <div className="mt-4">
+          <Field label="Add facet filter (optional)">
+            <p className="mb-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              Facet filters limit which entities are evaluated before completeness is calculated.
+            </p>
+            <div className="flex gap-2 w-full">
               <select
                 disabled={!selectedClassUri || objectProps.length === 0}
                 value={draft.propUri}
                 onChange={(e) => setDraft((d) => ({ ...d, propUri: e.target.value }))}
-                className="flex-1 px-3 py-2 border disabled:opacity-50"
+                className="w-1/2 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">— predicate —</option>
+                <option value="">Select predicate...</option>
                 {objectProps.map((p) => (
                   <option key={p.uri} value={p.uri}>{p.label || p.localName}</option>
                 ))}
               </select>
               <select
-                disabled={!draft.propUri || draft.values.length === 0}
+                disabled={!draft.propUri || draft.loading}
                 value={draft.valueUri}
                 onChange={(e) => setDraft((d) => ({ ...d, valueUri: e.target.value }))}
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">
-                  {draft.loading ? 'Loading…' : draft.error ? 'Failed to load' : '— object —'}
-                </option>
+                <option value="">{draft.loading ? 'Loading values...' : 'Select a value...'}</option>
                 {draft.values.map((v) => (
                   <option key={v} value={v}>{shortenUri(v)}</option>
                 ))}
@@ -218,11 +224,17 @@ export default function PropertyCompleteness() {
               <button
                 onClick={addFacet}
                 disabled={!draft.propUri || !draft.valueUri}
-                className="inline-flex items-center gap-1 px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
+                className="inline-flex items-center gap-1 px-3 py-2 shrink-0"
+                style={{
+                  backgroundColor: draft.propUri && draft.valueUri ? 'var(--accent)' : 'var(--muted)',
+                  color: draft.propUri && draft.valueUri ? 'var(--text-on-accent)' : 'var(--muted-foreground)',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: draft.propUri && draft.valueUri ? 'pointer' : 'not-allowed',
+                }}
                 title="Add facet"
               >
                 <Plus className="w-4 h-4" />
+                Add
               </button>
             </div>
             {draft.error && (
@@ -352,6 +364,7 @@ export default function PropertyCompleteness() {
           {loading ? 'Analyzing…' : 'Analyze'}
         </button>
       </Section>
+      </div>
 
       {error && <ErrorState message={error} />}
       {loading && !data && <LoadingState />}
@@ -380,6 +393,13 @@ export default function PropertyCompleteness() {
           onPage={(o) => analyze(o)}
           onPageSizeChange={(s) => analyze(0, s)}
         />
+      )}
+
+      {!data && !loading && !error && (
+        <div className="text-center py-16" style={{ color: 'var(--muted-foreground)' }}>
+          <FileText className="mx-auto mb-4 w-12 h-12 opacity-40" />
+          <p className="text-sm font-medium">Select a class and properties, then click Analyze.</p>
+        </div>
       )}
     </div>
   );
@@ -429,8 +449,21 @@ function ResultsView({
             <XAxis type="number" domain={[0, 100]} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}%`} />
             <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
             <Tooltip
-              contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }}
-              formatter={(v: number) => `${v.toFixed(2)}%`}
+              content={(props) => {
+                if (!props.active || !props.payload?.length) return null;
+                const d = props.payload[0].payload;
+                const total = d.filled + d.missing;
+                return (
+                  <div style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', fontSize: 13 }}>
+                    <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 6 }}>{d.name}</div>
+                    <ul style={{ color: 'var(--text)', margin: 0, paddingLeft: '1.25rem', listStyleType: 'disc' }}>
+                      <li>{Number(d.filled).toLocaleString()} of {Number(total).toLocaleString()} entities filled</li>
+                      <li>{Number(d.missing).toLocaleString()} missing</li>
+                      <li>completeness: {Number(d.completeness).toFixed(2)}%</li>
+                    </ul>
+                  </div>
+                );
+              }}
             />
             <Bar dataKey="completeness" radius={[0, 6, 6, 0]}>
               {barData.map((d, i) => (
@@ -533,7 +566,7 @@ function ResultsView({
   );
 }
 
-function ClassCompletenessOverview() {
+function ClassCompletenessOverview({ onBarClick }: { onBarClick: (classUri: string) => void }) {
   const [data, setData] = useState<ClassSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -549,12 +582,24 @@ function ClassCompletenessOverview() {
     return [...data.classes]
       .filter((c) => c.total_entities > 0)
       .sort((a, b) => a.completeness - b.completeness)
-      .map((c) => ({ name: c.label || c.class, completeness: c.completeness, entities: c.total_entities }));
+      .map((c) => {
+        const filled = c.by_property.reduce((s, p) => s + p.filled, 0);
+        const missing = c.by_property.reduce((s, p) => s + p.missing, 0);
+        return {
+          name: c.label || c.class,
+          uri: c.uri,
+          completeness: c.completeness,
+          entities: c.total_entities,
+          properties: c.properties_count,
+          filled,
+          missing,
+        };
+      });
   }, [data]);
 
   if (loading) {
     return (
-      <Section title="Completeness by Class" collapsible>
+      <Section title="Property Completeness of All Classes" collapsible>
         <LoadingState />
       </Section>
     );
@@ -563,18 +608,36 @@ function ClassCompletenessOverview() {
   if (!data || ranked.length === 0) return null;
 
   return (
-    <Section title="Completeness by Class" collapsible>
-      <div className="always-scrollbar max-h-[500px] overflow-y-auto">
-        <ResponsiveContainer width="100%" height={Math.max(220, ranked.length * 40)}>
+    <Section title="Property Completeness of All Classes" subtitle="Click a bar to select that class below, then Analyze." collapsible>
+      <div className="always-scrollbar max-h-[340px] overflow-y-auto">
+        <ResponsiveContainer width="100%" height={Math.max(200, ranked.length * 36)}>
           <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 24 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
             <XAxis type="number" domain={[0, 100]} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}%`} />
             <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
             <Tooltip
-              contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }}
-              formatter={(v: number, _n, p) => [`${v.toFixed(2)}%`, `${p.payload.entities} entities`]}
+              content={(props) => {
+                if (!props.active || !props.payload?.length) return null;
+                const d = props.payload[0].payload;
+                return (
+                  <div style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', fontSize: 13 }}>
+                    <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 6 }}>
+                      {d.name} (across all {d.properties} mapped {d.properties === 1 ? 'property' : 'properties'})
+                    </div>
+                    <ul style={{ color: 'var(--text)', margin: 0, paddingLeft: '1.25rem', listStyleType: 'disc' }}>
+                      <li>{Number(d.entities).toLocaleString()} total entities</li>
+                      <li>
+                        {Number(d.filled).toLocaleString()} of {Number(d.filled + d.missing).toLocaleString()} property values filled
+                        <span style={{ color: 'var(--muted-foreground)' }}> ({Number(d.entities).toLocaleString()} entities × {Number(d.properties).toLocaleString()} properties)</span>
+                      </li>
+                      <li>{Number(d.missing).toLocaleString()} missing</li>
+                      <li>completeness: {Number(d.completeness).toFixed(2)}%</li>
+                    </ul>
+                  </div>
+                );
+              }}
             />
-            <Bar dataKey="completeness" radius={[0, 6, 6, 0]}>
+            <Bar dataKey="completeness" radius={[0, 6, 6, 0]} style={{ cursor: 'pointer' }} onClick={(d) => onBarClick(d.uri)}>
               {ranked.map((d, i) => (
                 <Cell key={i} fill={statusColor(d.completeness)} />
               ))}

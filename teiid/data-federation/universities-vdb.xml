@@ -5,14 +5,18 @@
                 CREATE FOREIGN TABLE student (
                   s_id  integer not null primary key,
                   first_name varchar(40) not null,
-                  last_name varchar(40) not null
+                  last_name varchar(40) not null,
+                  birth_date date not null,
+                  email varchar(100) not null
                   )OPTIONS(UPDATABLE 'FALSE');
-                  
+
                 CREATE FOREIGN TABLE academic (
                   a_id integer not null primary key,
                   first_name varchar(40) not null,
                   last_name varchar(40) not null,
-                  position integer not null
+                  position integer not null,
+                  birth_date date not null,
+                  email varchar(100) not null
                  )OPTIONS(UPDATABLE 'FALSE');
                  
                  CREATE FOREIGN TABLE course (
@@ -33,7 +37,9 @@
                 CREATE FOREIGN TABLE legacy_student (
                   s_id integer not null primary key,
                   first_name varchar(40) not null,
-                  last_name varchar(40) not null
+                  last_name varchar(40) not null,
+                  birth_date date not null,
+                  email varchar(100) not null
                  )OPTIONS(UPDATABLE 'FALSE');
             ]]> </metadata>   
       </model> 
@@ -44,7 +50,9 @@
                   pid integer not null primary key,
                   fname varchar(40) not null,
                   lname varchar(40) not null,
-                  status integer not null
+                  status integer not null,
+                  birth_date date not null,
+                  email varchar(100) not null
                  )OPTIONS(UPDATABLE 'FALSE');
                  
              CREATE FOREIGN TABLE course (
@@ -72,7 +80,9 @@
                   t_id integer not null primary key,
                   first_name varchar(40) not null,
                   last_name varchar(40) not null,
-                  position integer not null
+                  position integer not null,
+                  birth_date date not null,
+                  email varchar(100) not null
                  )OPTIONS(UPDATABLE 'FALSE');
 
                 CREATE FOREIGN TABLE place (

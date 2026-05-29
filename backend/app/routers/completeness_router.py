@@ -919,17 +919,83 @@ async def interlinking_entity(
         GROUP BY ?dir ?p ?otherClass
     """
 
+    # Distinct target-entity count per (direction, target class).
+    counts_q = f"""
+        {PREFIXES}
+        SELECT ?dir ?otherClass (COUNT(DISTINCT ?other) AS ?n) WHERE {{
+            VALUES ?p {{ {prop_values} }}
+            {{
+                <{entity_uri}> ?p ?other .
+                FILTER(isIRI(?other))
+                FILTER(?p != rdf:type)
+                ?other a ?otherClass .
+                BIND("out" AS ?dir)
+            }} UNION {{
+                ?other ?p <{entity_uri}> .
+                FILTER(?p != rdf:type)
+                ?other a ?otherClass .
+                BIND("in" AS ?dir)
+            }}
+        }}
+        GROUP BY ?dir ?otherClass
+    """
+
+    # Sample of the actual linked entities per group (capped per group below).
+    label_values = " ".join(f"<{p}>" for p in STANDARD_LABEL_PREDICATES)
+    samples_q = f"""
+        {PREFIXES}
+        SELECT ?dir ?otherClass ?other (SAMPLE(?lbl) AS ?label) WHERE {{
+            VALUES ?p {{ {prop_values} }}
+            {{
+                <{entity_uri}> ?p ?other .
+                FILTER(isIRI(?other))
+                FILTER(?p != rdf:type)
+                ?other a ?otherClass .
+                BIND("out" AS ?dir)
+            }} UNION {{
+                ?other ?p <{entity_uri}> .
+                FILTER(?p != rdf:type)
+                ?other a ?otherClass .
+                BIND("in" AS ?dir)
+            }}
+            OPTIONAL {{
+                ?other ?lblP ?lbl .
+                VALUES ?lblP {{ {label_values} }}
+            }}
+        }}
+        GROUP BY ?dir ?otherClass ?other
+        ORDER BY ?dir ?otherClass ?other
+        LIMIT 500
+    """
+
     try:
-        raw, labels = await asyncio.gather(
+        raw, counts_raw, samples_raw, labels = await asyncio.gather(
             execute_sparql(breakdown_q),
+            execute_sparql(counts_q),
+            execute_sparql(samples_q),
             _labels_for_entities(class_uri, [entity_uri]),
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
 
+    SAMPLE_PER_GROUP = 12
+
+    def _dir(b: dict) -> str:
+        return "outgoing" if b["dir"]["value"] == "out" else "incoming"
+
+    entity_counts: dict[str, dict[str, int]] = {"outgoing": {}, "incoming": {}}
+    for b in counts_raw.get("results", {}).get("bindings", []):
+        entity_counts[_dir(b)][b["otherClass"]["value"]] = int(b["n"]["value"])
+
+    samples: dict[str, dict[str, list]] = {"outgoing": {}, "incoming": {}}
+    for b in samples_raw.get("results", {}).get("bindings", []):
+        bucket = samples[_dir(b)].setdefault(b["otherClass"]["value"], [])
+        if len(bucket) < SAMPLE_PER_GROUP:
+            bucket.append({"uri": b["other"]["value"], "label": b.get("label", {}).get("value")})
+
     grouped: dict[str, dict[str, dict]] = {"outgoing": {}, "incoming": {}}
     for b in raw.get("results", {}).get("bindings", []):
-        direction = "outgoing" if b["dir"]["value"] == "out" else "incoming"
+        direction = _dir(b)
         p_uri = b["p"]["value"]
         cls_uri = b["otherClass"]["value"]
         count = int(b["n"]["value"])
@@ -951,10 +1017,14 @@ async def interlinking_entity(
             "count": count,
         })
 
-    def _serialize(column: dict[str, dict]) -> list[dict]:
+    def _serialize(direction: str) -> list[dict]:
+        column = grouped[direction]
         out = list(column.values())
         for entry in out:
             entry["properties"].sort(key=lambda p: (-p["count"], p["localName"]))
+            cls_uri = entry["class"]["uri"]
+            entry["entities"] = samples[direction].get(cls_uri, [])
+            entry["entity_count"] = entity_counts[direction].get(cls_uri, len(entry["entities"]))
         out.sort(key=lambda e: (-e["count"], e["class"]["label"] or ""))
         return out
 
@@ -963,8 +1033,8 @@ async def interlinking_entity(
         "label": labels.get(entity_uri),
         "class": class_entry["localName"],
         "class_uri": class_uri,
-        "outgoing": _serialize(grouped["outgoing"]),
-        "incoming": _serialize(grouped["incoming"]),
+        "outgoing": _serialize("outgoing"),
+        "incoming": _serialize("incoming"),
     }
 
 

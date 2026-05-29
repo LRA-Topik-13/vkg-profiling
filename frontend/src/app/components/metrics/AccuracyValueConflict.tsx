@@ -80,6 +80,7 @@ function PairEvidenceTable({
   onPrev,
   onNext,
   propertyLabelFor,
+  targetPropertyLabel,
 }: {
   mode: EvidenceMode;
   summary: AccuracyValueConflictSummary | null;
@@ -88,10 +89,12 @@ function PairEvidenceTable({
   onPrev: () => void;
   onNext: () => void;
   propertyLabelFor: (property: string) => string;
+  targetPropertyLabel: string;
 }) {
   if (!summary) return null;
   const total = summary.conflicting_pairs;
   const title = `${summaryLabel(mode)} Conflict Evidence`;
+  const targetLabel = targetPropertyLabel || propertyLabelFor(summary.target_property || summary.target_prop_uri) || 'Value';
 
   if (state.loading) {
     return <LoadingState message={`Loading ${summaryLabel(mode).toLowerCase()} conflict evidence...`} />;
@@ -125,9 +128,9 @@ function PairEvidenceTable({
             <tr>
               <th className="px-4 py-3 text-left w-[22%]" style={{ color: 'var(--text-on-dark)' }}>Identity Values</th>
               <th className="px-4 py-3 text-left w-[22%]" style={{ color: 'var(--text-on-dark)' }}>Entity A</th>
-              <th className="px-4 py-3 text-left w-[16%]" style={{ color: 'var(--text-on-dark)' }}>Value A</th>
+              <th className="px-4 py-3 text-left w-[16%]" style={{ color: 'var(--text-on-dark)' }}>{targetLabel} (A)</th>
               <th className="px-4 py-3 text-left w-[22%]" style={{ color: 'var(--text-on-dark)' }}>Entity B</th>
-              <th className="px-4 py-3 text-left w-[18%]" style={{ color: 'var(--text-on-dark)' }}>Value B</th>
+              <th className="px-4 py-3 text-left w-[18%]" style={{ color: 'var(--text-on-dark)' }}>{targetLabel} (B)</th>
             </tr>
           </thead>
           <tbody>
@@ -243,6 +246,7 @@ export default function AccuracyValueConflict() {
   const targetProp = useMemo(() => dataProperties.find((prop) => prop.uri === targetPropUri) || null, [dataProperties, targetPropUri]);
   const propertyLabelLookup = useMemo(() => makePropertyLabelLookup(properties), [properties]);
   const propertyLabelFor = (property: string) => labelFromLookup(property, propertyLabelLookup);
+  const targetPropertyLabel = targetProp ? labelForProperty(targetProp) : '';
   const identityLabels = useMemo(() => identityPropUris.map((uri) => labelForProperty(dataProperties.find((prop) => prop.uri === uri))).filter(Boolean), [identityPropUris, dataProperties]);
   const facetString = useMemo(() => facetsToParam(facets), [facets]);
   const canAnalyze = Boolean(selectedClassUri && targetPropUri && identityPropUris.length > 0 && selectedSources.length > 0);
@@ -627,6 +631,7 @@ export default function AccuracyValueConflict() {
             onPrev={() => fetchRows(activeMode, Math.max(0, activeRows.offset - activeRows.pageSize), activeRows.pageSize)}
             onNext={() => fetchRows(activeMode, activeRows.offset + activeRows.pageSize, activeRows.pageSize)}
             propertyLabelFor={propertyLabelFor}
+            targetPropertyLabel={targetPropertyLabel}
           />
         </>
       )}

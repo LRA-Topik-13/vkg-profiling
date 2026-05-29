@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Search, Plus, X, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Headline, Section, LoadingState, ErrorState, PaginatedTable } from './_shared';
+import { makePropertyLabelLookup, labelFromLookup } from './accuracyShared';
 import {
   metadataApi,
   concisenessApi,
@@ -65,6 +66,7 @@ function AmbiguousGroupsTable({
   onPrev,
   onNext,
   loading,
+  propertyLabelFor,
 }: {
   items: CrossDuplicateGroup[];
   pagination: PaginationInfo | null;
@@ -73,6 +75,7 @@ function AmbiguousGroupsTable({
   onPrev: () => void;
   onNext: () => void;
   loading: boolean;
+  propertyLabelFor: (key: string) => string;
 }) {
   return (
     <PaginatedTable
@@ -110,7 +113,7 @@ function AmbiguousGroupsTable({
                   className="inline-block mr-2 text-sm px-1.5 py-0.5"
                   style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 'var(--radius-sm)' }}
                 >
-                  {k}: <span className="font-medium" style={{ color: 'var(--text)' }}>{v}</span>
+                  {propertyLabelFor(k)}: <span className="font-medium" style={{ color: 'var(--text)' }}>{v}</span>
                 </span>
               ))}
             </div>
@@ -264,6 +267,9 @@ export default function CrosssourceConciseness() {
     () => allProperties.filter((p) => p.type === 'data'),
     [allProperties],
   );
+
+  const propertyLabelLookup = useMemo(() => makePropertyLabelLookup(allProperties), [allProperties]);
+  const propertyLabelFor = (key: string) => labelFromLookup(key, propertyLabelLookup);
 
   // Fetch classes on mount
   useEffect(() => {
@@ -711,6 +717,7 @@ export default function CrosssourceConciseness() {
             onPrev={() => fetchDuplicates(Math.max(0, dupOffset - dupPageSize), dupPageSize)}
             onNext={() => fetchDuplicates(dupOffset + dupPageSize, dupPageSize)}
             loading={dupLoading}
+            propertyLabelFor={propertyLabelFor}
           />
         </>
       )}

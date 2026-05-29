@@ -325,10 +325,10 @@ function PresenceMatrix({
 
   function propertyPattern(prop: string) {
     const stat = result.property_stats?.find((item) => item.property === prop);
-    if (!stat) return 'No pattern';
-    if (stat.fill_rate > 0.5) return 'Usually present';
-    if (stat.fill_rate === 0.5) return 'No majority';
-    return 'Usually absent';
+    if (!stat) return { label: 'No pattern', tone: 'neutral' as const };
+    if (stat.fill_rate > 0.5) return { label: 'Usually present', tone: 'good' as const };
+    if (stat.fill_rate === 0.5) return { label: 'No majority', tone: 'neutral' as const };
+    return { label: 'Usually absent', tone: 'warn' as const };
   }
 
   function cellState(entity: AccuracyPresenceEntity, prop: string) {
@@ -376,12 +376,15 @@ function PresenceMatrix({
                 <tr>
                   <th className="px-4 py-3 text-left w-[240px]" style={{ color: 'var(--text-on-dark)' }}>Entity</th>
                   <th className="px-4 py-3 text-left w-[90px]" style={{ color: 'var(--text-on-dark)' }}>Source</th>
-                  {props.map((prop) => (
-                    <th key={prop} className="px-3 py-3 text-left text-sm" style={{ color: 'var(--text-on-dark)' }}>
-                      <div title={prop}>{propertyLabelFor(prop)}</div>
-                      <div className="text-xs font-normal opacity-80">{propertyPattern(prop)}</div>
-                    </th>
-                  ))}
+                  {props.map((prop) => {
+                    const pattern = propertyPattern(prop);
+                    return (
+                      <th key={prop} className="px-3 py-3 text-left text-sm" style={{ color: 'var(--text-on-dark)' }}>
+                        <div className="mb-1.5" title={prop}>{propertyLabelFor(prop)}</div>
+                        <StatusPill tone={pattern.tone}>{pattern.label}</StatusPill>
+                      </th>
+                    );
+                  })}
                   <th className="px-4 py-3 text-left w-[100px]" style={{ color: 'var(--text-on-dark)' }}>Status</th>
                   <th className="px-4 py-3 text-left w-[280px]" style={{ color: 'var(--text-on-dark)' }}>Violations</th>
                 </tr>
@@ -476,8 +479,8 @@ function PresenceResult({
         className="px-4 py-3 text-sm border"
         style={{ backgroundColor: 'var(--muted)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
       >
-        <span className="font-medium" style={{ color: 'var(--navy)' }}>Matrix rule:</span>{' '}
-        Usually present means presence rate is above 50%, so absence is anomalous. Usually absent means presence rate is below 50%, so presence is anomalous. At exactly 50%, no anomaly is assigned.
+        <span className="font-medium" style={{ color: 'var(--navy)' }}>How to read the matrix:</span>{' '}
+        The Property Presence Rates table defines the usual pattern for this class. In the Property Matrix, an entity is flagged when it is missing a usually present property or has a usually absent property. Properties with no majority are not used for flagging.
       </div>
 
       <PresenceMatrix result={result} classLabel={classLabel} propertyLabelFor={propertyLabelFor} />
@@ -634,6 +637,12 @@ export default function AccuracyOutlierProfiling() {
 
   return (
     <div className="space-y-6">
+      <Section title="How It Works">
+        <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
+          This metric looks for entities that behave differently from other entities in the same class. Relationship Count compares how many selected relationships each entity has. Property-Presence Anomaly first learns the usual property pattern for the selected class, then flags entities that do not follow that pattern.
+        </p>
+      </Section>
+
       <Section title="Configuration">
         <div className="space-y-4">
           <Field label="Outlier Type">

@@ -460,6 +460,12 @@ export default function AccuracyValueConflict() {
 
   return (
     <div className="space-y-6">
+      <Section title="How It Works">
+        <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
+          This check uses a functional dependency rule, where selected identity properties should determine one target property. For example, Start Time + End Time -&gt; Day means that two comparable Time Slot entities with the same start and end time should also have the same day. If the target values are different, the pair is flagged as a conflict.
+        </p>
+      </Section>
+
       <Section title="Configuration">
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

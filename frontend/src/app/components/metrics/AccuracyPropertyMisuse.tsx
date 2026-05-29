@@ -81,6 +81,12 @@ export default function AccuracyPropertyMisuse() {
 
   return (
     <div className="space-y-6">
+      <Section title="How It Works">
+        <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
+          This check compares observed property usage with the property domain defined in the ontology. A misuse is reported when the property appears on a class outside its expected domain.
+        </p>
+      </Section>
+
       <Section title="Configuration">
         <div className="space-y-4">
           <Field label="Property" hint={metadataLoading ? 'Loading properties...' : undefined}>

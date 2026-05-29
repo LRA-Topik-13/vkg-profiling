@@ -154,6 +154,10 @@ INSERT INTO teaching VALUES (12, 12);
 INSERT INTO teaching VALUES (12, 14);
 INSERT INTO teaching VALUES (13, 10);
 INSERT INTO teaching VALUES (14, 14);
+-- Accuracy scenario defect: make Full Professor teacher/14 an unusually high Teaches-count outlier.
+INSERT INTO teaching VALUES (3, 14);
+INSERT INTO teaching VALUES (4, 14);
+INSERT INTO teaching VALUES (5, 14);
 
 -- Schedules (course at place and time)
 INSERT INTO schedule VALUES (1, 1, 1);

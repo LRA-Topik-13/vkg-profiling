@@ -92,7 +92,7 @@ COPY public.person (pid, fname, lname, status, birth_date, email) FROM stdin;
 6	Victor	Scott	7	1980-01-15	victor.scott@gmail.com
 7	Kellie	Griffin	8	1984-07-11	kellie.griffin@gmail.com
 8	Sueann	Samora	9	1986-02-28	sueann.samora@gmail.com
-9	Billy	Hinkley	2	2001-11-07	billy.hinkley@gmail.com
+9	Billy	Hinkley	2	2001-11-07	billy.hinkley@mathsci.example.edu
 10	Larry	Alfaro	1	2004-09-16	larry.alfaro@gmail.com
 11	John	Sims	4	2002-05-20	john.sims@gmail.com
 \.
@@ -219,4 +219,3 @@ ALTER TABLE ONLY public.registration
 --
 -- PostgreSQL database dump complete
 --
-

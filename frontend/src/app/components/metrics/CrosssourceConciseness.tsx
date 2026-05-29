@@ -18,6 +18,7 @@ import { useSources } from '../../lib/sources';
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
+const FACET_ANY_VALUE = '__any_value_exists__';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -168,7 +169,7 @@ function CrossClassSummarySection({ onBarClick }: { onBarClick: (classUri: strin
   }, [data]);
 
   return (
-    <Section title="Cross-Source Conciseness by Class" collapsible>
+    <Section title="Cross-Source Conciseness of All Classes" collapsible>
       {loading && <LoadingState message="Loading class summary..." />}
       {error && <ErrorState message={error} />}
       {!loading && !error && ranked.length === 0 && data && (
@@ -188,7 +189,7 @@ function CrossClassSummarySection({ onBarClick }: { onBarClick: (classUri: strin
                   return (
                     <div style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', fontSize: 13 }}>
                       <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 6 }}>
-                        {d.name} (using all {d.props} identity props)
+                        {d.name} (using all {d.props} identity properties)
                       </div>
                       <ul style={{ color: 'var(--text)', margin: 0, paddingLeft: '1.25rem', listStyleType: 'disc' }}>
                         <li>{Number(d.total).toLocaleString()} total entities</li>
@@ -233,6 +234,8 @@ export default function CrosssourceConciseness() {
   const [draftPropUri, setDraftPropUri] = useState('');
   const [draftValueUri, setDraftValueUri] = useState('');
   const [draftValues, setDraftValues] = useState<string[]>([]);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
 
   // Results
   const [crossResult, setCrossResult] = useState<CrossSourceResult | null>(null);
@@ -304,19 +307,19 @@ export default function CrosssourceConciseness() {
   // Fetch facet values when draft property changes
   useEffect(() => {
     setDraftValueUri('');
-    if (!draftPropUri || !selectedClass) {
-      setDraftValues([]);
-      return;
-    }
+    setDraftValues([]);
+    setDraftError(null);
+    if (!draftPropUri || !selectedClass) return;
     const propEntry = allProperties.find((p) => p.uri === draftPropUri);
-    if (!propEntry) {
-      setDraftValues([]);
-      return;
-    }
+    if (!propEntry) return;
+    let cancelled = false;
+    setDraftLoading(true);
     metadataApi
       .facets(selectedClass.uri, propEntry.uri)
-      .then((r) => setDraftValues(r.values))
-      .catch(() => setDraftValues([]));
+      .then((r) => { if (!cancelled) setDraftValues(r.values); })
+      .catch(() => { if (!cancelled) setDraftError('Failed to load facet values.'); })
+      .finally(() => { if (!cancelled) setDraftLoading(false); });
+    return () => { cancelled = true; };
   }, [selectedClass, draftPropUri, allProperties]);
 
   const facetString = useMemo(() => {
@@ -346,12 +349,16 @@ export default function CrosssourceConciseness() {
     }
   }, [selectedClass, selectedProps, selectedSources, facetString]);
 
+  const canAddFacet = Boolean(draftPropUri && draftValueUri && !draftLoading);
+  const noExactFacetValues = Boolean(draftPropUri && !draftLoading && !draftError && draftValues.length === 0);
+
   function addFacet() {
-    if (!draftPropUri) return;
+    if (!canAddFacet) return;
     const propEntry = allProperties.find((p) => p.uri === draftPropUri);
     if (!propEntry) return;
+    const actualValueUri = draftValueUri === FACET_ANY_VALUE ? null : draftValueUri;
     const duplicate = facets.some(
-      (f) => f.propUri === draftPropUri && f.valueUri === (draftValueUri || null),
+      (f) => f.propUri === draftPropUri && f.valueUri === actualValueUri,
     );
     if (duplicate) return;
     setFacets((prev) => [
@@ -359,15 +366,22 @@ export default function CrosssourceConciseness() {
       {
         propUri: draftPropUri,
         propLabel: propEntry.label || propEntry.localName,
-        valueUri: draftValueUri || null,
-        valueLabel: draftValueUri ? shortUri(draftValueUri) : '(exists)',
+        valueUri: actualValueUri,
+        valueLabel: actualValueUri ? shortUri(actualValueUri) : '(exists)',
       },
     ]);
     setDraftValueUri('');
+    setCrossResult(null);
   }
 
   function removeFacet(index: number) {
     setFacets((prev) => prev.filter((_, i) => i !== index));
+    setCrossResult(null);
+  }
+
+  function clearFacets() {
+    setFacets([]);
+    setCrossResult(null);
   }
 
   const toggleSource = (src: string) => {
@@ -438,68 +452,88 @@ export default function CrosssourceConciseness() {
 
       {/* Configuration */}
       <div ref={configRef}>
-      <Section
-        title="Configuration"
-        subtitle="Select a class, identity properties, data sources, and optional facet filters to detect ambiguous instances across multiple data sources."
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="Class">
-            <select
-              value={selectedClassUri}
-              onChange={(e) => setSelectedClassUri(e.target.value)}
-              className="w-full px-3 py-2 border"
-              style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
-            >
-              <option value="">Choose a class...</option>
-              {classes.map((c) => (
-                <option key={c.uri} value={c.uri}>{c.label || c.localName}</option>
-              ))}
-            </select>
-          </Field>
+      <Section title="Cross-Source Conciseness of a Class">
+        {/* Class */}
+        <Field label="Class">
+          <select
+            value={selectedClassUri}
+            onChange={(e) => setSelectedClassUri(e.target.value)}
+            className="w-full md:w-1/2 px-3 py-2 border"
+            style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+          >
+            <option value="">Choose a class...</option>
+            {classes.map((c) => (
+              <option key={c.uri} value={c.uri}>{c.label || c.localName}</option>
+            ))}
+          </select>
+        </Field>
 
-          <Field label="Add facet (optional)">
-            <div className="flex gap-2">
+        {/* Facet filter */}
+        <div className="mt-4">
+          <Field label="Add facet filter (optional)">
+            <p className="mb-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              Facet filters limit which entities are checked before the score is calculated.
+            </p>
+            <div className="flex gap-2 w-full">
               <select
                 disabled={!selectedClassUri || objectProps.length === 0}
                 value={draftPropUri}
                 onChange={(e) => setDraftPropUri(e.target.value)}
-                className="flex-1 px-3 py-2 border disabled:opacity-50"
+                className="w-1/2 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">predicate</option>
+                <option value="">Select predicate...</option>
                 {objectProps.map((p) => (
                   <option key={p.uri} value={p.uri}>{p.label || p.localName}</option>
                 ))}
               </select>
               <select
-                disabled={!draftPropUri}
+                disabled={!draftPropUri || draftLoading}
                 value={draftValueUri}
                 onChange={(e) => setDraftValueUri(e.target.value)}
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">Any value (exists)</option>
+                <option value="">{draftLoading ? 'Loading values...' : 'Select a value...'}</option>
+                <option value={FACET_ANY_VALUE}>Any value (exists)</option>
                 {draftValues.map((v) => (
                   <option key={v} value={v}>{shortUri(v)}</option>
                 ))}
               </select>
               <button
                 onClick={addFacet}
-                disabled={!draftPropUri}
-                className="inline-flex items-center gap-1 px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
+                disabled={!canAddFacet}
+                className="inline-flex items-center gap-1 px-3 py-2 shrink-0"
+                style={{
+                  backgroundColor: canAddFacet ? 'var(--accent)' : 'var(--muted)',
+                  color: canAddFacet ? 'var(--text-on-accent)' : 'var(--muted-foreground)',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: canAddFacet ? 'pointer' : 'not-allowed',
+                }}
                 title="Add facet"
               >
                 <Plus className="w-4 h-4" />
+                Add
               </button>
             </div>
+            {draftError && (
+              <div className="mt-1 text-xs" style={{ color: 'var(--accent)' }}>
+                Failed to load facet values. You can still choose Any value (exists).
+              </div>
+            )}
+            {noExactFacetValues && (
+              <div className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                No exact values were found for this class and property. You can still choose Any value (exists).
+              </div>
+            )}
           </Field>
         </div>
 
         {facets.length > 0 && (
           <div className="mt-3">
-            <div className="mb-2 text-sm" style={{ color: 'var(--text)' }}>
-              Active facets <span style={{ color: 'var(--muted-foreground)' }}>(AND)</span>
+            <div className="flex items-center justify-between mb-2 text-sm" style={{ color: 'var(--text)' }}>
+              <span>Active facets <span style={{ color: 'var(--muted-foreground)' }}>(AND)</span></span>
+              <button onClick={clearFacets} className="text-xs underline" style={{ color: 'var(--accent)' }}>Clear all</button>
             </div>
             <div className="flex flex-wrap gap-2">
               {facets.map((f, i) => (

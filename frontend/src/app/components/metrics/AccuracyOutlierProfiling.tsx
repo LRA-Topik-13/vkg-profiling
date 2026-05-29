@@ -62,13 +62,19 @@ function formatStat(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
-function groupedStats(items: Array<{ label: string; value: number }>) {
-  const groups = new Map<number, string[]>();
-  items.forEach((item) => {
-    const key = Math.round(item.value * 10000) / 10000;
-    groups.set(key, [...(groups.get(key) || []), item.label]);
+function sampledCountTicks(groups: CountGroup[], maxTicks = 12) {
+  if (groups.length <= maxTicks) return groups.map((group) => group.count);
+
+  const ticks = new Set<number>();
+  const last = groups.length - 1;
+  for (let i = 0; i < maxTicks; i += 1) {
+    const index = Math.round((i * last) / (maxTicks - 1));
+    ticks.add(groups[index].count);
+  }
+  groups.forEach((group) => {
+    if (group.outliers > 0) ticks.add(group.count);
   });
-  return Array.from(groups.entries()).map(([value, labels]) => ({ value, labels }));
+  return Array.from(ticks).sort((a, b) => a - b);
 }
 
 interface CountGroup {
@@ -125,13 +131,7 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
     acc.set(row.count, current);
     return acc;
   }, new Map<number, CountGroup>()).values()).sort((a, b) => a.count - b.count);
-  const axisTicks = groupedStats([
-    { label: 'Min', value: min },
-    { label: 'Q1', value: q1 },
-    { label: 'Median', value: med },
-    { label: 'Q3', value: q3 },
-    { label: 'Max', value: max },
-  ]);
+  const axisTicks = sampledCountTicks(countGroups);
   const [hovered, setHovered] = useState<CountGroup | null>(null);
   const [tooltip, setTooltip] = useState({ x: 0, y: 0 });
 
@@ -184,9 +184,9 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
           })}
           <line x1={left} x2={width - right} y1={height - 52} y2={height - 52} stroke="var(--border)" strokeWidth="1" />
           {axisTicks.map((tick) => (
-            <g key={`${tick.labels.join('-')}-${tick.value}`}>
-              <line x1={x(tick.value)} x2={x(tick.value)} y1={height - 56} y2={height - 48} stroke="var(--border)" />
-              <text x={x(tick.value)} y={height - 32} textAnchor="middle" fontSize="10" fill="var(--muted-foreground)">{formatStat(tick.value)}</text>
+            <g key={tick}>
+              <line x1={x(tick)} x2={x(tick)} y1={height - 56} y2={height - 48} stroke="var(--border)" />
+              <text x={x(tick)} y={height - 32} textAnchor="middle" fontSize="10" fill="var(--muted-foreground)">{formatStat(tick)}</text>
             </g>
           ))}
         </svg>

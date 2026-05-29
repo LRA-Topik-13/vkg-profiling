@@ -28,17 +28,20 @@ export default function AccuracyPropertyMisuse() {
   const [loading, setLoading] = useState(false);
   const [metadataLoading, setMetadataLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAllClasses, setShowAllClasses] = useState(false);
 
   const selectedProperty = useMemo(() => properties.find((prop) => prop.uri === selectedPropertyUri) || null, [properties, selectedPropertyUri]);
   const classByUri = useMemo(() => new Map(classes.map((cls) => [cls.uri, cls])), [classes]);
   const classRows = useMemo(() => {
     if (!result) return [];
-    return [...result.classes].sort((a, b) => (
-      Number(a.expected) - Number(b.expected)
-      || b.count - a.count
-      || a.class.localeCompare(b.class)
-    ));
-  }, [result]);
+    return result.classes
+      .filter((row) => showAllClasses || !row.expected)
+      .sort((a, b) => (
+        Number(a.expected) - Number(b.expected)
+        || b.count - a.count
+        || a.class.localeCompare(b.class)
+      ));
+  }, [result, showAllClasses]);
 
   useEffect(() => {
     setMetadataLoading(true);
@@ -56,6 +59,7 @@ export default function AccuracyPropertyMisuse() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setShowAllClasses(false);
     try {
       const data = await accuracyApi.propertyMisuseByProperty(selectedPropertyUri);
       setResult(data);
@@ -73,7 +77,7 @@ export default function AccuracyPropertyMisuse() {
       <Section title="Configuration">
         <div className="space-y-4">
           <Field label="Property" hint={metadataLoading ? 'Loading properties...' : undefined}>
-            <select disabled={metadataLoading} value={selectedPropertyUri} onChange={(e) => { setSelectedPropertyUri(e.target.value); setResult(null); setError(null); }} className="w-full px-4 py-2 border disabled:opacity-50" style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}>
+            <select disabled={metadataLoading} value={selectedPropertyUri} onChange={(e) => { setSelectedPropertyUri(e.target.value); setResult(null); setError(null); setShowAllClasses(false); }} className="w-full px-4 py-2 border disabled:opacity-50" style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}>
               <option value="">Choose a property...</option>
               {properties.map((prop) => <option key={prop.uri} value={prop.uri}>{labelForProperty(prop)} ({prop.type})</option>)}
             </select>
@@ -121,50 +125,71 @@ export default function AccuracyPropertyMisuse() {
             )}
           </Section>
 
-          <Section title="Class Breakdown" subtitle="Misuse means the property appears on a class outside the expected ontology domain.">
-            <TableFrame>
-              <table className="w-full table-fixed">
-                <thead style={{ backgroundColor: 'var(--navy)', borderBottom: '1px solid var(--border)' }}>
-                  <tr>
-                    <th className="px-4 py-3 text-left w-[24%]" style={{ color: 'var(--text-on-dark)' }}>Class</th>
-                    <th className="px-4 py-3 text-left w-[14%]" style={{ color: 'var(--text-on-dark)' }}>Status</th>
-                    <th className="px-4 py-3 text-left w-[14%]" style={{ color: 'var(--text-on-dark)' }}>Uses</th>
-                    <th className="px-4 py-3 text-left w-[48%]" style={{ color: 'var(--text-on-dark)' }}>Evidence</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {classRows.map((row) => {
-                    const remaining = Math.max(0, row.count - row.entity_uris.length);
-                    return (
-                      <tr key={row.uri} style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
-                        <td className="px-4 py-3">
-                          <div className="text-sm" style={{ color: 'var(--text)' }}>{classByUri.get(row.uri)?.label || row.class}</div>
-                          <div className="text-xs font-mono truncate" style={{ color: 'var(--muted-foreground)' }} title={row.uri}>{shortUri(row.uri)}</div>
-                        </td>
-                        <td className="px-4 py-3"><StatusPill tone={row.expected ? 'good' : 'bad'}>{row.expected ? 'Expected' : 'Misuse'}</StatusPill></td>
-                        <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{formatCount(row.count)}</td>
-                        <td className="px-4 py-3">
-                          {row.expected ? (
-                            <span className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Expected domain.</span>
-                          ) : row.entity_uris.length === 0 ? (
-                            <span className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Misuse detected.</span>
-                          ) : (
-                            <div className="flex flex-wrap gap-1.5">
-                              {row.entity_uris.map((uri) => (
-                                <span key={uri} className="px-2 py-1 text-xs font-mono truncate max-w-[220px]" style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 'var(--radius-sm)' }} title={uri}>
-                                  {shortUri(uri)}
-                                </span>
-                              ))}
-                              {remaining > 0 && <span className="px-2 py-1 text-xs" style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 'var(--radius-sm)' }}>+{remaining} more</span>}
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </TableFrame>
+          <Section
+            title="Class Breakdown"
+            subtitle="Misuse means the property appears on a class outside the expected ontology domain."
+            right={
+              <button
+                onClick={() => setShowAllClasses((value) => !value)}
+                className="px-3 py-2 border text-sm"
+                style={{
+                  backgroundColor: showAllClasses ? 'var(--accent-soft)' : 'var(--card)',
+                  borderColor: 'var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: showAllClasses ? 'var(--accent)' : 'var(--text)',
+                }}
+              >
+                {showAllClasses ? 'Show misuse only' : 'Show all classes'}
+              </button>
+            }
+          >
+            {classRows.length === 0 ? (
+              <EmptyState message="No misuse classes were found." />
+            ) : (
+              <TableFrame>
+                <table className="w-full table-fixed">
+                  <thead style={{ backgroundColor: 'var(--navy)', borderBottom: '1px solid var(--border)' }}>
+                    <tr>
+                      <th className="px-4 py-3 text-left w-[24%]" style={{ color: 'var(--text-on-dark)' }}>Class</th>
+                      <th className="px-4 py-3 text-left w-[14%]" style={{ color: 'var(--text-on-dark)' }}>Status</th>
+                      <th className="px-4 py-3 text-left w-[14%]" style={{ color: 'var(--text-on-dark)' }}>Uses</th>
+                      <th className="px-4 py-3 text-left w-[48%]" style={{ color: 'var(--text-on-dark)' }}>Evidence</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {classRows.map((row) => {
+                      const remaining = Math.max(0, row.count - row.entity_uris.length);
+                      return (
+                        <tr key={row.uri} style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
+                          <td className="px-4 py-3">
+                            <div className="text-sm" style={{ color: 'var(--text)' }}>{classByUri.get(row.uri)?.label || row.class}</div>
+                            <div className="text-xs font-mono truncate" style={{ color: 'var(--muted-foreground)' }} title={row.uri}>{shortUri(row.uri)}</div>
+                          </td>
+                          <td className="px-4 py-3"><StatusPill tone={row.expected ? 'good' : 'bad'}>{row.expected ? 'Expected' : 'Misuse'}</StatusPill></td>
+                          <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{formatCount(row.count)}</td>
+                          <td className="px-4 py-3">
+                            {row.expected ? (
+                              <span className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Expected domain.</span>
+                            ) : row.entity_uris.length === 0 ? (
+                              <span className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Misuse detected.</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {row.entity_uris.map((uri) => (
+                                  <span key={uri} className="px-2 py-1 text-xs font-mono truncate max-w-[220px]" style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 'var(--radius-sm)' }} title={uri}>
+                                    {shortUri(uri)}
+                                  </span>
+                                ))}
+                                {remaining > 0 && <span className="px-2 py-1 text-xs" style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 'var(--radius-sm)' }}>+{remaining} more</span>}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </TableFrame>
+            )}
           </Section>
         </>
       )}

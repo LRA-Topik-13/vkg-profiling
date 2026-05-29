@@ -216,7 +216,7 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
 function RelationshipEntityTable({ result }: { result: AccuracyOutlierResult }) {
   const sources = useSources();
   const [sourceFilter, setSourceFilter] = useState('all');
-  const [onlyOutliers, setOnlyOutliers] = useState(false);
+  const [onlyOutliers, setOnlyOutliers] = useState(true);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [offset, setOffset] = useState(0);
 
@@ -242,14 +242,14 @@ function RelationshipEntityTable({ result }: { result: AccuracyOutlierResult }) 
             <option value="all">All sources</option>
             {sources.map((s) => <option key={s.uri} value={s.uri}>{s.localName}</option>)}
           </select>
-          <button onClick={() => setOnlyOutliers((v) => !v)} className="px-3 py-2 border text-sm" style={{ backgroundColor: onlyOutliers ? 'var(--accent-soft)' : 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: onlyOutliers ? 'var(--accent)' : 'var(--text)' }}>
-            {onlyOutliers ? 'Showing outliers' : 'Show outliers'}
+          <button onClick={() => setOnlyOutliers((v) => !v)} className="px-3 py-2 border text-sm" style={{ backgroundColor: onlyOutliers ? 'var(--card)' : 'var(--accent-soft)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: onlyOutliers ? 'var(--text)' : 'var(--accent)' }}>
+            {onlyOutliers ? 'Show all entities' : 'Show flagged only'}
           </button>
         </div>
       }
     >
       {rows.length === 0 ? (
-        <EmptyState message="No rows match the current filters." />
+        <EmptyState message={onlyOutliers ? 'No flagged entities match the current filters.' : 'No rows match the current filters.'} />
       ) : (
         <TableFrame>
           <table className="w-full table-fixed">
@@ -284,7 +284,7 @@ function RelationshipEntityTable({ result }: { result: AccuracyOutlierResult }) 
 function PresenceMatrix({ result }: { result: AccuracyOutlierResult }) {
   const sources = useSources();
   const [sourceFilter, setSourceFilter] = useState('all');
-  const [onlyOutliers, setOnlyOutliers] = useState(false);
+  const [onlyOutliers, setOnlyOutliers] = useState(true);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [offset, setOffset] = useState(0);
   const props = result.properties_checked || [];
@@ -331,14 +331,14 @@ function PresenceMatrix({ result }: { result: AccuracyOutlierResult }) {
             <option value="all">All sources</option>
             {sources.map((s) => <option key={s.uri} value={s.uri}>{s.localName}</option>)}
           </select>
-          <button onClick={() => setOnlyOutliers((v) => !v)} className="px-3 py-2 border text-sm" style={{ backgroundColor: onlyOutliers ? 'var(--accent-soft)' : 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: onlyOutliers ? 'var(--accent)' : 'var(--text)' }}>
-            {onlyOutliers ? 'Showing anomalies' : 'Show anomalies'}
+          <button onClick={() => setOnlyOutliers((v) => !v)} className="px-3 py-2 border text-sm" style={{ backgroundColor: onlyOutliers ? 'var(--card)' : 'var(--accent-soft)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: onlyOutliers ? 'var(--text)' : 'var(--accent)' }}>
+            {onlyOutliers ? 'Show all entities' : 'Show flagged only'}
           </button>
         </div>
       }
     >
       {rows.length === 0 ? (
-        <EmptyState message="No rows match the current filters." />
+        <EmptyState message={onlyOutliers ? 'No flagged entities match the current filters.' : 'No rows match the current filters.'} />
       ) : (
         <TableFrame>
           <div className="overflow-x-auto">

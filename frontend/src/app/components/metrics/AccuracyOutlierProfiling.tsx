@@ -455,7 +455,7 @@ function PresenceResult({
 }) {
   return (
     <>
-      <Section title="Property Presence Rates" subtitle="This table defines the usual property pattern used by the Property Matrix. Properties above 50% are usually present. Properties below 50% are usually absent.">
+      <Section title="Property Presence Rates" subtitle="This table sets the present or absent pattern used by the Property Matrix. A property used by more than half of the selected entities is treated as usually present. A property used by less than half is treated as usually absent.">
         <div className="mb-3 flex flex-wrap gap-2">
           <StatusPill tone="good">Usually present</StatusPill>
           <StatusPill tone="neutral">No majority</StatusPill>
@@ -648,9 +648,19 @@ export default function AccuracyOutlierProfiling() {
   return (
     <div className="space-y-6">
       <Section title="How It Works">
-        <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
-          This metric looks for entities that behave differently from other entities in the same class. Relationship Count compares how many selected relationships each entity has. Property-Presence Anomaly first learns the usual property pattern for the selected class, then flags entities that do not follow that pattern.
-        </p>
+        <div className="space-y-2 text-sm" style={{ color: 'var(--muted-foreground)' }}>
+          <p>This metric looks for entities that behave differently from other entities in the same class.</p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>
+              <span className="font-medium" style={{ color: 'var(--text)' }}>Relationship Count:</span>{' '}
+              Counts how many values each entity has for one object property, such as Teaches or Attends. Entities outside the normal count range are flagged.
+            </li>
+            <li>
+              <span className="font-medium" style={{ color: 'var(--text)' }}>Property-Presence Anomaly:</span>{' '}
+              Uses a simple majority rule. Properties used by more than half of the selected entities are treated as usually present, while properties used by less than half are treated as usually absent. Entities that do not follow that present or absent pattern are flagged.
+            </li>
+          </ul>
+        </div>
       </Section>
 
       <Section title="Outlier Profiling of a Class">

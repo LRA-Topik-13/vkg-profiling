@@ -25,6 +25,7 @@ origins = [
     "http://localhost:3000",
     "http://localhost:5173",
     "https://provkg.netlify.app",
+    "https://provkg.vercel.app",
 ]
 
 app.add_middleware(

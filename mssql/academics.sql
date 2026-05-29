@@ -21,6 +21,8 @@ CREATE TABLE teacher (
     -- position mapping (consistent with compsci pattern from obda):
     -- 1 = FullProfessor, 2 = AssociateProfessor, 3 = AssistantProfessor
     -- 8 = ExternalTeacher, 9 = PostDoc
+    birth_date  DATE        NOT NULL,
+    email       VARCHAR(100) NOT NULL,
     CONSTRAINT pk_teacher PRIMARY KEY (t_id)
 );
 
@@ -71,20 +73,20 @@ CREATE TABLE schedule (
 -- NOTE: t_id 9 "Zak Lane"       overlaps mathsci pid=1 (lecturer)
 -- NOTE: t_id 10 "Kellie Griffin" overlaps mathsci pid=7 (lecturer)
 -- NOTE: t_id 11 "Sueann Samora" overlaps mathsci pid=8 (lecturer)
-INSERT INTO teacher VALUES (1, 'Anna',      'Chambers',   1);
-INSERT INTO teacher VALUES (2, 'Diego',     'Vargas',     2);
-INSERT INTO teacher VALUES (3, 'Rachel',    'Ward',       3);
-INSERT INTO teacher VALUES (4, 'Victor',    'Scott',      1);
-INSERT INTO teacher VALUES (5, 'Tomoko',    'Nakamura',   9);
-INSERT INTO teacher VALUES (6, 'Eleni',     'Papadaki',   8);
-INSERT INTO teacher VALUES (7, 'Marcus',    'Lindqvist',  2);
-INSERT INTO teacher VALUES (8, 'Fatima',    'Al-Hassan',  1);
-INSERT INTO teacher VALUES (9, 'Zak',       'Lane',       1);
-INSERT INTO teacher VALUES (10, 'Kellie',   'Griffin',    2);
-INSERT INTO teacher VALUES (11, 'Sueann',   'Samora',     9);
-INSERT INTO teacher VALUES (12, 'Henrik',   'Johansson',  3);
-INSERT INTO teacher VALUES (13, 'Mei',      'Tanaka',     2);
-INSERT INTO teacher VALUES (14, 'Carlos',   'Rivera',     1);
+INSERT INTO teacher VALUES (1,  'Anna',    'Chambers',  1, '1982-03-15', 'anna.chambers@gmail.com');
+INSERT INTO teacher VALUES (2,  'Diego',   'Vargas',    2, '1983-08-07', 'diego.vargas@gmail.com');
+INSERT INTO teacher VALUES (3,  'Rachel',  'Ward',      3, '1985-11-08', 'rachel.ward@gmail.com');
+INSERT INTO teacher VALUES (4,  'Victor',  'Scott',     1, '1980-01-15', 'victor.scott@gmail.com');
+INSERT INTO teacher VALUES (5,  'Tomoko',  'Nakamura',  9, '1989-04-22', 'tomoko.nakamura@gmail.com');
+INSERT INTO teacher VALUES (6,  'Eleni',   'Papadaki',  8, '1987-10-13', 'eleni.papadaki@gmail.com');
+INSERT INTO teacher VALUES (7,  'Marcus',  'Lindqvist', 2, '1981-12-19', 'marcus.lindqvist@gmail.com');
+INSERT INTO teacher VALUES (8,  'Fatima',  'Al-Hassan', 1, '1984-06-03', 'fatima.alhassan@gmail.com');
+INSERT INTO teacher VALUES (9,  'Zak',     'Lane',      1, '1981-05-19', 'zak.lane@gmail.com');
+INSERT INTO teacher VALUES (10, 'Kellie',  'Griffin',   2, '1984-07-11', 'kellie.griffin@gmail.com');
+INSERT INTO teacher VALUES (11, 'Sueann',  'Samora',    9, '1986-02-28', 'sueann.samora@gmail.com');
+INSERT INTO teacher VALUES (12, 'Henrik',  'Johansson', 3, '1988-09-04', 'henrik.johansson@gmail.com');
+INSERT INTO teacher VALUES (13, 'Mei',     'Tanaka',    2, '1985-03-17', 'mei.tanaka@gmail.com');
+INSERT INTO teacher VALUES (14, 'Carlos',  'Rivera',    1, '1982-11-29', 'carlos.rivera@gmail.com');
 
 -- Courses (14 total)
 -- NOTE: c_id 1 "Linear Algebra"                        overlaps compsci c_id=1234

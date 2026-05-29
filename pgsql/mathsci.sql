@@ -43,7 +43,9 @@ CREATE TABLE public.person (
     pid integer NOT NULL,
     fname character varying(40) NOT NULL,
     lname character varying(40) NOT NULL,
-    status integer NOT NULL
+    status integer NOT NULL,
+    birth_date date NOT NULL,
+    email character varying(100) NOT NULL
 );
 
 --
@@ -81,18 +83,18 @@ COPY public.course (cid, lecturer, lab_teacher, topic) FROM stdin;
 -- Data for Name: person; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.person (pid, fname, lname, status) FROM stdin;
-1	Zak	Lane	8
-2	Mattie	Moses	1
-3	Céline	Mendez	2
-4	Rachel	Ward	9
-5	Alvena	Merry	3
-6	Victor	Scott	7
-7	Kellie	Griffin	8
-8	Sueann	Samora	9
-9	Billy	Hinkley	2
-10	Larry	Alfaro	1
-11	John	Sims	4
+COPY public.person (pid, fname, lname, status, birth_date, email) FROM stdin;
+1	Zak	Lane	8	1981-05-19	zak.lane@gmail.com
+2	Mattie	Moses	1	2003-08-29	mattie.moses@gmail.com
+3	Céline	Mendez	2	2001-03-14	celine.mendez@gmail.com
+4	Rachel	Ward	9	1985-11-08	rachel.ward@gmail.com
+5	Alvena	Merry	3	1990-10-28	alvena.merry@gmail.com
+6	Victor	Scott	7	1980-01-15	victor.scott@gmail.com
+7	Kellie	Griffin	8	1984-07-11	kellie.griffin@gmail.com
+8	Sueann	Samora	9	1986-02-28	sueann.samora@gmail.com
+9	Billy	Hinkley	2	2001-11-07	billy.hinkley@gmail.com
+10	Larry	Alfaro	1	2004-09-16	larry.alfaro@gmail.com
+11	John	Sims	4	2002-05-20	john.sims@gmail.com
 \.
 
 

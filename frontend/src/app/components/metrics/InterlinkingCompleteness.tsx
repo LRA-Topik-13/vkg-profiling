@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { ChevronLeft, ChevronRight, ArrowRight, ArrowLeft } from 'lucide-react';
 import {
@@ -19,10 +19,16 @@ export default function InterlinkingCompleteness() {
   const [data, setData] = useState<Interlinking | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     completenessApi.interlinking().then(setData).catch((e) => setError(String(e)));
   }, []);
+
+  function selectAndScroll(key: string | null) {
+    setSelected(key);
+    if (key) setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }
 
   if (error) return <ErrorState message={error} />;
   if (!data) return <LoadingState />;
@@ -49,12 +55,13 @@ export default function InterlinkingCompleteness() {
 
       <Section
         title="Linked vs Isolated per Class"
+        subtitle="Click a bar to inspect that class below."
         collapsible
       >
-        <StackedLinkChart classes={data.classes} onSelect={setSelected} selected={selected} />
+        <StackedLinkChart classes={data.classes} onSelect={selectAndScroll} selected={selected} />
       </Section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+      <div ref={detailRef} className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
         <div className="lg:col-span-2">
           <ClassSelectList
             title="Classes"
@@ -63,7 +70,7 @@ export default function InterlinkingCompleteness() {
             getKey={(c) => c.class}
             getSearchText={(c) => `${c.label || ''} ${c.class}`}
             selectedKey={selected}
-            onSelect={(k) => setSelected(k === selected ? null : k)}
+            onSelect={(k) => selectAndScroll(k === selected ? null : k)}
             renderRow={(c) => <ClassRow entry={c} />}
             maxHeight={560}
           />
@@ -121,24 +128,33 @@ function StackedLinkChart({
           linked: c.linked,
           not_linked: c.not_linked,
           ratio: c.ratio,
+          total: c.total_entities,
         })),
     [classes],
   );
 
   return (
-    <div className="always-scrollbar max-h-[500px] overflow-y-auto">
-      <ResponsiveContainer width="100%" height={Math.max(220, sorted.length * 44)}>
+    <div className="always-scrollbar max-h-[340px] overflow-y-auto">
+      <ResponsiveContainer width="100%" height={Math.max(200, sorted.length * 36)}>
         <BarChart data={sorted} layout="vertical" margin={{ left: 24, right: 24 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
           <XAxis type="number" stroke="var(--muted-foreground)" />
           <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
           <Tooltip
-            contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }}
-            formatter={(v: number, name: string, p) =>
-              name === 'linked'
-                ? [`${v} linked (${p.payload.ratio.toFixed(1)}%)`, 'Linked']
-                : [`${v} isolated`, 'Not linked']
-            }
+            content={(props) => {
+              if (!props.active || !props.payload?.length) return null;
+              const d = props.payload[0].payload;
+              return (
+                <div style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', fontSize: 13 }}>
+                  <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 6 }}>{d.name}</div>
+                  <ul style={{ color: 'var(--text)', margin: 0, paddingLeft: '1.25rem', listStyleType: 'disc' }}>
+                    <li>{Number(d.total).toLocaleString()} total entities</li>
+                    <li>{Number(d.linked).toLocaleString()} linked ({d.ratio.toFixed(1)}%)</li>
+                    <li>{Number(d.not_linked).toLocaleString()} isolated ({(100 - d.ratio).toFixed(1)}%)</li>
+                  </ul>
+                </div>
+              );
+            }}
           />
           <Legend />
           <Bar

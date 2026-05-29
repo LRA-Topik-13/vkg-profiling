@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Plus, X, AlertTriangle, Check } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import {
@@ -49,6 +49,7 @@ export default function PropertyCompleteness() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [analyzedSignature, setAnalyzedSignature] = useState<string | null>(null);
+  const configRef = useRef<HTMLDivElement>(null);
 
   const currentSignature = useMemo(() => {
     if (!selectedClassUri || selectedPropUris.length === 0) return null;
@@ -166,8 +167,12 @@ export default function PropertyCompleteness() {
 
   return (
     <div className="space-y-6">
-      <ClassCompletenessOverview />
+      <ClassCompletenessOverview onBarClick={(classUri) => {
+        setSelectedClassUri(classUri);
+        setTimeout(() => configRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+      }} />
 
+      <div ref={configRef}>
       <Section
         title="Configuration"
         subtitle="Filter the analysis to one class and a subset of its properties. Optional facets (predicate + object) narrow entities further using AND semantics."
@@ -352,6 +357,7 @@ export default function PropertyCompleteness() {
           {loading ? 'Analyzing…' : 'Analyze'}
         </button>
       </Section>
+      </div>
 
       {error && <ErrorState message={error} />}
       {loading && !data && <LoadingState />}
@@ -533,7 +539,7 @@ function ResultsView({
   );
 }
 
-function ClassCompletenessOverview() {
+function ClassCompletenessOverview({ onBarClick }: { onBarClick: (classUri: string) => void }) {
   const [data, setData] = useState<ClassSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -549,7 +555,13 @@ function ClassCompletenessOverview() {
     return [...data.classes]
       .filter((c) => c.total_entities > 0)
       .sort((a, b) => a.completeness - b.completeness)
-      .map((c) => ({ name: c.label || c.class, completeness: c.completeness, entities: c.total_entities }));
+      .map((c) => ({
+        name: c.label || c.class,
+        uri: c.uri,
+        completeness: c.completeness,
+        entities: c.total_entities,
+        properties: c.properties_count,
+      }));
   }, [data]);
 
   if (loading) {
@@ -563,18 +575,31 @@ function ClassCompletenessOverview() {
   if (!data || ranked.length === 0) return null;
 
   return (
-    <Section title="Completeness by Class" collapsible>
-      <div className="always-scrollbar max-h-[500px] overflow-y-auto">
-        <ResponsiveContainer width="100%" height={Math.max(220, ranked.length * 40)}>
+    <Section title="Completeness by Class" subtitle="Click a bar to load that class into the configuration below." collapsible>
+      <div className="always-scrollbar max-h-[340px] overflow-y-auto">
+        <ResponsiveContainer width="100%" height={Math.max(200, ranked.length * 36)}>
           <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 24 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
             <XAxis type="number" domain={[0, 100]} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}%`} />
             <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
             <Tooltip
-              contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }}
-              formatter={(v: number, _n, p) => [`${v.toFixed(2)}%`, `${p.payload.entities} entities`]}
+              content={(props) => {
+                if (!props.active || !props.payload?.length) return null;
+                const d = props.payload[0].payload;
+                return (
+                  <div style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', fontSize: 13 }}>
+                    <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 6 }}>
+                      {d.name} (across all {d.properties} mapped {d.properties === 1 ? 'property' : 'properties'})
+                    </div>
+                    <ul style={{ color: 'var(--text)', margin: 0, paddingLeft: '1.25rem', listStyleType: 'disc' }}>
+                      <li>{Number(d.entities).toLocaleString()} total entities</li>
+                      <li>completeness: {Number(d.completeness).toFixed(2)}%</li>
+                    </ul>
+                  </div>
+                );
+              }}
             />
-            <Bar dataKey="completeness" radius={[0, 6, 6, 0]}>
+            <Bar dataKey="completeness" radius={[0, 6, 6, 0]} style={{ cursor: 'pointer' }} onClick={(d) => onBarClick(d.uri)}>
               {ranked.map((d, i) => (
                 <Cell key={i} fill={statusColor(d.completeness)} />
               ))}

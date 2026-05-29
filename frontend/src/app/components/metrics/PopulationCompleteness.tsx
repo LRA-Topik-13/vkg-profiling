@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { completenessApi, PopulationSummary, PopulationEntry, PopulationEntities, statusColor } from '../../lib/api';
@@ -10,10 +10,16 @@ export default function PopulationCompleteness() {
   const [data, setData] = useState<PopulationSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     completenessApi.populationSummary().then(setData).catch((e) => setError(String(e)));
   }, []);
+
+  function selectAndScroll(key: string | null) {
+    setSelected(key);
+    if (key) setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }
 
   if (error) return <ErrorState message={error} />;
   if (!data) return <LoadingState />;
@@ -65,12 +71,12 @@ export default function PopulationCompleteness() {
       )}
 
       {reachable && (
-        <Section title="Completeness Ranking" collapsible>
-          <Ranking entries={data.classes} onSelect={setSelected} selected={selected} />
+        <Section title="Completeness Ranking" subtitle="Click a bar to inspect that class below." collapsible>
+          <Ranking entries={data.classes} onSelect={selectAndScroll} selected={selected} />
         </Section>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+      <div ref={detailRef} className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
         <div className="lg:col-span-2">
           <ClassSelectList
             title="Classes"
@@ -78,7 +84,7 @@ export default function PopulationCompleteness() {
             getKey={(c) => c.uri}
             getSearchText={(c) => `${c.label || ''} ${c.class}`}
             selectedKey={selected}
-            onSelect={(k) => setSelected(k === selected ? null : k)}
+            onSelect={(k) => selectAndScroll(k === selected ? null : k)}
             renderRow={(c) => <ClassRow entry={c} reachable={reachable} />}
             maxHeight={560}
           />
@@ -144,15 +150,29 @@ function Ranking({
   }
 
   return (
-    <div className="always-scrollbar max-h-[500px] overflow-y-auto">
-      <ResponsiveContainer width="100%" height={Math.max(220, ranked.length * 40)}>
+    <div className="always-scrollbar max-h-[340px] overflow-y-auto">
+      <ResponsiveContainer width="100%" height={Math.max(200, ranked.length * 36)}>
         <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 24 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
           <XAxis type="number" domain={[0, 100]} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}%`} />
           <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
           <Tooltip
-            contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }}
-            formatter={(v: number, _n, p) => [`${v.toFixed(2)}%`, `${p.payload.represented} / ${p.payload.source}`]}
+            content={(props) => {
+              if (!props.active || !props.payload?.length) return null;
+              const d = props.payload[0].payload;
+              const missing = Math.max(0, d.source - d.represented);
+              return (
+                <div style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', fontSize: 13 }}>
+                  <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 6 }}>{d.name}</div>
+                  <ul style={{ color: 'var(--text)', margin: 0, paddingLeft: '1.25rem', listStyleType: 'disc' }}>
+                    <li>{Number(d.represented).toLocaleString()} represented (VKG)</li>
+                    <li>{Number(d.source).toLocaleString()} source objects</li>
+                    <li>{missing.toLocaleString()} not represented</li>
+                    <li>completeness: {Number(d.completeness).toFixed(2)}%</li>
+                  </ul>
+                </div>
+              );
+            }}
           />
           <Bar
             dataKey="completeness"

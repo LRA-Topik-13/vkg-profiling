@@ -2,7 +2,7 @@ import asyncio
 from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 from app.dependencies import execute_sparql
-from app.routers.metadata_router import KNOWN_SOURCES, KNOWN_PROPERTIES, KNOWN_CLASSES_BY_URI
+from app.routers.metadata_router import KNOWN_SOURCES, KNOWN_PROPERTIES, KNOWN_CLASSES, KNOWN_CLASSES_BY_URI
 
 router = APIRouter(prefix="/conciseness", tags=["conciseness"])
 
@@ -421,6 +421,123 @@ async def intra_source_duplicates(
     }
 
 
+# ── CN2 — intra-source class summary ─────────────────────────────────────────
+
+@router.get("/intra-source/class-summary")
+async def intra_source_class_summary(
+    source_prefix: str = Query(..., description="URI prefix scoping to one source, e.g. http://example.org/voc#compsci/"),
+):
+    """
+    CN2 class summary — extensional conciseness per mapped class using all
+    data properties as identity (strictest / best-case scenario).
+
+    Returns one entry per class with both F1 and F2 scores.
+    """
+
+    known_uris = {src["uri"] for src in KNOWN_SOURCES}
+    if source_prefix not in known_uris:
+        raise HTTPException(
+            status_code=400,
+            detail=f"source_prefix '{source_prefix}' is not a registered data source. "
+                   f"Available: {[s['uri'] for s in KNOWN_SOURCES]}",
+        )
+
+    # Build per-class query pairs (total + group) for all classes with data props
+    tasks      = []
+    class_data = []
+
+    for cls in KNOWN_CLASSES:
+        cls_uri    = cls["uri"]
+        data_props = [p for p in KNOWN_PROPERTIES.get(cls_uri, []) if p["type"] == "data"]
+        class_data.append((cls, data_props))
+
+        if not data_props:
+            tasks.append(None)
+            tasks.append(None)
+            continue
+
+        id_block, id_vars = _build_identity_block("?e", [p["uri"] for p in data_props], "k")
+        select_keys       = " ".join(f"?{v}" for v in id_vars)
+
+        total_q = f"""
+            {PREFIXES}
+            SELECT (COUNT(DISTINCT ?e) AS ?n) WHERE {{
+                ?e a <{cls_uri}> .
+                FILTER(STRSTARTS(STR(?e), "{source_prefix}"))
+            }}
+        """
+
+        group_q = f"""
+            {PREFIXES}
+            SELECT {select_keys} (COUNT(DISTINCT ?e) AS ?cnt) WHERE {{
+                ?e a <{cls_uri}> .
+                FILTER(STRSTARTS(STR(?e), "{source_prefix}"))
+{id_block}
+            }}
+            GROUP BY {select_keys}
+            HAVING (COUNT(DISTINCT ?e) > 1)
+        """
+
+        tasks.append(execute_sparql(total_q))
+        tasks.append(execute_sparql(group_q))
+
+    try:
+        results_raw = await asyncio.gather(*[t for t in tasks if t is not None])
+    except Exception as ex:
+        raise HTTPException(status_code=502, detail=f"SPARQL error: {ex}")
+
+    result_iter = iter(results_raw)
+    entries = []
+
+    for cls, data_props in class_data:
+        cls_uri = cls["uri"]
+
+        if not data_props:
+            entries.append({
+                "uri":                   cls_uri,
+                "class":                 cls["localName"],
+                "label":                 cls.get("label"),
+                "source_prefix":         source_prefix,
+                "identity_props_count":  0,
+                "total_representations": 0,
+                "unique_instances":      0,
+                "violating_instances":   0,
+                "score_f1":              None,
+                "score_f2":              None,
+                "passed":                None,
+            })
+            continue
+
+        total_raw = next(result_iter)
+        group_raw = next(result_iter)
+
+        total_representations = _count_binding(total_raw, "n")
+        group_bindings        = group_raw.get("results", {}).get("bindings", [])
+
+        extras           = sum(int(r["cnt"]["value"]) - 1 for r in group_bindings)
+        unique_instances = total_representations - extras
+        cn2_f1 = round(unique_instances / total_representations * 100, 2) if total_representations else 100.0
+
+        violating_instances = sum(int(r["cnt"]["value"]) for r in group_bindings)
+        cn2_f2 = round((1 - violating_instances / total_representations) * 100, 2) if total_representations else 100.0
+
+        entries.append({
+            "uri":                   cls_uri,
+            "class":                 cls["localName"],
+            "label":                 cls.get("label"),
+            "source_prefix":         source_prefix,
+            "identity_props_count":  len(data_props),
+            "total_representations": total_representations,
+            "unique_instances":      unique_instances,
+            "violating_instances":   violating_instances,
+            "score_f1":              cn2_f1,
+            "score_f2":              cn2_f2,
+            "passed":                len(group_bindings) == 0,
+        })
+
+    return {"source_prefix": source_prefix, "classes": entries}
+
+
 # ── CN3 — cross-source ambiguous instances ────────────────────────────────────
 
 @router.get("/cross-source")
@@ -644,3 +761,119 @@ async def cross_source_duplicates(
         },
         "items": items,
     }
+
+
+# ── CN3 — cross-source class summary ─────────────────────────────────────────
+
+@router.get("/cross-source/class-summary")
+async def cross_source_class_summary():
+    """
+    CN3 class summary — cross-source ambiguity per mapped class using all
+    data properties as identity (strictest / best-case scenario) across all
+    registered sources (all pairwise combinations).
+    """
+    source_list = [src["uri"] for src in KNOWN_SOURCES]
+    if len(source_list) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="At least 2 registered data sources are required for cross-source analysis.",
+        )
+
+    diff_filter_e1e2 = _different_source_filter(source_list)
+    tasks      = []
+    class_data = []
+
+    for cls in KNOWN_CLASSES:
+        cls_uri    = cls["uri"]
+        data_props = [p for p in KNOWN_PROPERTIES.get(cls_uri, []) if p["type"] == "data"]
+        class_data.append((cls, data_props))
+
+        if not data_props:
+            tasks.append(None)
+            tasks.append(None)
+            continue
+
+        # Use separate per-entity variables + explicit FILTER(=) equality to
+        # avoid Ontop/Teiid translating shared variables into a row-value-
+        # constructor IN clause, which breaks on MySQL/MSSQL.
+        e1_patterns, e2_patterns, eq_filters = [], [], []
+        for i, p in enumerate(data_props):
+            e1_patterns.append(f"    ?e1 <{p['uri']}> ?e1_v{i} .")
+            e2_patterns.append(f"    ?e2 <{p['uri']}> ?e2_v{i} .")
+            eq_filters.append(f"    FILTER(?e1_v{i} = ?e2_v{i})")
+        e1_block  = "\n".join(e1_patterns)
+        e2_block  = "\n".join(e2_patterns)
+        eq_block  = "\n".join(eq_filters)
+
+        membership_e1  = _source_membership_filter("?e1", source_list)
+        membership_e2  = _source_membership_filter("?e2", source_list)
+        membership_all = _source_membership_filter("?e",  source_list)
+
+        total_q = f"""
+            {PREFIXES}
+            SELECT (COUNT(DISTINCT ?e) AS ?n) WHERE {{
+                ?e a <{cls_uri}> .
+                {membership_all}
+            }}
+        """
+
+        count_q = f"""
+            {PREFIXES}
+            SELECT (COUNT(*) AS ?n) WHERE {{
+                SELECT DISTINCT ?e1 WHERE {{
+                    ?e1 a <{cls_uri}> .
+                    ?e2 a <{cls_uri}> .
+                    {membership_e1}
+                    {membership_e2}
+                    {diff_filter_e1e2}
+{e1_block}
+{e2_block}
+{eq_block}
+                }}
+            }}
+        """
+
+        tasks.append(execute_sparql(total_q))
+        tasks.append(execute_sparql(count_q))
+
+    try:
+        results_raw = await asyncio.gather(*[t for t in tasks if t is not None])
+    except Exception as ex:
+        raise HTTPException(status_code=502, detail=f"SPARQL error: {ex}")
+
+    result_iter = iter(results_raw)
+    entries = []
+
+    for cls, data_props in class_data:
+        cls_uri = cls["uri"]
+
+        if not data_props:
+            entries.append({
+                "uri":                  cls_uri,
+                "class":                cls["localName"],
+                "label":                cls.get("label"),
+                "identity_props_count": 0,
+                "total_entities":       0,
+                "ambiguous_instances":  0,
+                "cn3_score":            None,
+            })
+            continue
+
+        total_raw = next(result_iter)
+        count_raw = next(result_iter)
+
+        total_n     = _count_binding(total_raw, "n")
+        ambiguous_n = _count_binding(count_raw, "n")
+        cn3         = round((1 - ambiguous_n / total_n) * 100, 2) if total_n else 100.0
+
+        entries.append({
+            "uri":                  cls_uri,
+            "class":                cls["localName"],
+            "label":                cls.get("label"),
+            "identity_props_count": len(data_props),
+            "total_entities":       total_n,
+            "ambiguous_instances":  ambiguous_n,
+            "cn3_score":            cn3,
+        })
+
+    return {"sources": source_list, "classes": entries}

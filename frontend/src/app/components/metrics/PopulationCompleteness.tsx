@@ -1,37 +1,52 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { AlertTriangle, Search, FileText } from 'lucide-react';
 import { completenessApi, PopulationSummary, PopulationEntry, PopulationEntities, statusColor } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList, EntityRow } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, PaginatedTable, prettyId } from './_shared';
 
 const PAGE = 25;
 
 export default function PopulationCompleteness() {
   const [data, setData] = useState<PopulationSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selectedUri, setSelectedUri] = useState<string>('');
+  const [analyzedUri, setAnalyzedUri] = useState<string | null>(null);
+  const configRef = useRef<HTMLDivElement>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     completenessApi.populationSummary().then(setData).catch((e) => setError(String(e)));
   }, []);
 
-  if (error) return <ErrorState message={error} />;
-  if (!data) return <LoadingState />;
+  function pickFromChart(uri: string) {
+    setSelectedUri(uri);
+    setTimeout(() => configRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }
 
-  const sel = data.classes.find((c) => c.uri === selected) || null;
-  const reachable = data.source_reachable;
+  function analyze() {
+    if (!selectedUri) return;
+    setAnalyzedUri(selectedUri);
+    setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }
+
+  if (error) return <ErrorState message={error} />;
+
+  const loading = !data;
+  const sel = data ? data.classes.find((c) => c.uri === analyzedUri) || null : null;
+  const reachable = data ? data.source_reachable : false;
+  const stale = sel !== null && selectedUri !== '' && selectedUri !== analyzedUri;
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Headline
-          value={reachable && data.overall_completeness != null ? data.overall_completeness : '—'}
+          value={!data ? '…' : reachable && data.overall_completeness != null ? data.overall_completeness : '—'}
           label="Overall Population Completeness"
           sub="Represented in VKG / objects in source DBs"
         />
-        <Headline value={String(data.total_represented)} label="Represented (VKG)" sub="Instances via SPARQL" color="var(--navy)" />
+        <Headline value={data ? String(data.total_represented) : '…'} label="Represented (VKG)" sub="Instances via SPARQL" color="var(--navy)" />
         <Headline
-          value={reachable && data.total_source_population != null ? String(data.total_source_population) : '—'}
+          value={!data ? '…' : reachable && data.total_source_population != null ? String(data.total_source_population) : '—'}
           label="Source Objects (Teiid)"
           sub="Rows via SQL on source DBs"
           color="var(--navy)"
@@ -51,7 +66,7 @@ export default function PopulationCompleteness() {
         </div>
       </div>
 
-      {!reachable && (
+      {data && !reachable && (
         <div
           className="flex items-start gap-2 px-4 py-3 text-sm border"
           style={{ backgroundColor: '#FEF7E6', color: '#8A5A00', borderColor: 'rgba(224,139,26,0.4)', borderRadius: 'var(--radius-md)' }}
@@ -64,54 +79,87 @@ export default function PopulationCompleteness() {
         </div>
       )}
 
-      {reachable && (
-        <Section title="Completeness Ranking" collapsible>
-          <Ranking entries={data.classes} onSelect={setSelected} selected={selected} />
+      {loading ? (
+        <Section title="Population Completeness of All Classes" subtitle="Click a bar to select that class below, then Analyze." collapsible>
+          <LoadingState />
         </Section>
+      ) : reachable ? (
+        <Section title="Population Completeness of All Classes" subtitle="Click a bar to select that class below, then Analyze." collapsible>
+          <Ranking entries={data.classes} onSelect={pickFromChart} selected={selectedUri || null} />
+        </Section>
+      ) : null}
+
+      <div ref={configRef}>
+        <Section
+          title="Population Completeness of a Class"
+          subtitle="Select a class to inspect its represented vs source population and entity breakdown."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Class">
+              <select
+                value={selectedUri}
+                onChange={(e) => setSelectedUri(e.target.value)}
+                disabled={loading}
+                className="w-full px-3 py-2 border disabled:opacity-50"
+                style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+              >
+                <option value="">{loading ? 'Loading…' : 'Choose a class…'}</option>
+                {data ? data.classes.map((c) => (
+                  <option key={c.uri} value={c.uri}>{c.label || c.class}</option>
+                )) : null}
+              </select>
+            </Field>
+          </div>
+
+          <button
+            onClick={analyze}
+            disabled={!selectedUri || loading}
+            className="mt-6 inline-flex items-center gap-2 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
+          >
+            <Search className="w-4 h-4" />
+            Analyze
+          </button>
+        </Section>
+      </div>
+
+      {stale && (
+        <div
+          className="flex items-start gap-2 px-3 py-2 text-sm border"
+          style={{ backgroundColor: '#FEF7E6', color: '#8A5A00', borderColor: 'rgba(224,139,26,0.4)', borderRadius: 'var(--radius-md)' }}
+        >
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <div>Selection changed since last analysis. Click <strong>Analyze</strong> to refresh results.</div>
+        </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-        <div className="lg:col-span-2">
-          <ClassSelectList
-            title="Classes"
-            items={[...data.classes]}
-            getKey={(c) => c.uri}
-            getSearchText={(c) => `${c.label || ''} ${c.class}`}
-            selectedKey={selected}
-            onSelect={(k) => setSelected(k === selected ? null : k)}
-            renderRow={(c) => <ClassRow entry={c} reachable={reachable} />}
-            maxHeight={560}
+      <div ref={resultRef}>
+        {sel ? (
+          <ClassDetail
+            entry={sel}
+            reachable={reachable}
+            onClose={() => {
+              setAnalyzedUri(null);
+              setSelectedUri('');
+            }}
           />
-        </div>
-        <div className="lg:col-span-3 lg:sticky lg:top-4">
-          {sel ? (
-            <ClassDetail entry={sel} reachable={reachable} onClose={() => setSelected(null)} />
-          ) : (
-            <Section title="Class Detail">
-              <div className="py-8 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>No class selected.</div>
-            </Section>
-          )}
-        </div>
+        ) : !loading ? (
+          <div className="text-center py-16" style={{ color: 'var(--muted-foreground)' }}>
+            <FileText className="mx-auto mb-4 w-12 h-12 opacity-40" />
+            <p className="text-sm font-medium">Select a class, then click Analyze.</p>
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function ClassRow({ entry, reachable }: { entry: PopulationEntry; reachable: boolean }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <>
-      <div className="min-w-0">
-        <div className="truncate" style={{ color: 'var(--text)' }}>{entry.label || entry.class}</div>
-        <div className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>{entry.class}</div>
-      </div>
-      <div className="flex items-center gap-3 shrink-0">
-        <span className="text-xs tabular-nums whitespace-nowrap" style={{ color: 'var(--muted-foreground)' }}>
-          {entry.represented.toLocaleString()}
-          {reachable && entry.source_population != null ? ` / ${entry.source_population.toLocaleString()}` : ''}
-        </span>
-        {reachable && entry.completeness != null ? <StatusBadge percent={entry.completeness} /> : null}
-      </div>
-    </>
+    <div>
+      <div className="mb-1 text-sm" style={{ color: 'var(--text)' }}>{label}</div>
+      {children}
+    </div>
   );
 }
 
@@ -144,15 +192,29 @@ function Ranking({
   }
 
   return (
-    <div className="always-scrollbar max-h-[500px] overflow-y-auto">
-      <ResponsiveContainer width="100%" height={Math.max(220, ranked.length * 40)}>
+    <div className="always-scrollbar max-h-[340px] overflow-y-auto">
+      <ResponsiveContainer width="100%" height={Math.max(200, ranked.length * 36)}>
         <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 24 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
           <XAxis type="number" domain={[0, 100]} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}%`} />
           <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
           <Tooltip
-            contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }}
-            formatter={(v: number, _n, p) => [`${v.toFixed(2)}%`, `${p.payload.represented} / ${p.payload.source}`]}
+            content={(props) => {
+              if (!props.active || !props.payload?.length) return null;
+              const d = props.payload[0].payload;
+              const missing = Math.max(0, d.source - d.represented);
+              return (
+                <div style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', fontSize: 13 }}>
+                  <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 6 }}>{d.name}</div>
+                  <ul style={{ color: 'var(--text)', margin: 0, paddingLeft: '1.25rem', listStyleType: 'disc' }}>
+                    <li>{Number(d.represented).toLocaleString()} represented (VKG)</li>
+                    <li>{Number(d.source).toLocaleString()} source objects</li>
+                    <li>{missing.toLocaleString()} not represented</li>
+                    <li>completeness: {Number(d.completeness).toFixed(2)}%</li>
+                  </ul>
+                </div>
+              );
+            }}
           />
           <Bar
             dataKey="completeness"
@@ -232,6 +294,7 @@ function ClassDetail({ entry, reachable, onClose }: { entry: PopulationEntry; re
 
 function EntityDrilldown({ classUri }: { classUri: string }) {
   const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(PAGE);
   const [data, setData] = useState<PopulationEntities | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -244,70 +307,62 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
     let cancelled = false;
     setLoading(true);
     completenessApi
-      .populationEntities({ class_uri: classUri, limit: PAGE, offset })
+      .populationEntities({ class_uri: classUri, limit: pageSize, offset })
       .then((r) => !cancelled && setData(r))
       .catch(() => !cancelled && setData(null))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [classUri, offset]);
-
-  const total = data?.pagination.total ?? null;
+  }, [classUri, offset, pageSize]);
 
   if (loading && !data) {
     return <div className="py-6 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>Loading…</div>;
   }
-  if (!data || data.entities.length === 0) {
-    return <div className="py-6 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>No entities for this class.</div>;
-  }
 
   return (
-    <>
-      <ul className="space-y-1 text-sm">
-        {data.entities.map((e) => (
-          <li key={e.uri}>
-            <EntityRow
-              uri={e.uri}
-              label={e.label}
-              right={e.source ? (
-                <span
-                  className="text-xs px-2 py-0.5"
-                  style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 'var(--radius-sm)' }}
-                >
-                  {e.source}
-                </span>
-              ) : undefined}
-            />
-          </li>
-        ))}
-      </ul>
-
-      <div className="mt-3 flex items-center justify-between text-sm" style={{ color: 'var(--muted-foreground)' }}>
-        <span>
-          {offset + 1}–{offset + data.entities.length}
-          {total != null ? ` of ${total}` : ''}
-        </span>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setOffset(Math.max(0, offset - PAGE))}
-            disabled={offset === 0}
-            className="inline-flex items-center gap-1 px-3 py-1 border disabled:opacity-40"
-            style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
-          >
-            <ChevronLeft className="w-4 h-4" /> Prev
-          </button>
-          <button
-            onClick={() => setOffset(offset + PAGE)}
-            disabled={total != null && offset + data.entities.length >= total}
-            className="inline-flex items-center gap-1 px-3 py-1 border disabled:opacity-40"
-            style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
-          >
-            Next <ChevronRight className="w-4 h-4" />
-          </button>
+    <PaginatedTable
+      colSpan={2}
+      pagination={data?.pagination ?? null}
+      pageSize={pageSize}
+      loading={loading}
+      onPageSizeChange={(s) => {
+        setPageSize(s);
+        setOffset(0);
+      }}
+      onPrev={() => setOffset(Math.max(0, offset - pageSize))}
+      onNext={() => setOffset(offset + pageSize)}
+      emptyState={
+        <div className="py-10 text-center" style={{ color: 'var(--muted-foreground)' }}>
+          <FileText className="mx-auto mb-3 w-10 h-10 opacity-40" />
+          <p className="text-sm font-medium">No entities for this class.</p>
         </div>
-      </div>
-    </>
+      }
+      head={
+        <>
+          <th className="text-left px-4 py-3" style={{ color: 'var(--text-on-dark)' }}>Entity</th>
+          <th className="text-right px-4 py-3" style={{ color: 'var(--text-on-dark)' }}>Source</th>
+        </>
+      }
+    >
+      {data?.entities.map((e) => (
+        <tr key={e.uri} style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
+          <td className="px-4 py-2 text-sm truncate max-w-[320px]" style={{ color: 'var(--text)' }} title={e.uri}>
+            {e.label || prettyId(e.uri)}
+          </td>
+          <td className="px-4 py-2 text-right">
+            {e.source ? (
+              <span
+                className="text-xs px-2 py-0.5"
+                style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 'var(--radius-sm)' }}
+              >
+                {e.source}
+              </span>
+            ) : null}
+          </td>
+        </tr>
+      ))}
+    </PaginatedTable>
   );
 }
 

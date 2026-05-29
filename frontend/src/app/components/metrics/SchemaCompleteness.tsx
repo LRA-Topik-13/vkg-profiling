@@ -96,7 +96,10 @@ function DonutCard({ title, mapped, unmapped, color }: { title: string; mapped: 
                 <Cell key={i} fill={c.color} />
               ))}
             </Pie>
-            <Tooltip contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }} />
+            <Tooltip
+              wrapperStyle={{ zIndex: 50 }}
+              contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }}
+            />
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">

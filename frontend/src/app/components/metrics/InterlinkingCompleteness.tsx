@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { ChevronLeft, ChevronRight, ArrowRight, ArrowLeft } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowRight, ArrowLeft, Search, AlertTriangle, FileText } from 'lucide-react';
 import {
   completenessApi,
   Interlinking,
@@ -11,93 +11,146 @@ import {
   LinkDetail,
   statusColor,
 } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList, EntityRow, prettyId } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, PaginatedTable, prettyId } from './_shared';
 
 const PAGE = 25;
 
 export default function InterlinkingCompleteness() {
   const [data, setData] = useState<Interlinking | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selectedClass, setSelectedClass] = useState<string>('');
+  const [analyzedClass, setAnalyzedClass] = useState<string | null>(null);
+  const configRef = useRef<HTMLDivElement>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     completenessApi.interlinking().then(setData).catch((e) => setError(String(e)));
   }, []);
 
-  if (error) return <ErrorState message={error} />;
-  if (!data) return <LoadingState />;
+  function pickFromChart(classKey: string) {
+    setSelectedClass(classKey);
+    setTimeout(() => configRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }
 
-  const sel = data.classes.find((c) => c.class === selected) || null;
+  function analyze() {
+    if (!selectedClass) return;
+    setAnalyzedClass(selectedClass);
+    setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }
+
+  if (error) return <ErrorState message={error} />;
+
+  const loading = !data;
+  const classOptions = data
+    ? [...data.classes].filter((c) => c.total_entities > 0).sort((a, b) => a.ratio - b.ratio)
+    : [];
+  const sel = data ? data.classes.find((c) => c.class === analyzedClass) || null : null;
+  const stale = sel !== null && selectedClass !== '' && selectedClass !== analyzedClass;
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Headline value={data.overall_ratio} label="Overall Linked Ratio" sub="Entities with ≥ 1 link / total" />
         <Headline
-          value={String(data.classes.reduce((s, c) => s + c.linked, 0))}
+          value={data ? data.overall_ratio : '…'}
+          label="Overall Linked Ratio"
+          sub="Entities with ≥ 1 link / total"
+        />
+        <Headline
+          value={data ? String(data.classes.reduce((s, c) => s + c.linked, 0)) : '…'}
           label="Linked Entities"
           sub="Across all classes"
           color="var(--navy)"
         />
         <Headline
-          value={String(data.classes.reduce((s, c) => s + c.not_linked, 0))}
+          value={data ? String(data.classes.reduce((s, c) => s + c.not_linked, 0)) : '…'}
           label="Isolated Entities"
           sub="No incoming or outgoing link"
-          color={statusColor(100 - data.overall_ratio)}
+          color={data ? statusColor(100 - data.overall_ratio) : 'var(--navy)'}
         />
       </div>
 
       <Section
-        title="Linked vs Isolated per Class"
+        title="Interlinking Completeness of All Classes"
+        subtitle="Click a bar to select that class below, then Analyze."
         collapsible
       >
-        <StackedLinkChart classes={data.classes} onSelect={setSelected} selected={selected} />
+        {loading ? (
+          <LoadingState />
+        ) : (
+          <StackedLinkChart classes={data.classes} onSelect={pickFromChart} selected={selectedClass || null} />
+        )}
       </Section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-        <div className="lg:col-span-2">
-          <ClassSelectList
-            title="Classes"
-            subtitle="Search or pick a class to see its details."
-            items={[...data.classes].filter((c) => c.total_entities > 0).sort((a, b) => a.ratio - b.ratio)}
-            getKey={(c) => c.class}
-            getSearchText={(c) => `${c.label || ''} ${c.class}`}
-            selectedKey={selected}
-            onSelect={(k) => setSelected(k === selected ? null : k)}
-            renderRow={(c) => <ClassRow entry={c} />}
-            maxHeight={560}
+      <div ref={configRef}>
+        <Section
+          title="Interlinking Completeness of a Class"
+          subtitle="Select a class to inspect its linked vs isolated entities and link properties."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Class">
+              <select
+                value={selectedClass}
+                onChange={(e) => setSelectedClass(e.target.value)}
+                disabled={loading}
+                className="w-full px-3 py-2 border disabled:opacity-50"
+                style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+              >
+                <option value="">{loading ? 'Loading…' : 'Choose a class…'}</option>
+                {classOptions.map((c) => (
+                  <option key={c.class} value={c.class}>{c.label || c.class}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <button
+            onClick={analyze}
+            disabled={!selectedClass || loading}
+            className="mt-6 inline-flex items-center gap-2 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
+          >
+            <Search className="w-4 h-4" />
+            Analyze
+          </button>
+        </Section>
+      </div>
+
+      {stale && (
+        <div
+          className="flex items-start gap-2 px-3 py-2 text-sm border"
+          style={{ backgroundColor: '#FEF7E6', color: '#8A5A00', borderColor: 'rgba(224,139,26,0.4)', borderRadius: 'var(--radius-md)' }}
+        >
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <div>Selection changed since last analysis. Click <strong>Analyze</strong> to refresh results.</div>
+        </div>
+      )}
+
+      <div ref={resultRef}>
+        {sel ? (
+          <ClassDetail
+            entry={sel}
+            onClose={() => {
+              setAnalyzedClass(null);
+              setSelectedClass('');
+            }}
           />
-        </div>
-        <div className="lg:col-span-3">
-          {sel ? (
-            <ClassDetail entry={sel} onClose={() => setSelected(null)} />
-          ) : (
-            <Section
-              title="Class Detail"
-            >
-              <div className="py-8 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>No class selected.</div>
-            </Section>
-          )}
-        </div>
+        ) : !loading ? (
+          <div className="text-center py-16" style={{ color: 'var(--muted-foreground)' }}>
+            <FileText className="mx-auto mb-4 w-12 h-12 opacity-40" />
+            <p className="text-sm font-medium">Select a class, then click Analyze.</p>
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function ClassRow({ entry }: { entry: InterlinkingClass }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <>
-      <div className="min-w-0">
-        <div className="truncate" style={{ color: 'var(--text)' }}>{entry.label || entry.class}</div>
-        <div className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>{entry.class}</div>
-      </div>
-      <div className="flex items-center gap-3 shrink-0">
-        <span className="text-xs tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
-          {entry.linked.toLocaleString()}/{entry.total_entities.toLocaleString()}
-        </span>
-        <StatusBadge percent={entry.ratio} />
-      </div>
-    </>
+    <div>
+      <div className="mb-1 text-sm" style={{ color: 'var(--text)' }}>{label}</div>
+      {children}
+    </div>
   );
 }
 
@@ -121,24 +174,33 @@ function StackedLinkChart({
           linked: c.linked,
           not_linked: c.not_linked,
           ratio: c.ratio,
+          total: c.total_entities,
         })),
     [classes],
   );
 
   return (
-    <div className="always-scrollbar max-h-[500px] overflow-y-auto">
-      <ResponsiveContainer width="100%" height={Math.max(220, sorted.length * 44)}>
+    <div className="always-scrollbar max-h-[340px] overflow-y-auto">
+      <ResponsiveContainer width="100%" height={Math.max(200, sorted.length * 36)}>
         <BarChart data={sorted} layout="vertical" margin={{ left: 24, right: 24 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
           <XAxis type="number" stroke="var(--muted-foreground)" />
           <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
           <Tooltip
-            contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem' }}
-            formatter={(v: number, name: string, p) =>
-              name === 'linked'
-                ? [`${v} linked (${p.payload.ratio.toFixed(1)}%)`, 'Linked']
-                : [`${v} isolated`, 'Not linked']
-            }
+            content={(props) => {
+              if (!props.active || !props.payload?.length) return null;
+              const d = props.payload[0].payload;
+              return (
+                <div style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', fontSize: 13 }}>
+                  <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 6 }}>{d.name}</div>
+                  <ul style={{ color: 'var(--text)', margin: 0, paddingLeft: '1.25rem', listStyleType: 'disc' }}>
+                    <li>{Number(d.total).toLocaleString()} total entities</li>
+                    <li>{Number(d.linked).toLocaleString()} linked ({d.ratio.toFixed(1)}%)</li>
+                    <li>{Number(d.not_linked).toLocaleString()} isolated ({(100 - d.ratio).toFixed(1)}%)</li>
+                  </ul>
+                </div>
+              );
+            }}
           />
           <Legend />
           <Bar
@@ -297,6 +359,25 @@ function EntityLinkColumn({ title, icon, groups }: { title: string; icon: React.
                   </li>
                 ))}
               </ul>
+              {g.entities.length > 0 && (
+                <div className="mt-2 ml-3 flex flex-wrap items-center gap-1">
+                  {g.entities.map((e) => (
+                    <span
+                      key={e.uri}
+                      className="text-xs px-2 py-0.5 truncate max-w-[180px]"
+                      style={{ backgroundColor: 'var(--muted)', color: 'var(--text)', borderRadius: 'var(--radius-sm)' }}
+                      title={e.uri}
+                    >
+                      {e.label || prettyId(e.uri)}
+                    </span>
+                  ))}
+                  {g.entity_count > g.entities.length && (
+                    <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                      +{(g.entity_count - g.entities.length).toLocaleString()} more
+                    </span>
+                  )}
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -372,6 +453,7 @@ function EntityDetailCard({
 function EntityDrilldown({ classUri }: { classUri: string }) {
   const [status, setStatus] = useState<'linked' | 'not_linked'>('not_linked');
   const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(PAGE);
   const [data, setData] = useState<InterlinkingEntities | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<{ uri: string; label?: string | null } | null>(null);
@@ -386,14 +468,14 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
     let cancelled = false;
     setLoading(true);
     completenessApi
-      .interlinkingEntities({ class_uri: classUri, status, limit: PAGE, offset })
+      .interlinkingEntities({ class_uri: classUri, status, limit: pageSize, offset })
       .then((r) => !cancelled && setData(r))
       .catch(() => !cancelled && setData(null))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [classUri, status, offset]);
+  }, [classUri, status, offset, pageSize]);
 
   if (selected) {
     return (
@@ -440,52 +522,63 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
         </span>
       </div>
 
+      {data && data.entities.length > 0 && (
+        <p className="text-xs mb-2" style={{ color: 'var(--muted-foreground)' }}>
+          Click a row to see that entity's outgoing &amp; incoming links.
+        </p>
+      )}
+
       {loading && !data ? (
         <div className="py-6 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>Loading…</div>
-      ) : data && data.entities.length > 0 ? (
-        <>
-          <ul className="space-y-1 text-sm">
-            {data.entities.map((e) => (
-              <li key={e.uri}>
-                <EntityRow
-                  uri={e.uri}
-                  label={e.label}
-                  onClick={() => setSelected({ uri: e.uri, label: e.label })}
-                  right={e.direction ? <DirectionBadge direction={e.direction} /> : undefined}
-                />
-              </li>
-            ))}
-          </ul>
-
-          <div className="mt-3 flex items-center justify-between text-sm" style={{ color: 'var(--muted-foreground)' }}>
-            <span>
-              {offset + 1}–{offset + data.entities.length}
-              {total != null ? ` of ${total}` : ''}
-            </span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setOffset(Math.max(0, offset - PAGE))}
-                disabled={offset === 0}
-                className="inline-flex items-center gap-1 px-3 py-1 border disabled:opacity-40"
-                style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
-              >
-                <ChevronLeft className="w-4 h-4" /> Prev
-              </button>
-              <button
-                onClick={() => setOffset(offset + PAGE)}
-                disabled={total != null && offset + data.entities.length >= total}
-                className="inline-flex items-center gap-1 px-3 py-1 border disabled:opacity-40"
-                style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
-              >
-                Next <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </>
       ) : (
-        <div className="py-6 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>
-          No entities in this category.
-        </div>
+        <PaginatedTable
+          colSpan={2}
+          pagination={data?.pagination ?? null}
+          pageSize={pageSize}
+          loading={loading}
+          onPageSizeChange={(s) => {
+            setPageSize(s);
+            setOffset(0);
+          }}
+          onPrev={() => setOffset(Math.max(0, offset - pageSize))}
+          onNext={() => setOffset(offset + pageSize)}
+          emptyState={
+            <div className="py-10 text-center" style={{ color: 'var(--muted-foreground)' }}>
+              <FileText className="mx-auto mb-3 w-10 h-10 opacity-40" />
+              <p className="text-sm font-medium">No entities in this category.</p>
+            </div>
+          }
+          head={
+            <>
+              <th className="text-left px-4 py-3" style={{ color: 'var(--text-on-dark)' }}>Entity</th>
+              <th className="text-right px-4 py-3" style={{ color: 'var(--text-on-dark)' }}>Direction</th>
+            </>
+          }
+        >
+          {data?.entities.map((e) => (
+            <tr
+              key={e.uri}
+              onClick={() => setSelected({ uri: e.uri, label: e.label })}
+              className="group cursor-pointer transition-colors hover:bg-[var(--muted)]"
+              style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}
+            >
+              <td className="px-4 py-2 text-sm truncate max-w-[320px]" title={e.uri}>
+                <span
+                  className="underline decoration-dotted underline-offset-2 group-hover:decoration-solid"
+                  style={{ color: 'var(--navy)' }}
+                >
+                  {e.label || prettyId(e.uri)}
+                </span>
+              </td>
+              <td className="px-4 py-2">
+                <span className="flex items-center justify-end gap-2">
+                  {e.direction ? <DirectionBadge direction={e.direction} /> : null}
+                  <ChevronRight className="w-4 h-4 shrink-0 transition-transform group-hover:translate-x-0.5" style={{ color: 'var(--navy)' }} />
+                </span>
+              </td>
+            </tr>
+          ))}
+        </PaginatedTable>
       )}
     </div>
   );

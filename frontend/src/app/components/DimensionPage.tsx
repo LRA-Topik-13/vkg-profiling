@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router';
 import IntrasourceConciseness from './metrics/IntrasourceConciseness';
 import CrosssourceConciseness from './metrics/CrosssourceConciseness';
 import SchemaCompleteness from './metrics/SchemaCompleteness';
@@ -30,18 +30,17 @@ const dimensionConfig = {
     title: 'Conciseness',
     description: 'Evaluate the efficiency and brevity of data representation',
     color: '#5B8DBE',
-    tabs: ['Intrasource', 'Cross-source'],
+    tabs: ['Intrasource Duplicates', 'Cross-source Duplicates'],
   },
 };
 
 export default function DimensionPage({ dimension }: DimensionPageProps) {
   const config = dimensionConfig[dimension];
-  const [activeTab, setActiveTab] = useState(0);
-
-  // Reset tab when switching dimensions
-  useEffect(() => {
-    setActiveTab(0);
-  }, [dimension]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = Math.min(
+    parseInt(searchParams.get('tab') || '0', 10),
+    config.tabs.length - 1,
+  );
 
   const renderTabContent = () => {
     if (dimension === 'completeness') {
@@ -74,7 +73,7 @@ export default function DimensionPage({ dimension }: DimensionPageProps) {
             {config.tabs.map((tab, index) => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(index)}
+                onClick={() => setSearchParams({ tab: String(index) })}
                 className="px-6 py-3 transition-all"
                 style={{
                   color: activeTab === index ? 'var(--navy)' : 'var(--muted-foreground)',

@@ -1,5 +1,6 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Search, Plus, X, FileText } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Headline, Section, LoadingState, ErrorState, PaginatedTable } from './_shared';
 import {
   metadataApi,
@@ -8,7 +9,9 @@ import {
   PropertyMeta,
   IntraSourceResult,
   IntraDuplicateGroup,
+  IntraClassSummaryEntry,
   PaginationInfo,
+  statusColor,
 } from '../../lib/api';
 import { useSources } from '../../lib/sources';
 
@@ -126,9 +129,125 @@ function DuplicateGroupsTable({
   );
 }
 
+// ── Class Summary Section ─────────────────────────────────────────────────────
+
+function IntraClassSummarySection({ onBarClick }: { onBarClick: (classUri: string, sourcePrefix: string) => void }) {
+  const sources = useSources();
+  const [summarySource, setSummarySource] = useState('');
+  const [formula, setFormula] = useState<'f1' | 'f2'>('f1');
+  const [data, setData] = useState<IntraClassSummaryEntry[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!summarySource && sources.length > 0) setSummarySource(sources[0].uri);
+  }, [sources, summarySource]);
+
+  useEffect(() => {
+    if (!summarySource) return;
+    setLoading(true);
+    setError(null);
+    concisenessApi.intraSourceClassSummary(summarySource)
+      .then((d) => setData(d.classes))
+      .catch((e) => setError(e?.message ?? 'Failed to load'))
+      .finally(() => setLoading(false));
+  }, [summarySource]);
+
+  const ranked = useMemo(() => {
+    if (!data) return [];
+    return [...data]
+      .filter((c) => c.total_representations > 0)
+      .sort((a, b) => (formula === 'f1' ? a.score_f1 - b.score_f1 : a.score_f2 - b.score_f2))
+      .map((c) => ({
+        name: c.label || c.class,
+        uri: c.uri,
+        score: formula === 'f1' ? c.score_f1 : c.score_f2,
+        props: c.identity_props_count,
+        total: c.total_representations,
+        unique: c.unique_instances,
+      }));
+  }, [data, formula]);
+
+  const controls = (
+    <div className="flex items-center gap-3 shrink-0">
+      <select
+        value={summarySource}
+        onChange={(e) => setSummarySource(e.target.value)}
+        className="px-3 py-2 border text-sm"
+        style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+      >
+        {sources.map((s) => (
+          <option key={s.uri} value={s.uri}>{s.localName}</option>
+        ))}
+      </select>
+      <div className="flex border overflow-hidden" style={{ borderColor: 'var(--border)', borderRadius: 'var(--radius-md)' }}>
+        {(['f1', 'f2'] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFormula(f)}
+            className="px-4 py-2 text-sm"
+            style={{
+              backgroundColor: formula === f ? 'var(--navy)' : 'var(--card)',
+              color: formula === f ? 'var(--text-on-dark)' : 'var(--text)',
+            }}
+          >
+            {f === 'f1' ? 'Formula 1' : 'Formula 2'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <Section title="Intra-Source Conciseness by Class" collapsible right={controls}>
+      {loading && <LoadingState message="Loading class summary..." />}
+      {error && <ErrorState message={error} />}
+      {!loading && !error && ranked.length === 0 && data && (
+        <div className="py-6 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>No data available for this source.</div>
+      )}
+      {!loading && !error && ranked.length > 0 && (
+        <div className="always-scrollbar max-h-[400px] overflow-y-auto">
+          <ResponsiveContainer width="100%" height={Math.max(200, ranked.length * 44)}>
+            <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 48 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+              <XAxis type="number" domain={[0, 100]} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}%`} />
+              <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
+              <Tooltip
+                content={(props) => {
+                  if (!props.active || !props.payload?.length) return null;
+                  const d = props.payload[0].payload;
+                  return (
+                    <div style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', fontSize: 13 }}>
+                      <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 6 }}>
+                        {d.name} (using all {d.props} identity props)
+                      </div>
+                      <ul style={{ color: 'var(--text)', margin: 0, paddingLeft: '1.25rem', listStyleType: 'disc' }}>
+                        <li>{Number(d.total).toLocaleString()} total representations</li>
+                        <li>{Number(d.unique).toLocaleString()} unique instances</li>
+                        <li>formula {formula === 'f1' ? '1' : '2'} score: {Number(d.score).toFixed(2)}%</li>
+                      </ul>
+                    </div>
+                  );
+                }}
+              />
+              <Bar dataKey="score" radius={[0, 6, 6, 0]} style={{ cursor: 'pointer' }} onClick={(d) => onBarClick(d.uri, summarySource)}>
+                {ranked.map((d, i) => (
+                  <Cell key={i} fill={statusColor(d.score)} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function IntrasourceConciseness() {
+  const configRef = useRef<HTMLDivElement>(null);
+
   // Metadata
   const [classes, setClasses] = useState<ClassMeta[]>([]);
   const [allProperties, setAllProperties] = useState<PropertyMeta[]>([]);
@@ -330,7 +449,14 @@ export default function IntrasourceConciseness() {
 
   return (
     <div className="space-y-6">
+      <IntraClassSummarySection onBarClick={(classUri, src) => {
+        setSelectedClassUri(classUri);
+        setSourcePrefix(src);
+        setTimeout(() => configRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+      }} />
+
       {/* Configuration */}
+      <div ref={configRef}>
       <Section
         title="Configuration"
         subtitle="Select a class, identity properties, source prefix, and optional facet filters to detect duplicate instances within a single data source."
@@ -498,6 +624,7 @@ export default function IntrasourceConciseness() {
           {loading ? 'Analyzing...' : 'Analyze'}
         </button>
       </Section>
+      </div>
 
       {/* Error */}
       {error && (
@@ -521,10 +648,10 @@ export default function IntrasourceConciseness() {
         <>
           {/* Score cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Headline value={String(result.total_representations)} label="Total Representations" sub="In selected source" color="var(--navy)" />
-            <Headline value={String(result.unique_instances)} label="Unique Instances" sub="Distinct entities" color="var(--navy)" />
-            <Headline value={result.score_f1} label="Score for Formula 1" sub="unique / total" />
-            <Headline value={result.score_f2} label="Score for Formula 2" sub="1 - (violations / total)" />
+            <Headline value={String(result.total_representations)} label="Total Representations" color="var(--navy)" />
+            <Headline value={String(result.unique_instances)} label="Unique Instances" color="var(--navy)" />
+            <Headline value={result.score_f1} label="Score for Formula 1" />
+            <Headline value={result.score_f2} label="Score for Formula 2" />
           </div>
 
           {/* Pass/fail banner */}

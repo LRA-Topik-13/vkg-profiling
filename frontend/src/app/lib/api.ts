@@ -339,6 +339,40 @@ export interface PaginatedCrossDuplicates {
   items: CrossDuplicateGroup[];
 }
 
+export interface IntraClassSummaryEntry {
+  uri: string;
+  class: string;
+  label?: string | null;
+  source_prefix: string;
+  identity_props_count: number;
+  total_representations: number;
+  unique_instances: number;
+  violating_instances: number;
+  score_f1: number;
+  score_f2: number;
+  passed: boolean;
+}
+
+export interface IntraClassSummary {
+  source_prefix: string;
+  classes: IntraClassSummaryEntry[];
+}
+
+export interface CrossClassSummaryEntry {
+  uri: string;
+  class: string;
+  label?: string | null;
+  identity_props_count: number;
+  total_entities: number;
+  ambiguous_instances: number;
+  cn3_score: number;
+}
+
+export interface CrossClassSummary {
+  sources: string[];
+  classes: CrossClassSummaryEntry[];
+}
+
 export const concisenessApi = {
   intraSource: (params: { class_uri: string; identity_props: string; source_prefix: string; filter_facets?: string }) =>
     get<IntraSourceResult>('/conciseness/intra-source', params),
@@ -348,6 +382,10 @@ export const concisenessApi = {
     get<PaginatedIntraDuplicates>('/conciseness/intra-source/duplicates', params),
   crossSourceDuplicates: (params: { class_uri: string; identity_props: string; sources: string; filter_facets?: string; limit?: number; offset?: number; include_total?: boolean }) =>
     get<PaginatedCrossDuplicates>('/conciseness/cross-source/duplicates', params),
+  intraSourceClassSummary: (source_prefix: string) =>
+    get<IntraClassSummary>('/conciseness/intra-source/class-summary', { source_prefix }),
+  crossSourceClassSummary: () =>
+    get<CrossClassSummary>('/conciseness/cross-source/class-summary'),
 };
 
 export const completenessApi = {

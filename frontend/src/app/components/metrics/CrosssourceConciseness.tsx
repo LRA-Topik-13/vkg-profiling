@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Search, Plus, X, FileText } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Headline, Section, LoadingState, ErrorState, PaginatedTable } from './_shared';
 import {
   metadataApi,
@@ -8,7 +9,9 @@ import {
   PropertyMeta,
   CrossSourceResult,
   CrossDuplicateGroup,
+  CrossClassSummaryEntry,
   PaginationInfo,
+  statusColor,
 } from '../../lib/api';
 import { useSources } from '../../lib/sources';
 
@@ -134,9 +137,86 @@ function AmbiguousGroupsTable({
   );
 }
 
+// ── Class Summary Section ─────────────────────────────────────────────────────
+
+function CrossClassSummarySection({ onBarClick }: { onBarClick: (classUri: string) => void }) {
+  const [data, setData] = useState<CrossClassSummaryEntry[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    concisenessApi.crossSourceClassSummary()
+      .then((d) => setData(d.classes))
+      .catch((e) => setError(e?.message ?? 'Failed to load'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const ranked = useMemo(() => {
+    if (!data) return [];
+    return [...data]
+      .filter((c) => c.total_entities > 0)
+      .sort((a, b) => a.cn3_score - b.cn3_score)
+      .map((c) => ({
+        name: c.label || c.class,
+        uri: c.uri,
+        score: c.cn3_score,
+        props: c.identity_props_count,
+        total: c.total_entities,
+        ambiguous: c.ambiguous_instances,
+        unique: c.total_entities - c.ambiguous_instances,
+      }));
+  }, [data]);
+
+  return (
+    <Section title="Cross-Source Conciseness by Class" collapsible>
+      {loading && <LoadingState message="Loading class summary..." />}
+      {error && <ErrorState message={error} />}
+      {!loading && !error && ranked.length === 0 && data && (
+        <div className="py-6 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>No data available.</div>
+      )}
+      {!loading && !error && ranked.length > 0 && (
+        <div className="always-scrollbar max-h-[400px] overflow-y-auto">
+          <ResponsiveContainer width="100%" height={Math.max(200, ranked.length * 44)}>
+            <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 48 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+              <XAxis type="number" domain={[0, 100]} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}%`} />
+              <YAxis type="category" dataKey="name" width={140} stroke="var(--muted-foreground)" />
+              <Tooltip
+                content={(props) => {
+                  if (!props.active || !props.payload?.length) return null;
+                  const d = props.payload[0].payload;
+                  return (
+                    <div style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', fontSize: 13 }}>
+                      <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 6 }}>
+                        {d.name} (using all {d.props} identity props)
+                      </div>
+                      <ul style={{ color: 'var(--text)', margin: 0, paddingLeft: '1.25rem', listStyleType: 'disc' }}>
+                        <li>{Number(d.total).toLocaleString()} total entities</li>
+                        <li>{Number(d.ambiguous).toLocaleString()} ambiguous instances</li>
+                        <li>score: {Number(d.score).toFixed(2)}%</li>
+                      </ul>
+                    </div>
+                  );
+                }}
+              />
+              <Bar dataKey="score" radius={[0, 6, 6, 0]} style={{ cursor: 'pointer' }} onClick={(d) => onBarClick(d.uri)}>
+                {ranked.map((d, i) => (
+                  <Cell key={i} fill={statusColor(d.score)} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function CrosssourceConciseness() {
+  const configRef = useRef<HTMLDivElement>(null);
+
   // Metadata
   const [classes, setClasses] = useState<ClassMeta[]>([]);
   const [allProperties, setAllProperties] = useState<PropertyMeta[]>([]);
@@ -192,7 +272,7 @@ export default function CrosssourceConciseness() {
   useEffect(() => {
     if (!sourcesInit.current && sources.length > 0) {
       sourcesInit.current = true;
-      setSelectedSources(sources.slice(0, 2).map((s) => s.uri));
+      setSelectedSources(sources.map((s) => s.uri));
     }
   }, [sources]);
 
@@ -350,7 +430,14 @@ export default function CrosssourceConciseness() {
 
   return (
     <div className="space-y-6">
+      <CrossClassSummarySection onBarClick={(classUri) => {
+        setSelectedClassUri(classUri);
+        setSelectedSources(sources.map((s) => s.uri));
+        setTimeout(() => configRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+      }} />
+
       {/* Configuration */}
+      <div ref={configRef}>
       <Section
         title="Configuration"
         subtitle="Select a class, identity properties, data sources, and optional facet filters to detect ambiguous instances across multiple data sources."
@@ -526,6 +613,7 @@ export default function CrosssourceConciseness() {
           {loading ? 'Analyzing...' : 'Analyze'}
         </button>
       </Section>
+      </div>
 
       {/* Error */}
       {error && (

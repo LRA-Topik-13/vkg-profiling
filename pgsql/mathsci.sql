@@ -72,7 +72,7 @@ COPY public.course (cid, lecturer, lab_teacher, topic) FROM stdin;
 5	1	8	Statistical Computing
 6	7	4	Probability Theory
 7	8	3	Time Series Analysis
-8	6	9	Bayesian Statistics
+8	1	9	Bayesian Statistics
 9	7	5	Mathematical Statistics
 \.
 

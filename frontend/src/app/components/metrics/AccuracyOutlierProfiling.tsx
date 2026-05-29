@@ -121,11 +121,11 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
   const pointY = 36;
   const statItems = [
     { label: 'Min', value: min },
-    { label: 'Lower Fence', value: lower },
+    { label: 'Lower Fence', value: lower, isFence: true },
     { label: 'Q1', value: q1 },
     { label: 'Median', value: med },
     { label: 'Q3', value: q3 },
-    { label: 'Upper Fence', value: upper },
+    { label: 'Upper Fence', value: upper, isFence: true },
     { label: 'Max', value: max },
   ];
   const countGroups = Array.from(rows.reduce((acc, row) => {
@@ -207,8 +207,18 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         {statItems.map((item) => (
-          <span key={item.label} className="px-2.5 py-1 text-xs border" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}>
-            <span style={{ color: 'var(--muted-foreground)' }}>{item.label}:</span> {formatStat(item.value)}
+          <span
+            key={item.label}
+            className="px-2.5 py-1 text-xs border"
+            style={{
+              backgroundColor: item.isFence ? 'var(--accent-soft)' : 'var(--card)',
+              borderColor: item.isFence ? 'var(--accent)' : 'var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              color: item.isFence ? 'var(--accent)' : 'var(--text)',
+              fontWeight: item.isFence ? 600 : 400,
+            }}
+          >
+            <span style={{ color: item.isFence ? 'var(--accent)' : 'var(--muted-foreground)' }}>{item.label}:</span> {formatStat(item.value)}
           </span>
         ))}
       </div>
@@ -240,10 +250,10 @@ function RelationshipEntityTable({ result, propertyLabel }: { result: AccuracyOu
     const violation = entity.violations?.[0];
     if (!violation) return 'No violation';
     if (violation.criterion === 'tukey_lower_bound') {
-      return `${label} count is ${entity.count}, expected at least ${formatStat(Number(result.statistics.lower_fence ?? entity.count))}.`;
+      return `${label} count ${entity.count} is below the lower fence ${formatStat(Number(result.statistics.lower_fence ?? entity.count))}.`;
     }
     if (violation.criterion === 'tukey_upper_bound') {
-      return `${label} count is ${entity.count}, expected at most ${formatStat(Number(result.statistics.upper_fence ?? entity.count))}.`;
+      return `${label} count ${entity.count} is above the upper fence ${formatStat(Number(result.statistics.upper_fence ?? entity.count))}.`;
     }
     return violation.message;
   }
@@ -445,7 +455,7 @@ function PresenceResult({
 }) {
   return (
     <>
-      <Section title="Property Presence Rates" subtitle="Properties above 50% are usually present. Properties below 50% are usually absent.">
+      <Section title="Property Presence Rates" subtitle="This table defines the usual property pattern used by the Property Matrix. Properties above 50% are usually present. Properties below 50% are usually absent.">
         <div className="mb-3 flex flex-wrap gap-2">
           <StatusPill tone="good">Usually present</StatusPill>
           <StatusPill tone="neutral">No majority</StatusPill>

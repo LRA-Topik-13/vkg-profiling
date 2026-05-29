@@ -1,0 +1,158 @@
+<vdb name="universities"  version="1">
+    <!-- DEFECTED federation: same logical schema as the clean VDB, but attribute and
+         object-FK columns are declared NULLABLE so injected NULLs pass through, and the
+         *_unmapped / legacy_student shadow tables are exposed so population completeness
+         can compare represented-vs-expected. Sources point at the *-defected DB hosts. -->
+    <model visible="true" name="compsci">
+        <source name="compsci" translator-name="mysql5" connection-jndi-name="java:/mysql-compsci"/>
+        <metadata type="DDL"><![CDATA[
+                CREATE FOREIGN TABLE student (
+                  s_id  integer not null primary key,
+                  first_name varchar(40),
+                  last_name varchar(40)
+                  )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE academic (
+                  a_id integer not null primary key,
+                  first_name varchar(40),
+                  last_name varchar(40),
+                  position integer not null
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                 CREATE FOREIGN TABLE course (
+                   c_id integer not null primary key,
+                   title varchar(100)
+                  )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE teaching (
+                 c_id integer not null,
+                 a_id integer not null
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE course_registration (
+                  c_id integer not null,
+                  s_id integer not null
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE legacy_student (
+                  s_id integer not null primary key,
+                  first_name varchar(100),
+                  last_name varchar(100)
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE academic_unmapped (
+                  a_id integer not null primary key,
+                  first_name varchar(100),
+                  last_name varchar(100),
+                  position integer not null
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE course_unmapped (
+                  c_id integer not null primary key,
+                  title varchar(100)
+                 )OPTIONS(UPDATABLE 'FALSE');
+            ]]> </metadata>
+      </model>
+      <model visible="true" name="mathsci">
+        <source name="mathsci" translator-name="postgresql" connection-jndi-name="java:/pgsql-mathsci"/>
+        <metadata type="DDL"><![CDATA[
+                CREATE FOREIGN TABLE person (
+                  pid integer not null primary key,
+                  fname varchar(40),
+                  lname varchar(40),
+                  status integer not null
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+             CREATE FOREIGN TABLE course (
+              cid integer not null primary key,
+              lecturer integer,
+              lab_teacher integer,
+              topic varchar(100)
+               )OPTIONS(UPDATABLE 'FALSE');
+
+             CREATE FOREIGN TABLE registration (
+              pid integer not null,
+              cid integer not null
+              )OPTIONS(UPDATABLE 'FALSE');
+
+             CREATE FOREIGN TABLE person_unmapped (
+              pid integer not null primary key,
+              fname varchar(100),
+              lname varchar(100),
+              status integer not null
+              )OPTIONS(UPDATABLE 'FALSE');
+
+             CREATE FOREIGN TABLE course_unmapped (
+              cid integer not null primary key,
+              lecturer integer,
+              lab_teacher integer,
+              topic varchar(100)
+              )OPTIONS(UPDATABLE 'FALSE');
+            ]]> </metadata>
+      </model>
+      <model visible="true" name="academics">
+        <source name="academics" translator-name="sqlserver" connection-jndi-name="java:/mssql-academics"/>
+        <metadata type="DDL"><![CDATA[
+                CREATE FOREIGN TABLE course (
+                  c_id integer not null primary key,
+                  title varchar(100)
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE teacher (
+                  t_id integer not null primary key,
+                  first_name varchar(40),
+                  last_name varchar(40),
+                  position integer not null
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE place (
+                  place_id integer not null primary key,
+                  building varchar(100),
+                  room_code varchar(20)
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE time_slot (
+                  ts_id integer not null primary key,
+                  "day" varchar(10),
+                  start_time time,
+                  end_time time
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE teaching (
+                  c_id integer not null,
+                  t_id integer not null
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE schedule (
+                  c_id integer not null,
+                  place_id integer not null,
+                  ts_id integer not null
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE course_unmapped (
+                  c_id integer not null primary key,
+                  title varchar(100)
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE teacher_unmapped (
+                  t_id integer not null primary key,
+                  first_name varchar(100),
+                  last_name varchar(100),
+                  position integer not null
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE place_unmapped (
+                  place_id integer not null primary key,
+                  building varchar(100),
+                  room_code varchar(20)
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE time_slot_unmapped (
+                  ts_id integer not null primary key,
+                  "day" varchar(100),
+                  start_time time,
+                  end_time time
+                 )OPTIONS(UPDATABLE 'FALSE');
+            ]]> </metadata>
+    </model>
+</vdb>

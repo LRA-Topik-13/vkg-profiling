@@ -10,14 +10,22 @@ clean:
         logs logs-healthy logs-shared logs-all \
         ps \
         shell-api shell-mysql shell-pgsql shell-mssql \
-        clean clean-healthy clean-all
+        clean clean-healthy clean-all \
+        gen-defects verify-defects \
+        up-defected down-defected restart-defected logs-defected ps-defected
 
 COMPOSE           := docker compose
 PROFILE_HEALTHY   := --profile healthy
 PROFILE_SHARED    := --profile shared
 PROFILE_FRONTEND  := --profile frontend
+PROFILE_DEFECTED  := --profile defected
 PROFILE_ALL       := --profile healthy --profile shared
 PROFILE_EVERY     := --profile healthy --profile shared --profile frontend
+
+# Which defect dataset the defected stack loads: datasets_defect/level_<L>/<metric>.
+# Each metric is degraded in isolation (population|attribute|interlinking|schema).
+DEFECT_LEVEL      ?= 20
+DEFECT_METRIC     ?= population
  
 .DEFAULT_GOAL := help
  
@@ -90,3 +98,26 @@ ps: ## List running containers across all profiles
 
 shell-mssql: ## Open MSSQL shell (healthy dataset)
 	$(COMPOSE) $(PROFILE_HEALTHY) exec mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U academics -P academicspwd
+
+# ── Defect datasets (correctness evaluation) ───────────────────────────────────
+gen-defects: ## Regenerate all graded defect datasets + manifests (seeded, reproducible)
+	python3 scripts/inject_defects.py
+
+verify-defects: ## Assert generated defect SQL matches every level's manifest (no DB needed)
+	python3 scripts/verify_manifest.py
+
+DEFECT_ENV = DEFECT_LEVEL=$(DEFECT_LEVEL) DEFECT_METRIC=$(DEFECT_METRIC)
+
+up-defected: ## Start defected stack (e.g. make up-defected DEFECT_LEVEL=20 DEFECT_METRIC=population)
+	$(DEFECT_ENV) $(COMPOSE) $(PROFILE_DEFECTED) up -d --build
+
+down-defected: ## Stop + remove the defected stack (drops its data volumes)
+	$(DEFECT_ENV) $(COMPOSE) $(PROFILE_DEFECTED) down -v
+
+restart-defected: down-defected up-defected ## Reload defected stack (use after changing DEFECT_LEVEL/DEFECT_METRIC)
+
+logs-defected: ## Tail logs for the defected stack
+	$(DEFECT_ENV) $(COMPOSE) $(PROFILE_DEFECTED) logs -f
+
+ps-defected: ## List running containers in the defected stack
+	$(DEFECT_ENV) $(COMPOSE) $(PROFILE_DEFECTED) ps

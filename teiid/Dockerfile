@@ -63,8 +63,12 @@ ENV PATH=$PATH:${JBOSS_HOME}/bin
 WORKDIR ${JBOSS_HOME}
 #### CMD ["/opt/jboss/wildfly/bin/standalone.sh", "-b", "0.0.0.0", "-bmanagement", "0.0.0.0"]
 
+# FED_DIR selects which federation config to bake in:
+#   data-federation          -> clean stack (default)
+#   data-federation-defected -> defected stack (nullable cols, shadow tables, *-defected hosts)
+ARG FED_DIR=data-federation
 COPY jdbc /opt/jboss/jdbc
-COPY data-federation /opt/jboss/data-federation
+COPY ${FED_DIR} /opt/jboss/data-federation
 
 RUN /bin/sh -c "${JBOSS_HOME}/bin/standalone.sh -c standalone-teiid.xml -b 0.0.0.0 -bmanagement 0.0.0.0 &" && \
       sleep 60 && \

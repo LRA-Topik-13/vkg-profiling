@@ -1,0 +1,622 @@
+{
+  "level_pct": 20,
+  "seed": 2025,
+  "target_completeness": 80,
+  "pools": {
+    "metric": "attribute",
+    "target_completeness": 80,
+    "population_overall": 100.0,
+    "interlinking_overall": 97.83
+  },
+  "ledger": {
+    "population_moved": {},
+    "attribute_nulled": {
+      "compsci.student.first_name": 80,
+      "compsci.student.last_name": 80,
+      "compsci.academic.first_name": 5,
+      "compsci.academic.last_name": 5,
+      "compsci.course.title": 6,
+      "mathsci.person.fname": 84,
+      "mathsci.person.lname": 84,
+      "mathsci.course.topic": 6,
+      "academics.teacher.first_name": 5,
+      "academics.teacher.last_name": 5,
+      "academics.course.title": 15,
+      "academics.place.building": 4,
+      "academics.place.room_code": 4,
+      "academics.time_slot.day": 4,
+      "academics.time_slot.start_time": 4,
+      "academics.time_slot.end_time": 4
+    },
+    "interlinking_removed": {},
+    "mappings_dropped": []
+  },
+  "expected": {
+    "overall": {
+      "population_completeness": 100.0,
+      "attribute_completeness": 80.1,
+      "interlinking_completeness": 97.83,
+      "schema_classes_mapped": "13 mapped (was 13)",
+      "schema_properties_mapped": "15 mapped (was 15)"
+    },
+    "attribute": {
+      "AssistantProfessor": {
+        "total_entities": 8,
+        "properties": {
+          "firstName": {
+            "total": 8,
+            "filled": 5,
+            "missing": 3,
+            "completeness": 62.5
+          },
+          "lastName": {
+            "total": 8,
+            "filled": 5,
+            "missing": 3,
+            "completeness": 62.5
+          }
+        }
+      },
+      "AssociateProfessor": {
+        "total_entities": 17,
+        "properties": {
+          "firstName": {
+            "total": 17,
+            "filled": 12,
+            "missing": 5,
+            "completeness": 70.59
+          },
+          "lastName": {
+            "total": 17,
+            "filled": 9,
+            "missing": 8,
+            "completeness": 52.94
+          }
+        }
+      },
+      "Course": {
+        "total_entities": 135,
+        "properties": {
+          "title": {
+            "total": 135,
+            "filled": 108,
+            "missing": 27,
+            "completeness": 80.0
+          }
+        }
+      },
+      "ExternalTeacher": {
+        "total_entities": 7,
+        "properties": {
+          "firstName": {
+            "total": 7,
+            "filled": 7,
+            "missing": 0,
+            "completeness": 100.0
+          },
+          "lastName": {
+            "total": 7,
+            "filled": 6,
+            "missing": 1,
+            "completeness": 85.71
+          }
+        }
+      },
+      "FacultyMember": {
+        "total_entities": 74,
+        "properties": {
+          "firstName": {
+            "total": 74,
+            "filled": 59,
+            "missing": 15,
+            "completeness": 79.73
+          },
+          "lastName": {
+            "total": 74,
+            "filled": 58,
+            "missing": 16,
+            "completeness": 78.38
+          }
+        }
+      },
+      "FullProfessor": {
+        "total_entities": 34,
+        "properties": {
+          "firstName": {
+            "total": 34,
+            "filled": 29,
+            "missing": 5,
+            "completeness": 85.29
+          },
+          "lastName": {
+            "total": 34,
+            "filled": 31,
+            "missing": 3,
+            "completeness": 91.18
+          }
+        }
+      },
+      "GraduateStudent": {
+        "total_entities": 20,
+        "properties": {
+          "firstName": {
+            "total": 20,
+            "filled": 18,
+            "missing": 2,
+            "completeness": 90.0
+          },
+          "lastName": {
+            "total": 20,
+            "filled": 13,
+            "missing": 7,
+            "completeness": 65.0
+          }
+        }
+      },
+      "Place": {
+        "total_entities": 18,
+        "properties": {
+          "building": {
+            "total": 18,
+            "filled": 14,
+            "missing": 4,
+            "completeness": 77.78
+          },
+          "roomCode": {
+            "total": 18,
+            "filled": 14,
+            "missing": 4,
+            "completeness": 77.78
+          }
+        }
+      },
+      "PostDoc": {
+        "total_entities": 5,
+        "properties": {
+          "firstName": {
+            "total": 5,
+            "filled": 4,
+            "missing": 1,
+            "completeness": 80.0
+          },
+          "lastName": {
+            "total": 5,
+            "filled": 5,
+            "missing": 0,
+            "completeness": 100.0
+          }
+        }
+      },
+      "Student": {
+        "total_entities": 800,
+        "properties": {
+          "firstName": {
+            "total": 800,
+            "filled": 641,
+            "missing": 159,
+            "completeness": 80.12
+          },
+          "lastName": {
+            "total": 800,
+            "filled": 642,
+            "missing": 158,
+            "completeness": 80.25
+          }
+        }
+      },
+      "TimeSlot": {
+        "total_entities": 20,
+        "properties": {
+          "day": {
+            "total": 20,
+            "filled": 16,
+            "missing": 4,
+            "completeness": 80.0
+          },
+          "endTime": {
+            "total": 20,
+            "filled": 16,
+            "missing": 4,
+            "completeness": 80.0
+          },
+          "startTime": {
+            "total": 20,
+            "filled": 16,
+            "missing": 4,
+            "completeness": 80.0
+          }
+        }
+      },
+      "UndergraduateStudent": {
+        "total_entities": 380,
+        "properties": {
+          "firstName": {
+            "total": 380,
+            "filled": 303,
+            "missing": 77,
+            "completeness": 79.74
+          },
+          "lastName": {
+            "total": 380,
+            "filled": 309,
+            "missing": 71,
+            "completeness": 81.32
+          }
+        }
+      },
+      "Person": {
+        "total_entities": 874,
+        "properties": {
+          "firstName": {
+            "total": 874,
+            "filled": 700,
+            "missing": 174,
+            "completeness": 80.09
+          },
+          "lastName": {
+            "total": 874,
+            "filled": 700,
+            "missing": 174,
+            "completeness": 80.09
+          }
+        }
+      }
+    },
+    "population": {
+      "AssistantProfessor": {
+        "represented": 8,
+        "source_population": 8,
+        "missing": 0,
+        "completeness": 100.0,
+        "by_source": [
+          {
+            "base": "http://example.org/voc#academics/teacher/",
+            "represented": 4,
+            "source_population": 4
+          },
+          {
+            "base": "http://example.org/voc#mathsci/person/",
+            "represented": 4,
+            "source_population": 4
+          }
+        ]
+      },
+      "AssociateProfessor": {
+        "represented": 17,
+        "source_population": 17,
+        "missing": 0,
+        "completeness": 100.0,
+        "by_source": [
+          {
+            "base": "http://example.org/voc#academics/teacher/",
+            "represented": 6,
+            "source_population": 6
+          },
+          {
+            "base": "http://example.org/voc#compsci/academic/",
+            "represented": 6,
+            "source_population": 6
+          },
+          {
+            "base": "http://example.org/voc#mathsci/person/",
+            "represented": 5,
+            "source_population": 5
+          }
+        ]
+      },
+      "Course": {
+        "represented": 135,
+        "source_population": 135,
+        "missing": 0,
+        "completeness": 100.0,
+        "by_source": [
+          {
+            "base": "http://example.org/voc#academics/course/",
+            "represented": 75,
+            "source_population": 75
+          },
+          {
+            "base": "http://example.org/voc#compsci/course/",
+            "represented": 30,
+            "source_population": 30
+          },
+          {
+            "base": "http://example.org/voc#mathsci/course/",
+            "represented": 30,
+            "source_population": 30
+          }
+        ]
+      },
+      "ExternalTeacher": {
+        "represented": 7,
+        "source_population": 7,
+        "missing": 0,
+        "completeness": 100.0,
+        "by_source": [
+          {
+            "base": "http://example.org/voc#academics/teacher/",
+            "represented": 5,
+            "source_population": 5
+          },
+          {
+            "base": "http://example.org/voc#compsci/academic/",
+            "represented": 2,
+            "source_population": 2
+          }
+        ]
+      },
+      "FacultyMember": {
+        "represented": 74,
+        "source_population": 74,
+        "missing": 0,
+        "completeness": 100.0,
+        "by_source": [
+          {
+            "base": "http://example.org/voc#academics/teacher/",
+            "represented": 27,
+            "source_population": 27
+          },
+          {
+            "base": "http://example.org/voc#compsci/academic/",
+            "represented": 26,
+            "source_population": 26
+          },
+          {
+            "base": "http://example.org/voc#mathsci/person/",
+            "represented": 21,
+            "source_population": 21
+          }
+        ]
+      },
+      "FullProfessor": {
+        "represented": 34,
+        "source_population": 34,
+        "missing": 0,
+        "completeness": 100.0,
+        "by_source": [
+          {
+            "base": "http://example.org/voc#academics/teacher/",
+            "represented": 12,
+            "source_population": 12
+          },
+          {
+            "base": "http://example.org/voc#compsci/academic/",
+            "represented": 12,
+            "source_population": 12
+          },
+          {
+            "base": "http://example.org/voc#mathsci/person/",
+            "represented": 10,
+            "source_population": 10
+          }
+        ]
+      },
+      "GraduateStudent": {
+        "represented": 20,
+        "source_population": 20,
+        "missing": 0,
+        "completeness": 100.0,
+        "by_source": [
+          {
+            "base": "http://example.org/voc#mathsci/person/",
+            "represented": 20,
+            "source_population": 20
+          }
+        ]
+      },
+      "Place": {
+        "represented": 18,
+        "source_population": 18,
+        "missing": 0,
+        "completeness": 100.0,
+        "by_source": [
+          {
+            "base": "http://example.org/voc#academics/place/",
+            "represented": 18,
+            "source_population": 18
+          }
+        ]
+      },
+      "PostDoc": {
+        "represented": 5,
+        "source_population": 5,
+        "missing": 0,
+        "completeness": 100.0,
+        "by_source": [
+          {
+            "base": "http://example.org/voc#academics/teacher/",
+            "represented": 0,
+            "source_population": 0
+          },
+          {
+            "base": "http://example.org/voc#compsci/academic/",
+            "represented": 3,
+            "source_population": 3
+          },
+          {
+            "base": "http://example.org/voc#mathsci/person/",
+            "represented": 2,
+            "source_population": 2
+          }
+        ]
+      },
+      "Student": {
+        "represented": 800,
+        "source_population": 800,
+        "missing": 0,
+        "completeness": 100.0,
+        "by_source": [
+          {
+            "base": "http://example.org/voc#compsci/student/",
+            "represented": 400,
+            "source_population": 400
+          },
+          {
+            "base": "http://example.org/voc#mathsci/person/",
+            "represented": 400,
+            "source_population": 400
+          }
+        ]
+      },
+      "TimeSlot": {
+        "represented": 20,
+        "source_population": 20,
+        "missing": 0,
+        "completeness": 100.0,
+        "by_source": [
+          {
+            "base": "http://example.org/voc#academics/timeslot/",
+            "represented": 20,
+            "source_population": 20
+          }
+        ]
+      },
+      "UndergraduateStudent": {
+        "represented": 380,
+        "source_population": 380,
+        "missing": 0,
+        "completeness": 100.0,
+        "by_source": [
+          {
+            "base": "http://example.org/voc#mathsci/person/",
+            "represented": 380,
+            "source_population": 380
+          }
+        ]
+      },
+      "Person": {
+        "represented": 874,
+        "source_population": 874,
+        "missing": 0,
+        "completeness": 100.0,
+        "by_source": [
+          {
+            "base": "http://example.org/voc#academics/teacher/",
+            "represented": 27,
+            "source_population": 27
+          },
+          {
+            "base": "http://example.org/voc#compsci/academic/",
+            "represented": 26,
+            "source_population": 26
+          },
+          {
+            "base": "http://example.org/voc#compsci/student/",
+            "represented": 400,
+            "source_population": 400
+          },
+          {
+            "base": "http://example.org/voc#mathsci/person/",
+            "represented": 421,
+            "source_population": 421
+          }
+        ]
+      }
+    },
+    "interlinking": {
+      "academics:isScheduledAt/On": {
+        "baseline_links": 150,
+        "remaining_links": 150,
+        "removed": 0
+      },
+      "academics:teaches": {
+        "baseline_links": 75,
+        "remaining_links": 75,
+        "removed": 0
+      },
+      "compsci:attends": {
+        "baseline_links": 2000,
+        "remaining_links": 2000,
+        "removed": 0
+      },
+      "compsci:teaches": {
+        "baseline_links": 50,
+        "remaining_links": 50,
+        "removed": 0
+      },
+      "mathsci:attends": {
+        "baseline_links": 2000,
+        "remaining_links": 2000,
+        "removed": 0
+      },
+      "mathsci:givesLab": {
+        "baseline_links": 30,
+        "remaining_links": 30,
+        "removed": 0
+      },
+      "mathsci:givesLecture": {
+        "baseline_links": 30,
+        "remaining_links": 30,
+        "removed": 0
+      }
+    },
+    "mapping_coverage": {
+      "mapped_classes_before": [
+        "AssistantProfessor",
+        "AssociateProfessor",
+        "Course",
+        "ExternalTeacher",
+        "FacultyMember",
+        "FullProfessor",
+        "GraduateStudent",
+        "Person",
+        "Place",
+        "PostDoc",
+        "Student",
+        "TimeSlot",
+        "UndergraduateStudent"
+      ],
+      "mapped_classes_after": [
+        "AssistantProfessor",
+        "AssociateProfessor",
+        "Course",
+        "ExternalTeacher",
+        "FacultyMember",
+        "FullProfessor",
+        "GraduateStudent",
+        "Person",
+        "Place",
+        "PostDoc",
+        "Student",
+        "TimeSlot",
+        "UndergraduateStudent"
+      ],
+      "mapped_classes_lost": [],
+      "mapped_properties_before": [
+        "attends",
+        "building",
+        "day",
+        "endTime",
+        "firstName",
+        "givesLab",
+        "givesLecture",
+        "isGivenAt",
+        "isScheduledAt",
+        "isScheduledOn",
+        "lastName",
+        "roomCode",
+        "startTime",
+        "teaches",
+        "title"
+      ],
+      "mapped_properties_after": [
+        "attends",
+        "building",
+        "day",
+        "endTime",
+        "firstName",
+        "givesLab",
+        "givesLecture",
+        "isGivenAt",
+        "isScheduledAt",
+        "isScheduledOn",
+        "lastName",
+        "roomCode",
+        "startTime",
+        "teaches",
+        "title"
+      ],
+      "mapped_properties_lost": []
+    }
+  }
+}

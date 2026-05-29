@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 
@@ -222,6 +223,42 @@ EXTERNAL_SOURCE_TABLES: dict[str, list[tuple[str, str, str]]] = {
 EXTERNAL_SOURCE_TABLE_LABELS: dict[str, str] = {
     "compsci.legacy_student": "unmapped student rows",
 }
+
+# Defected stack only: unmapped shadow tables for every entity class, so population
+# completeness can be exercised across all classes (not just Student via legacy_student).
+# Gated behind an env var so the clean stack / API is completely unaffected — the clean
+# Teiid VDB does not expose these tables, and querying them there would fail.
+_VOC = "http://example.org/voc#"
+_FOAF_PERSON = "http://xmlns.com/foaf/0.1/Person"
+if os.getenv("DEFECT_SHADOW_SOURCES", "").lower() in ("1", "true", "yes", "on"):
+    EXTERNAL_SOURCE_TABLES.setdefault(_VOC + "FacultyMember", []).extend([
+        ("compsci.academic_unmapped", "a_id", _VOC + "compsci/academic/"),
+        ("academics.teacher_unmapped", "t_id", _VOC + "academics/teacher/"),
+    ])
+    EXTERNAL_SOURCE_TABLES.setdefault(_VOC + "Course", []).extend([
+        ("compsci.course_unmapped", "c_id", _VOC + "compsci/course/"),
+        ("mathsci.course_unmapped", "cid", _VOC + "mathsci/course/"),
+        ("academics.course_unmapped", "c_id", _VOC + "academics/course/"),
+    ])
+    EXTERNAL_SOURCE_TABLES.setdefault(_FOAF_PERSON, []).extend([
+        ("mathsci.person_unmapped", "pid", _VOC + "mathsci/person/"),
+    ])
+    EXTERNAL_SOURCE_TABLES.setdefault(_VOC + "Place", []).extend([
+        ("academics.place_unmapped", "place_id", _VOC + "academics/place/"),
+    ])
+    EXTERNAL_SOURCE_TABLES.setdefault(_VOC + "TimeSlot", []).extend([
+        ("academics.time_slot_unmapped", "ts_id", _VOC + "academics/timeslot/"),
+    ])
+    EXTERNAL_SOURCE_TABLE_LABELS.update({
+        "compsci.academic_unmapped": "unmapped faculty rows",
+        "academics.teacher_unmapped": "unmapped faculty rows",
+        "compsci.course_unmapped": "unmapped course rows",
+        "mathsci.course_unmapped": "unmapped course rows",
+        "academics.course_unmapped": "unmapped course rows",
+        "mathsci.person_unmapped": "unmapped person rows",
+        "academics.place_unmapped": "unmapped place rows",
+        "academics.time_slot_unmapped": "unmapped time slot rows",
+    })
 
 
 def _build_specs(obda_path: str, ttl_path: str) -> dict[str, list[BaseGroup]]:

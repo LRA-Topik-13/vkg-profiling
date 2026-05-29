@@ -141,10 +141,163 @@ services:
         condition: service_started
         required: false
 
+  # ════════════════════════════════════════════════════════════════════════════
+  #  DEFECTED stack — a fully parallel data plane loaded with a graded defect level.
+  #  Pick the level with DEFECT_LEVEL ∈ {00,02,05,10,20} (datasets_defect/level_<L>).
+  #  Brought up with:  make up-defected DEFECT_LEVEL=05
+  #  Runs side by side with the clean stack (distinct ports + volumes).
+  # ════════════════════════════════════════════════════════════════════════════
+  mysql-defected:
+    profiles: ["defected"]
+    image: mysql:8.0
+    security_opt:
+      - seccomp:unconfined
+    ports:
+      - '0.0.0.0:${MYSQL_DEFECTED_PORT:-3308}:3306'
+    restart: always
+    volumes:
+      - ./datasets_defect/level_${DEFECT_LEVEL:-05}/${DEFECT_METRIC:-population}/mysql:/docker-entrypoint-initdb.d
+      - data-mysql-defected:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: '${MYSQL_DATABASE}'
+      MYSQL_USER: '${MYSQL_USER}'
+      MYSQL_PASSWORD: '${MYSQL_PASSWORD}'
+      MYSQL_ROOT_PASSWORD: '${MYSQL_ROOT_PASSWORD}'
+
+  pgsql-defected:
+    profiles: ["defected"]
+    image: postgres:13.2
+    ports:
+      - '0.0.0.0:${POSTGRES_DEFECTED_PORT:-5434}:5432'
+    volumes:
+      - ./datasets_defect/level_${DEFECT_LEVEL:-05}/${DEFECT_METRIC:-population}/pgsql:/docker-entrypoint-initdb.d
+      - data-pgsql-defected:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: '${POSTGRES_DB}'
+      POSTGRES_USER: '${POSTGRES_USER}'
+      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD}'
+
+  mssql-defected:
+    profiles: ["defected"]
+    platform: linux/amd64
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    ports:
+      - '0.0.0.0:${MSSQL_DEFECTED_PORT:-1434}:1433'
+    restart: always
+    volumes:
+      - ./mssql/entrypoint.sh:/docker-entrypoint-initdb.d/entrypoint.sh:ro
+      - ./datasets_defect/level_${DEFECT_LEVEL:-05}/${DEFECT_METRIC:-population}/mssql/academics.sql:/docker-entrypoint-initdb.d/academics.sql:ro
+      - data-mssql-defected:/var/opt/mssql
+    environment:
+      ACCEPT_EULA: 'Y'
+      MSSQL_SA_PASSWORD: '${MSSQL_SA_PASSWORD}'
+      MSSQL_USER: '${MSSQL_USER}'
+      MSSQL_PASSWORD: '${MSSQL_PASSWORD}'
+    entrypoint: /docker-entrypoint-initdb.d/entrypoint.sh
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  teiid-defected:
+    profiles: ["defected"]
+    platform: linux/amd64
+    build:
+      context: ./teiid
+      dockerfile: Dockerfile
+      args:
+        FED_DIR: data-federation-defected
+    depends_on:
+      - "mysql-defected"
+      - "pgsql-defected"
+      - "mssql-defected"
+    volumes:
+      - teiid-defected-standalone-configuration:/opt/jboss/wildfly/standalone/configuration
+      - teiid-defected-domain-configuration:/opt/jboss/wildfly/domain/configuration
+
+  ontop-teiid-defected:
+    profiles: ["defected"]
+    image: ontop/ontop-endpoint:4.1.1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null 'http://localhost:8080/sparql?query=SELECT+%281+AS+%3Fx%29+WHERE+%7B%7D'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    environment:
+      ONTOP_ONTOLOGY_FILE: /opt/ontop/input/university.ttl
+      ONTOP_MAPPING_FILE: /opt/ontop/input-defected/level_${DEFECT_LEVEL:-05}/${DEFECT_METRIC:-population}/university.obda
+      ONTOP_PROPERTIES_FILE: /opt/ontop/input/university.defected.properties
+      ONTOP_CORS_ALLOWED_ORIGINS: '*'
+      ONTOP_DEV_MODE: '${ONTOP_DEV_MODE}'
+    ports:
+      - '0.0.0.0:${ONTOP_DEFECTED_PORT:-8089}:8080'
+    volumes:
+      - ./vkg/obda:/opt/ontop/input
+      - ./vkg/obda-defected:/opt/ontop/input-defected
+      - ./jdbc:/opt/ontop/jdbc
+      - ./wait-for-it:/opt/wait-for-it
+    depends_on:
+      - "teiid-defected"
+    entrypoint: [
+        "/opt/wait-for-it/wait-for-it.sh",
+        "teiid-defected:31000",
+        "--timeout=0",
+        "--strict",
+        "--",
+        "/opt/ontop/entrypoint.sh" ]
+
+  api-defected:
+    profiles: ["defected"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      ONTOP_ENDPOINT: "http://ontop-teiid-defected:8080/sparql"
+      METADATA_SOURCE: "ontology"
+      ONTOLOGY_FILE: "/app/vkg/obda/university.ttl"
+      OBDA_FILE: "/app/vkg/obda-defected/level_${DEFECT_LEVEL:-05}/${DEFECT_METRIC:-population}/university.obda"
+      DEFECT_SHADOW_SOURCES: "1"
+      TEIID_HOST: "teiid-defected"
+      TEIID_PORT: "35432"
+      TEIID_DB: "universities"
+      TEIID_USER: "user1"
+      TEIID_PASSWORD: "Password12345_"
+    ports:
+      - '0.0.0.0:${API_DEFECTED_PORT:-8001}:8000'
+    volumes:
+      - ./vkg/obda:/app/vkg/obda:ro
+      - ./vkg/obda-defected:/app/vkg/obda-defected:ro
+    depends_on:
+      ontop-teiid-defected:
+        condition: service_healthy
+        required: false
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  frontend-defected:
+    profiles: ["defected"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - '0.0.0.0:${FRONTEND_DEFECTED_PORT:-5174}:80'
+    volumes:
+      - ./frontend/nginx.defected.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api-defected:
+        condition: service_started
+        required: false
+
 volumes:
   data-mysql: { }
   data-pgsql: { }
   data-mssql: { }
   teiid-standalone-configuration: { }
   teiid-domain-configuration: { }
+  data-mysql-defected: { }
+  data-pgsql-defected: { }
+  data-mssql-defected: { }
+  teiid-defected-standalone-configuration: { }
+  teiid-defected-domain-configuration: { }
     

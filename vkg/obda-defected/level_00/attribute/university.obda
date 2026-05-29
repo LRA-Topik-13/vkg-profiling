@@ -1,0 +1,158 @@
+[PrefixDeclaration]
+:		http://example.org/voc#
+ex:		http://example.org/
+owl:		http://www.w3.org/2002/07/owl#
+rdf:		http://www.w3.org/1999/02/22-rdf-syntax-ns#
+xml:		http://www.w3.org/XML/1998/namespace
+xsd:		http://www.w3.org/2001/XMLSchema#
+foaf:		http://xmlns.com/foaf/0.1/
+obda:		https://w3id.org/obda/vocabulary#
+rdfs:		http://www.w3.org/2000/01/rdf-schema#
+
+[MappingDeclaration] @collection [[
+mappingId	compsci-student
+target		ex:voc#compsci/student/{s_id} a ex:voc#Student ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string . 
+source		SELECT * FROM compsci.student
+
+mappingId	compsci-academic
+target		ex:voc#compsci/academic/{a_id} a ex:voc#FacultyMember ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string . 
+source		SELECT * FROM compsci.academic
+
+mappingId	compsci-fullProfessor
+target		ex:voc#compsci/academic/{a_id} a ex:voc#FullProfessor . 
+source		SELECT * FROM compsci.academic
+			WHERE position = 1
+
+mappingId	compsci-AssociateProfessor
+target		ex:voc#compsci/academic/{a_id} a ex:voc#AssociateProfessor . 
+source		SELECT * FROM compsci.academic
+			WHERE position = 2
+
+mappingId	compsci-PostDoc
+target		ex:voc#compsci/academic/{a_id} a ex:voc#PostDoc . 
+source		SELECT * FROM compsci.academic
+			WHERE position = 9
+
+mappingId	compsci-externalTeacher
+target		ex:voc#compsci/academic/{a_id} a ex:voc#ExternalTeacher . 
+source		SELECT * FROM compsci.academic
+			WHERE position = 8
+
+mappingId	compsci-course
+target		ex:voc#compsci/course/{c_id} a ex:voc#Course ; ex:voc#title {title} ; ex:voc#isGivenAt ex:voc#compsci/university . 
+source		SELECT * FROM compsci.course
+
+mappingId	compsci-teaching
+target		ex:voc#compsci/academic/{a_id} ex:voc#teaches ex:voc#compsci/course/{c_id} . 
+source		SELECT * FROM compsci.teaching
+
+mappingId	compsci-registration
+target		ex:voc#compsci/student/{s_id} ex:voc#attends ex:voc#compsci/course/{c_id} . 
+source		SELECT *
+			FROM compsci.course_registration
+
+mappingId	mathsci-person
+target		ex:voc#mathsci/person/{pid} a foaf:Person ; foaf:firstName {fname}^^xsd:string ; foaf:lastName {lname}^^xsd:string . 
+source		SELECT * FROM mathsci.person
+
+mappingId	mathsci-undergraduate
+target		ex:voc#mathsci/person/{pid} a ex:voc#UndergraduateStudent . 
+source		SELECT * FROM mathsci.person
+			WHERE status = 1
+
+mappingId	mathsci-graduate
+target		ex:voc#mathsci/person/{pid} a ex:voc#GraduateStudent . 
+source		SELECT * FROM mathsci.person
+			WHERE status = 2
+
+mappingId	mathsci-fullProfessor
+target		ex:voc#mathsci/person/{pid} a ex:voc#FullProfessor . 
+source		SELECT * FROM mathsci.person
+			WHERE status = 7
+
+mappingId	mathsci-associate-prof
+target		ex:voc#mathsci/person/{pid} a ex:voc#AssociateProfessor . 
+source		SELECT * FROM mathsci.person
+			WHERE status = 8
+
+mappingId	mathsci-course
+target		ex:voc#mathsci/course/{cid} a ex:voc#Course ; ex:voc#title {topic}^^xsd:string ; ex:voc#isGivenAt ex:voc#mathsci/university . 
+source		SELECT * FROM mathsci.course
+
+mappingId	mathsci-lecturer
+target		ex:voc#mathsci/person/{lecturer} ex:voc#givesLecture ex:voc#mathsci/course/{cid} . 
+source		SELECT * FROM mathsci.course
+
+mappingId	mathsci-assistantProfessor
+target		ex:voc#mathsci/person/{pid} a ex:voc#AssistantProfessor . 
+source		SELECT * FROM mathsci.person
+			WHERE status = 9
+
+mappingId	mathsci-postDoc
+target		ex:voc#mathsci/person/{pid} a ex:voc#PostDoc . 
+source		SELECT * FROM mathsci.person
+			WHERE status = 3
+
+mappingId	mathsci-lab-teacher
+target		ex:voc#mathsci/person/{lab_teacher} ex:voc#givesLab ex:voc#mathsci/course/{cid} . 
+source		SELECT * FROM mathsci.course
+
+mappingId	mathsci-registration
+target		ex:voc#mathsci/person/{pid} ex:voc#attends ex:voc#mathsci/course/{cid} .
+source		SELECT *
+			FROM mathsci.registration
+
+mappingId	academics-teacher
+target		ex:voc#academics/teacher/{t_id} a ex:voc#FacultyMember ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string .
+source		SELECT * FROM academics.teacher
+
+mappingId	academics-fullProfessor
+target		ex:voc#academics/teacher/{t_id} a ex:voc#FullProfessor .
+source		SELECT * FROM academics.teacher
+			WHERE position = 1
+
+mappingId	academics-AssociateProfessor
+target		ex:voc#academics/teacher/{t_id} a ex:voc#AssociateProfessor .
+source		SELECT * FROM academics.teacher
+			WHERE position = 2
+
+mappingId	academics-AssistantProfessor
+target		ex:voc#academics/teacher/{t_id} a ex:voc#AssistantProfessor .
+source		SELECT * FROM academics.teacher
+			WHERE position = 3
+
+mappingId	academics-externalTeacher
+target		ex:voc#academics/teacher/{t_id} a ex:voc#ExternalTeacher .
+source		SELECT * FROM academics.teacher
+			WHERE position = 8
+
+mappingId	academics-PostDoc
+target		ex:voc#academics/teacher/{t_id} a ex:voc#PostDoc .
+source		SELECT * FROM academics.teacher
+			WHERE position = 9
+
+mappingId	academics-course
+target		ex:voc#academics/course/{c_id} a ex:voc#Course ; ex:voc#title {title} ; ex:voc#isGivenAt ex:voc#academics/university .
+source		SELECT * FROM academics.course
+
+mappingId	academics-teaching
+target		ex:voc#academics/teacher/{t_id} ex:voc#teaches ex:voc#academics/course/{c_id} .
+source		SELECT * FROM academics.teaching
+
+mappingId	academics-place
+target		ex:voc#academics/place/{place_id} a ex:voc#Place ; ex:voc#building {building}^^xsd:string ; ex:voc#roomCode {room_code}^^xsd:string .
+source		SELECT * FROM academics.place
+
+mappingId	academics-timeslot
+target		ex:voc#academics/timeslot/{ts_id} a ex:voc#TimeSlot ; ex:voc#day {day}^^xsd:string ; ex:voc#startTime {start_time}^^xsd:time ; ex:voc#endTime {end_time}^^xsd:time .
+source		SELECT * FROM academics.time_slot
+
+mappingId   academics-schedule-place
+target      ex:voc#academics/course/{c_id} ex:voc#isScheduledAt ex:voc#academics/place/{place_id} .
+source      SELECT c_id, place_id FROM academics.schedule
+
+mappingId   academics-schedule-time
+target      ex:voc#academics/course/{c_id} ex:voc#isScheduledOn ex:voc#academics/timeslot/{ts_id} .
+source      SELECT c_id, ts_id FROM academics.schedule
+]]
+

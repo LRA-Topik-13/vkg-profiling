@@ -30,7 +30,6 @@ import {
   labelForClass,
   labelForProperty,
   shortUri,
-  WarningNote,
 } from './accuracyShared';
 
 type OutlierMode = 'relationship_count' | 'property_presence_anomaly';
@@ -478,10 +477,6 @@ export default function AccuracyOutlierProfiling() {
   const objectProperties = useMemo(() => properties.filter((prop) => prop.type === 'object'), [properties]);
   const selectedProperty = useMemo(() => properties.find((prop) => prop.uri === selectedPropertyUri) || null, [properties, selectedPropertyUri]);
   const facetString = useMemo(() => facetsToParam(facets), [facets]);
-  const countedPropertyFacet = useMemo(
-    () => mode === 'relationship_count' && facets.some((facet) => facet.propUri === selectedPropertyUri),
-    [facets, mode, selectedPropertyUri],
-  );
   const noExactFacetValues = Boolean(
     facetDraft.propUri && !facetDraft.loading && !facetDraft.error && facetDraft.values.length === 0,
   );
@@ -682,18 +677,6 @@ export default function AccuracyOutlierProfiling() {
           </Field>
 
           <ActiveFacetList facets={facets} onRemove={removeFacet} onClear={clearFacets} />
-
-          {countedPropertyFacet && (
-            <WarningNote>
-              A facet uses the same property that Relationship Count is counting. The result is valid, but included entities are already required to have that relationship.
-            </WarningNote>
-          )}
-
-          {mode === 'property_presence_anomaly' && facets.length > 0 && (
-            <WarningNote>
-              Facet properties are forced to be present for included entities. Read their fill rates and matrix cells as scoped by the active facets.
-            </WarningNote>
-          )}
 
           {selectedClass && (
             <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>

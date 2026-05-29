@@ -24,12 +24,58 @@ export function shortUri(uri: string) {
   }
 }
 
+export function humanizeIdentifier(value: string | undefined | null) {
+  if (!value) return '';
+  const local = shortUri(value).split('/').filter(Boolean).pop() || value;
+  const cleaned = local
+    .replace(/^:/, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .trim();
+  if (!cleaned) return '';
+  return cleaned
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 export function labelForClass(cls?: ClassMeta | null) {
-  return cls ? cls.label || cls.localName : '';
+  return cls ? cls.label || humanizeIdentifier(cls.localName || cls.uri) : '';
 }
 
 export function labelForProperty(prop?: PropertyMeta | null) {
-  return prop ? prop.label || prop.localName : '';
+  return prop ? prop.label || humanizeIdentifier(prop.localName || prop.uri) : '';
+}
+
+export function makeClassLabelLookup(classes: ClassMeta[]) {
+  const lookup = new Map<string, string>();
+  classes.forEach((cls) => {
+    const label = labelForClass(cls);
+    if (!label) return;
+    lookup.set(cls.uri, label);
+    lookup.set(cls.localName, label);
+    lookup.set(shortUri(cls.uri), label);
+  });
+  return lookup;
+}
+
+export function makePropertyLabelLookup(properties: PropertyMeta[]) {
+  const lookup = new Map<string, string>();
+  properties.forEach((prop) => {
+    const label = labelForProperty(prop);
+    if (!label) return;
+    lookup.set(prop.uri, label);
+    lookup.set(prop.localName, label);
+    lookup.set(shortUri(prop.uri), label);
+  });
+  return lookup;
+}
+
+export function labelFromLookup(value: string | undefined | null, lookup: Map<string, string>) {
+  if (!value) return '';
+  const short = shortUri(value);
+  return lookup.get(value) || lookup.get(short) || humanizeIdentifier(short || value);
 }
 
 export function formatCount(value: number | undefined | null) {

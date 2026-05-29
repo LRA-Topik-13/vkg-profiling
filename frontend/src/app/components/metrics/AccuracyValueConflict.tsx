@@ -27,8 +27,10 @@ import {
   facetsToParam,
   formatCount,
   formatNullablePercent,
+  labelFromLookup,
   labelForClass,
   labelForProperty,
+  makePropertyLabelLookup,
   shortUri,
   sortSources,
 } from './accuracyShared';
@@ -77,6 +79,8 @@ function PairEvidenceTable({
   onPageSizeChange,
   onPrev,
   onNext,
+  propertyLabelFor,
+  targetPropertyLabel,
 }: {
   mode: EvidenceMode;
   summary: AccuracyValueConflictSummary | null;
@@ -84,10 +88,13 @@ function PairEvidenceTable({
   onPageSizeChange: (size: number) => void;
   onPrev: () => void;
   onNext: () => void;
+  propertyLabelFor: (property: string) => string;
+  targetPropertyLabel: string;
 }) {
   if (!summary) return null;
   const total = summary.conflicting_pairs;
   const title = `${summaryLabel(mode)} Conflict Evidence`;
+  const targetLabel = targetPropertyLabel || propertyLabelFor(summary.target_property || summary.target_prop_uri) || 'Value';
 
   if (state.loading) {
     return <LoadingState message={`Loading ${summaryLabel(mode).toLowerCase()} conflict evidence...`} />;
@@ -121,9 +128,9 @@ function PairEvidenceTable({
             <tr>
               <th className="px-4 py-3 text-left w-[22%]" style={{ color: 'var(--text-on-dark)' }}>Identity Values</th>
               <th className="px-4 py-3 text-left w-[22%]" style={{ color: 'var(--text-on-dark)' }}>Entity A</th>
-              <th className="px-4 py-3 text-left w-[16%]" style={{ color: 'var(--text-on-dark)' }}>Value A</th>
+              <th className="px-4 py-3 text-left w-[16%]" style={{ color: 'var(--text-on-dark)' }}>{targetLabel} (A)</th>
               <th className="px-4 py-3 text-left w-[22%]" style={{ color: 'var(--text-on-dark)' }}>Entity B</th>
-              <th className="px-4 py-3 text-left w-[18%]" style={{ color: 'var(--text-on-dark)' }}>Value B</th>
+              <th className="px-4 py-3 text-left w-[18%]" style={{ color: 'var(--text-on-dark)' }}>{targetLabel} (B)</th>
             </tr>
           </thead>
           <tbody>
@@ -133,7 +140,7 @@ function PairEvidenceTable({
                   <div className="space-y-1">
                     {Object.entries(pair.identity_values).map(([key, value]) => (
                       <div key={key} className="text-xs px-2 py-1" style={{ backgroundColor: 'var(--muted)', borderRadius: 'var(--radius-sm)', color: 'var(--muted-foreground)' }}>
-                        <span>{key}: </span><span style={{ color: 'var(--text)' }}>{value}</span>
+                        <span>{propertyLabelFor(key)}: </span><span style={{ color: 'var(--text)' }}>{value}</span>
                       </div>
                     ))}
                   </div>
@@ -237,6 +244,9 @@ export default function AccuracyValueConflict() {
   const objectProperties = useMemo(() => properties.filter((prop) => prop.type === 'object'), [properties]);
   const identityCandidates = useMemo(() => dataProperties.filter((prop) => prop.uri !== targetPropUri), [dataProperties, targetPropUri]);
   const targetProp = useMemo(() => dataProperties.find((prop) => prop.uri === targetPropUri) || null, [dataProperties, targetPropUri]);
+  const propertyLabelLookup = useMemo(() => makePropertyLabelLookup(properties), [properties]);
+  const propertyLabelFor = (property: string) => labelFromLookup(property, propertyLabelLookup);
+  const targetPropertyLabel = targetProp ? labelForProperty(targetProp) : '';
   const identityLabels = useMemo(() => identityPropUris.map((uri) => labelForProperty(dataProperties.find((prop) => prop.uri === uri))).filter(Boolean), [identityPropUris, dataProperties]);
   const facetString = useMemo(() => facetsToParam(facets), [facets]);
   const canAnalyze = Boolean(selectedClassUri && targetPropUri && identityPropUris.length > 0 && selectedSources.length > 0);
@@ -450,7 +460,13 @@ export default function AccuracyValueConflict() {
 
   return (
     <div className="space-y-6">
-      <Section title="Configuration">
+      <Section title="How It Works">
+        <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
+          This check uses a functional dependency rule, where selected identity properties should determine one target property. For example, Start Time + End Time -&gt; Day means that two comparable Time Slot entities with the same start and end time should also have the same day. If the target values are different, the pair is flagged as a conflict.
+        </p>
+      </Section>
+
+      <Section title="Value Conflict of a Class">
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="Class">
@@ -620,6 +636,8 @@ export default function AccuracyValueConflict() {
             onPageSizeChange={(size) => pageSizeChange(activeMode, size)}
             onPrev={() => fetchRows(activeMode, Math.max(0, activeRows.offset - activeRows.pageSize), activeRows.pageSize)}
             onNext={() => fetchRows(activeMode, activeRows.offset + activeRows.pageSize, activeRows.pageSize)}
+            propertyLabelFor={propertyLabelFor}
+            targetPropertyLabel={targetPropertyLabel}
           />
         </>
       )}

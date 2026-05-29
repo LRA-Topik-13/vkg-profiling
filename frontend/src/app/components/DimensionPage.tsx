@@ -6,7 +6,7 @@ import PropertyCompleteness from './metrics/PropertyCompleteness';
 import InterlinkingCompleteness from './metrics/InterlinkingCompleteness';
 import PopulationCompleteness from './metrics/PopulationCompleteness';
 import AccuracyOutlierProfiling from './metrics/AccuracyOutlierProfiling';
-import AccuracyUniquenessViolation from './metrics/AccuracyUniquenessViolation';
+import AccuracyValueConflict from './metrics/AccuracyValueConflict';
 import AccuracyPropertyMisuse from './metrics/AccuracyPropertyMisuse';
 
 interface DimensionPageProps {
@@ -58,7 +58,7 @@ export default function DimensionPage({ dimension }: DimensionPageProps) {
 
     if (dimension === 'accuracy') {
       if (activeTab === 0) return <AccuracyOutlierProfiling />;
-      if (activeTab === 1) return <AccuracyUniquenessViolation />;
+      if (activeTab === 1) return <AccuracyValueConflict />;
       if (activeTab === 2) return <AccuracyPropertyMisuse />;
     }
 

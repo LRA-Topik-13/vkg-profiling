@@ -72,7 +72,7 @@ export default function AccuracyPropertyMisuse() {
     <div className="space-y-6">
       <Section title="Configuration">
         <div className="space-y-4">
-          <Field label="Property" hint={metadataLoading ? 'Loading properties...' : 'Select one mapped property to evaluate across all mapped classes.'}>
+          <Field label="Property" hint={metadataLoading ? 'Loading properties...' : undefined}>
             <select disabled={metadataLoading} value={selectedPropertyUri} onChange={(e) => { setSelectedPropertyUri(e.target.value); setResult(null); setError(null); }} className="w-full px-4 py-2 border disabled:opacity-50" style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}>
               <option value="">Choose a property...</option>
               {properties.map((prop) => <option key={prop.uri} value={prop.uri}>{labelForProperty(prop)} ({prop.type})</option>)}

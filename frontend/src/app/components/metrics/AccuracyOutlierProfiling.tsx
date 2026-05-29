@@ -30,7 +30,6 @@ import {
   labelForClass,
   labelForProperty,
   shortUri,
-  WarningNote,
 } from './accuracyShared';
 
 type OutlierMode = 'relationship_count' | 'property_presence_anomaly';
@@ -43,6 +42,7 @@ const EMPTY_FACET_DRAFT = {
   loading: false,
   error: null as string | null,
 };
+const FACET_ANY_VALUE = '__any_value_exists__';
 
 function isRelationshipEntity(entity: SortableEntity): entity is AccuracyRelationshipEntity {
   return 'count' in entity;
@@ -63,13 +63,19 @@ function formatStat(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
-function groupedStats(items: Array<{ label: string; value: number }>) {
-  const groups = new Map<number, string[]>();
-  items.forEach((item) => {
-    const key = Math.round(item.value * 10000) / 10000;
-    groups.set(key, [...(groups.get(key) || []), item.label]);
+function sampledCountTicks(groups: CountGroup[], maxTicks = 12) {
+  if (groups.length <= maxTicks) return groups.map((group) => group.count);
+
+  const ticks = new Set<number>();
+  const last = groups.length - 1;
+  for (let i = 0; i < maxTicks; i += 1) {
+    const index = Math.round((i * last) / (maxTicks - 1));
+    ticks.add(groups[index].count);
+  }
+  groups.forEach((group) => {
+    if (group.outliers > 0) ticks.add(group.count);
   });
-  return Array.from(groups.entries()).map(([value, labels]) => ({ value, labels }));
+  return Array.from(ticks).sort((a, b) => a - b);
 }
 
 interface CountGroup {
@@ -119,10 +125,6 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
     { label: 'Upper Fence', value: upper },
     { label: 'Max', value: max },
   ];
-  const fenceGroups = groupedStats([
-    { label: 'Lower Fence', value: lower },
-    { label: 'Upper Fence', value: upper },
-  ]);
   const countGroups = Array.from(rows.reduce((acc, row) => {
     const current = acc.get(row.count) || { count: row.count, total: 0, outliers: 0 };
     current.total += 1;
@@ -130,13 +132,7 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
     acc.set(row.count, current);
     return acc;
   }, new Map<number, CountGroup>()).values()).sort((a, b) => a.count - b.count);
-  const axisTicks = groupedStats([
-    { label: 'Min', value: min },
-    { label: 'Q1', value: q1 },
-    { label: 'Median', value: med },
-    { label: 'Q3', value: q3 },
-    { label: 'Max', value: max },
-  ]);
+  const axisTicks = sampledCountTicks(countGroups);
   const [hovered, setHovered] = useState<CountGroup | null>(null);
   const [tooltip, setTooltip] = useState({ x: 0, y: 0 });
 
@@ -157,8 +153,8 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
           Red dots are flagged counts
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span style={{ width: 18, borderTop: '2px dashed #9E2B0A' }} />
-          Dashed lines are Tukey fences
+          <span style={{ width: 18, borderTop: '3px solid var(--navy)' }} />
+          Blue whiskers show the non-outlier range
         </span>
       </div>
       <div className="relative w-full overflow-x-auto">
@@ -170,9 +166,6 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
           <line x1={x(whiskerHigh)} x2={x(whiskerHigh)} y1={y - 20} y2={y + 20} stroke="var(--navy)" strokeWidth="2" />
           <rect x={x(q1)} y={y - boxH / 2} width={Math.max(4, x(q3) - x(q1))} height={boxH} fill="var(--info-soft)" stroke="var(--navy)" strokeWidth="2" rx="4" />
           <line x1={x(med)} x2={x(med)} y1={y - boxH / 2} y2={y + boxH / 2} stroke="var(--accent)" strokeWidth="3" />
-          {fenceGroups.map((group) => (
-            <line key={group.value} x1={x(group.value)} x2={x(group.value)} y1={y - 48} y2={y + 48} stroke="#9E2B0A" strokeDasharray="5 4" strokeWidth="2" opacity="0.85" />
-          ))}
           {countGroups.map((group) => {
             const cy = pointY;
             const isOutlier = group.outliers > 0;
@@ -192,9 +185,9 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
           })}
           <line x1={left} x2={width - right} y1={height - 52} y2={height - 52} stroke="var(--border)" strokeWidth="1" />
           {axisTicks.map((tick) => (
-            <g key={`${tick.labels.join('-')}-${tick.value}`}>
-              <line x1={x(tick.value)} x2={x(tick.value)} y1={height - 56} y2={height - 48} stroke="var(--border)" />
-              <text x={x(tick.value)} y={height - 32} textAnchor="middle" fontSize="10" fill="var(--muted-foreground)">{formatStat(tick.value)}</text>
+            <g key={tick}>
+              <line x1={x(tick)} x2={x(tick)} y1={height - 56} y2={height - 48} stroke="var(--border)" />
+              <text x={x(tick)} y={height - 32} textAnchor="middle" fontSize="10" fill="var(--muted-foreground)">{formatStat(tick)}</text>
             </g>
           ))}
         </svg>
@@ -331,7 +324,7 @@ function PresenceMatrix({ result }: { result: AccuracyOutlierResult }) {
   return (
     <Section
       title="Property Matrix"
-      subtitle="Cells show whether each entity has each checked property. Highlighted cells are property-presence anomalies."
+      subtitle="Cells show whether each entity has each checked property. Flagged rows are explained in the Violation column."
       right={
         <div className="flex flex-wrap items-center gap-2">
           <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="px-3 py-2 border text-sm" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}>
@@ -478,13 +471,10 @@ export default function AccuracyOutlierProfiling() {
   const objectProperties = useMemo(() => properties.filter((prop) => prop.type === 'object'), [properties]);
   const selectedProperty = useMemo(() => properties.find((prop) => prop.uri === selectedPropertyUri) || null, [properties, selectedPropertyUri]);
   const facetString = useMemo(() => facetsToParam(facets), [facets]);
-  const countedPropertyFacet = useMemo(
-    () => mode === 'relationship_count' && facets.some((facet) => facet.propUri === selectedPropertyUri),
-    [facets, mode, selectedPropertyUri],
-  );
   const noExactFacetValues = Boolean(
     facetDraft.propUri && !facetDraft.loading && !facetDraft.error && facetDraft.values.length === 0,
   );
+  const canAddFacet = Boolean(facetDraft.propUri && facetDraft.valueUri && !facetDraft.loading);
 
   useEffect(() => {
     metadataApi.mappedClasses().then((data) => setClasses(data.classes)).catch((err) => setError(errorMessage(err)));
@@ -532,10 +522,10 @@ export default function AccuracyOutlierProfiling() {
   }, [facetDraft.propUri, selectedClassUri]);
 
   function addFacet() {
-    if (!facetDraft.propUri) return;
+    if (!canAddFacet) return;
     const propEntry = objectProperties.find((prop) => prop.uri === facetDraft.propUri);
     if (!propEntry) return;
-    const valueUri = facetDraft.valueUri || null;
+    const valueUri = facetDraft.valueUri === FACET_ANY_VALUE ? null : facetDraft.valueUri;
     const duplicate = facets.some((facet) => facet.propUri === facetDraft.propUri && facet.valueUri === valueUri);
     if (duplicate) return;
     setFacets((prev) => [
@@ -637,7 +627,10 @@ export default function AccuracyOutlierProfiling() {
             )}
           </div>
 
-          <Field label="Add facet (optional)" hint="Facet filters narrow the evaluated entities before the score is calculated.">
+          <Field label="Add facet (optional)">
+            <p className="mb-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              Facet filters limit which entities are checked before the score is calculated.
+            </p>
             <div className="flex gap-2">
               <select
                 disabled={!selectedClassUri || objectProperties.length === 0 || metadataLoading}
@@ -646,54 +639,48 @@ export default function AccuracyOutlierProfiling() {
                 className="flex-1 px-4 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">predicate</option>
+                <option value="">Select predicate...</option>
                 {objectProperties.map((prop) => <option key={prop.uri} value={prop.uri}>{labelForProperty(prop)}</option>)}
               </select>
               <select
-                disabled={!facetDraft.propUri}
+                disabled={!facetDraft.propUri || facetDraft.loading}
                 value={facetDraft.valueUri}
                 onChange={(event) => setFacetDraft((draft) => ({ ...draft, valueUri: event.target.value }))}
                 className="flex-1 px-4 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">{facetDraft.loading ? 'Loading values...' : 'Any value (exists)'}</option>
+                <option value="">{facetDraft.loading ? 'Loading values...' : 'Select a value...'}</option>
+                <option value={FACET_ANY_VALUE}>Any value (exists)</option>
                 {facetDraft.values.map((value) => <option key={value} value={value}>{shortUri(value)}</option>)}
               </select>
               <button
                 onClick={addFacet}
-                disabled={!facetDraft.propUri}
+                disabled={!canAddFacet}
                 className="inline-flex items-center gap-1 px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
+                style={{
+                  backgroundColor: canAddFacet ? 'var(--accent)' : 'var(--muted)',
+                  color: canAddFacet ? 'var(--text-on-accent)' : 'var(--muted-foreground)',
+                  borderRadius: 'var(--radius-md)',
+                }}
                 title="Add facet"
               >
                 <Plus className="w-4 h-4" />
+                Add
               </button>
             </div>
             {facetDraft.error && (
               <div className="mt-1 text-xs" style={{ color: 'var(--accent)' }}>
-                Failed to load facet values. You can still add an existence facet.
+                Failed to load facet values. You can still choose Any value (exists).
               </div>
             )}
             {noExactFacetValues && (
               <div className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                No exact values were found for this class and property. You can still add an existence facet.
+                No exact values were found for this class and property. You can still choose Any value (exists).
               </div>
             )}
           </Field>
 
           <ActiveFacetList facets={facets} onRemove={removeFacet} onClear={clearFacets} />
-
-          {countedPropertyFacet && (
-            <WarningNote>
-              A facet uses the same property that Relationship Count is counting. The result is valid, but included entities are already required to have that relationship.
-            </WarningNote>
-          )}
-
-          {mode === 'property_presence_anomaly' && facets.length > 0 && (
-            <WarningNote>
-              Facet properties are forced to be present for included entities. Read their fill rates and matrix cells as scoped by the active facets.
-            </WarningNote>
-          )}
 
           {selectedClass && (
             <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>

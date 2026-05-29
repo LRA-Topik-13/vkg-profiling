@@ -593,7 +593,7 @@ async def accuracy_outliers(
     )
 
 
-# ── SA2: Uniqueness Violation / Value Conflict Detection ─────────────────────
+# ── SA2: Value Conflict Detection ─────────────────────────────────────────────
 
 
 def _sa2_identity_rule(
@@ -921,7 +921,7 @@ async def accuracy_value_conflict_rows(
     return await _sa2_within_rows_offset(ctx, limit, offset)
 
 
-# ── SA2-cross: Cross-Source Uniqueness Violation ─────────────────────────────
+# ── SA2-cross: Cross-Source Value Conflict ───────────────────────────────────
 
 def _cs_src_membership(var: str, sources: list[str]) -> str:
     """Build a source-membership filter for cross-source SA2 queries."""

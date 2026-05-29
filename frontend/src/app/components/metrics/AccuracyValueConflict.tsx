@@ -31,7 +31,6 @@ import {
   labelForProperty,
   shortUri,
   sortSources,
-  WarningNote,
 } from './accuracyShared';
 
 type EvidenceMode = 'cross' | 'intra';
@@ -43,6 +42,7 @@ const EMPTY_FACET_DRAFT = {
   loading: false,
   error: null as string | null,
 };
+const FACET_ANY_VALUE = '__any_value_exists__';
 
 interface RowState {
   rows: AccuracyPairRow[];
@@ -212,7 +212,7 @@ function BreakdownTable({ summary, mode }: { summary: AccuracyValueConflictSumma
   );
 }
 
-export default function AccuracyUniquenessViolation() {
+export default function AccuracyValueConflict() {
   const [classes, setClasses] = useState<ClassMeta[]>([]);
   const [properties, setProperties] = useState<PropertyMeta[]>([]);
   const [selectedClassUri, setSelectedClassUri] = useState('');
@@ -241,10 +241,10 @@ export default function AccuracyUniquenessViolation() {
   const facetString = useMemo(() => facetsToParam(facets), [facets]);
   const canAnalyze = Boolean(selectedClassUri && targetPropUri && identityPropUris.length > 0 && selectedSources.length > 0);
   const hasCross = selectedSources.length >= 2;
-  const hasExactFacet = facets.some((facet) => facet.valueUri);
   const noExactFacetValues = Boolean(
     facetDraft.propUri && !facetDraft.loading && !facetDraft.error && facetDraft.values.length === 0,
   );
+  const canAddFacet = Boolean(facetDraft.propUri && facetDraft.valueUri && !facetDraft.loading);
   const activeSummary = activeMode === 'cross' ? crossSummary : intraSummary;
   const activeRows = activeMode === 'cross' ? crossRows : intraRows;
   const activeScore = scoreFromSummary(activeSummary, activeMode);
@@ -384,10 +384,10 @@ export default function AccuracyUniquenessViolation() {
   }
 
   function addFacet() {
-    if (!facetDraft.propUri) return;
+    if (!canAddFacet) return;
     const propEntry = objectProperties.find((prop) => prop.uri === facetDraft.propUri);
     if (!propEntry) return;
-    const valueUri = facetDraft.valueUri || null;
+    const valueUri = facetDraft.valueUri === FACET_ANY_VALUE ? null : facetDraft.valueUri;
     const duplicate = facets.some((facet) => facet.propUri === facetDraft.propUri && facet.valueUri === valueUri);
     if (duplicate) return;
     setFacets((prev) => [
@@ -509,7 +509,10 @@ export default function AccuracyUniquenessViolation() {
             )}
           </div>
 
-          <Field label="Add facet (optional)" hint="Facet filters narrow the evaluated entities before pair comparison.">
+          <Field label="Add facet (optional)">
+            <p className="mb-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              Facet filters limit which entities are checked before the score is calculated.
+            </p>
             <div className="flex gap-2">
               <select
                 disabled={!selectedClassUri || objectProperties.length === 0 || metadataLoading}
@@ -518,48 +521,48 @@ export default function AccuracyUniquenessViolation() {
                 className="flex-1 px-4 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">predicate</option>
+                <option value="">Select predicate...</option>
                 {objectProperties.map((prop) => <option key={prop.uri} value={prop.uri}>{labelForProperty(prop)}</option>)}
               </select>
               <select
-                disabled={!facetDraft.propUri}
+                disabled={!facetDraft.propUri || facetDraft.loading}
                 value={facetDraft.valueUri}
                 onChange={(event) => setFacetDraft((draft) => ({ ...draft, valueUri: event.target.value }))}
                 className="flex-1 px-4 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
-                <option value="">{facetDraft.loading ? 'Loading values...' : 'Any value (exists)'}</option>
+                <option value="">{facetDraft.loading ? 'Loading values...' : 'Select a value...'}</option>
+                <option value={FACET_ANY_VALUE}>Any value (exists)</option>
                 {facetDraft.values.map((value) => <option key={value} value={value}>{shortUri(value)}</option>)}
               </select>
               <button
                 onClick={addFacet}
-                disabled={!facetDraft.propUri}
+                disabled={!canAddFacet}
                 className="inline-flex items-center gap-1 px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
+                style={{
+                  backgroundColor: canAddFacet ? 'var(--accent)' : 'var(--muted)',
+                  color: canAddFacet ? 'var(--text-on-accent)' : 'var(--muted-foreground)',
+                  borderRadius: 'var(--radius-md)',
+                }}
                 title="Add facet"
               >
                 <Plus className="w-4 h-4" />
+                Add
               </button>
             </div>
             {facetDraft.error && (
               <div className="mt-1 text-xs" style={{ color: 'var(--accent)' }}>
-                Failed to load facet values. You can still add an existence facet.
+                Failed to load facet values. You can still choose Any value (exists).
               </div>
             )}
             {noExactFacetValues && (
               <div className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                No exact values were found for this class and property. You can still add an existence facet.
+                No exact values were found for this class and property. You can still choose Any value (exists).
               </div>
             )}
           </Field>
 
           <ActiveFacetList facets={facets} onRemove={removeFacet} onClear={clearFacets} />
-
-          {hasCross && hasExactFacet && (
-            <WarningNote>
-              Exact-value facets use one object URI. Cross-source results only include pairs where both entities satisfy that same facet value.
-            </WarningNote>
-          )}
 
           <Field label="Data Sources" hint={selectedSources.length === 1 ? 'One selected source runs intra-source checking only.' : 'Two or more selected sources also run cross-source checking.'}>
             <div className="flex flex-wrap gap-3">

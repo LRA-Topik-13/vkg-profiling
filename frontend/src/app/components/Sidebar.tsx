@@ -11,7 +11,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 
-export const SIDEBAR_WIDTH = '16rem';
+export const SIDEBAR_WIDTH = '17rem';
 export const SIDEBAR_COLLAPSED_WIDTH = '5rem';
 
 const DIMENSIONS = [
@@ -141,15 +141,15 @@ export default function Sidebar({
                   className="flex items-center gap-3 flex-1 min-w-0"
                   title={collapsed ? dim.title : undefined}
                   style={{
-                    height: '2.75rem',
+                    height: '3.3rem',
                     color: isActiveDim ? 'var(--text-on-accent)' : 'var(--text)',
                     paddingLeft: collapsed ? '0' : '1rem',
                     justifyContent: collapsed ? 'center' : 'flex-start',
                   }}
                 >
-                  <Icon className="w-5 h-5 shrink-0" />
+                  <Icon className="w-8 h-8 shrink-0" />
                   {!collapsed && (
-                    <span className="whitespace-nowrap font-medium">
+                    <span className="whitespace-nowrap font-medium" style={{ fontSize: '1.05rem' }}>
                       {dim.title}
                     </span>
                   )}
@@ -160,7 +160,7 @@ export default function Sidebar({
                     onClick={() => toggleDim(dim.id)}
                     className="px-3 shrink-0"
                     style={{
-                      height: '2.75rem',
+                      height: '3.3rem',
                       color: isActiveDim
                         ? 'var(--text-on-accent)'
                         : 'var(--muted-foreground)',
@@ -175,8 +175,8 @@ export default function Sidebar({
                 )}
               </div>
 
-              {/* Tabs dropdown */}
-              {!collapsed && isOpen && (
+              {/* Tabs — full labels when expanded, dots when collapsed */}
+              {isOpen && (
                 <div>
                   {dim.tabs.map((tab, idx) => {
                     const isActiveTab = isActiveDim && activeTabIndex === idx;
@@ -184,21 +184,42 @@ export default function Sidebar({
                       <Link
                         key={tab}
                         to={`${dim.path}?tab=${idx}`}
-                        className="flex items-center text-sm"
+                        title={collapsed ? tab : undefined}
+                        className="flex items-center"
                         style={{
-                          height: '2.75rem',
-                          paddingLeft: '2.75rem',
-                          paddingRight: '1rem',
+                          height: '3.3rem',
+                          paddingLeft: collapsed ? '0' : '2.75rem',
+                          paddingRight: collapsed ? '0' : '1rem',
+                          justifyContent: collapsed ? 'center' : 'flex-start',
                           backgroundColor: isActiveTab
                             ? 'rgba(0,0,0,0.09)'
                             : 'transparent',
-                          color: isActiveTab
-                            ? 'var(--text)'
-                            : 'var(--muted-foreground)',
-                          fontWeight: isActiveTab ? 500 : 400,
                         }}
                       >
-                        {tab}
+                        {collapsed ? (
+                          <span
+                            style={{
+                              width: '0.45rem',
+                              height: '0.45rem',
+                              borderRadius: '50%',
+                              flexShrink: 0,
+                              backgroundColor: isActiveTab
+                                ? 'var(--text)'
+                                : 'var(--muted-foreground)',
+                            }}
+                          />
+                        ) : (
+                          <span
+                            className="whitespace-nowrap"
+                            style={{
+                              fontSize: '0.95rem',
+                              color: isActiveTab ? 'var(--text)' : 'var(--muted-foreground)',
+                              fontWeight: isActiveTab ? 500 : 400,
+                            }}
+                          >
+                            {tab}
+                          </span>
+                        )}
                       </Link>
                     );
                   })}

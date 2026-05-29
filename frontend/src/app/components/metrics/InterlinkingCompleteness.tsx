@@ -340,6 +340,12 @@ function EntityLinkColumn({ title, icon, groups }: { title: string; icon: React.
           {groups.map((g) => (
             <li key={g.class.uri}>
               <div className="flex items-center gap-2 text-sm">
+                <span
+                  className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 shrink-0"
+                  style={{ backgroundColor: 'var(--info-soft)', color: 'var(--navy)', borderRadius: 'var(--radius-sm)' }}
+                >
+                  Class
+                </span>
                 <span className="truncate" style={{ color: 'var(--text)' }}>
                   {g.class.label || prettyId(g.class.uri)}
                 </span>
@@ -354,6 +360,12 @@ function EntityLinkColumn({ title, icon, groups }: { title: string; icon: React.
                     className="text-xs flex items-center gap-2"
                     style={{ color: 'var(--muted-foreground)' }}
                   >
+                    <span
+                      className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 shrink-0"
+                      style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 'var(--radius-sm)' }}
+                    >
+                      Property
+                    </span>
                     <span className="truncate">{p.label || p.localName}</span>
                     <span className="ml-auto tabular-nums whitespace-nowrap">{p.count}</span>
                   </li>
@@ -523,7 +535,7 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
       </div>
 
       {data && data.entities.length > 0 && (
-        <p className="text-xs mb-2" style={{ color: 'var(--muted-foreground)' }}>
+        <p className="text-sm font-semibold mb-2" style={{ color: 'var(--navy)' }}>
           Click a row to see that entity's outgoing &amp; incoming links.
         </p>
       )}
@@ -532,7 +544,7 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
         <div className="py-6 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>Loading…</div>
       ) : (
         <PaginatedTable
-          colSpan={2}
+          colSpan={1}
           pagination={data?.pagination ?? null}
           pageSize={pageSize}
           loading={loading}
@@ -549,10 +561,7 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
             </div>
           }
           head={
-            <>
-              <th className="text-left px-4 py-3" style={{ color: 'var(--text-on-dark)' }}>Entity</th>
-              <th className="text-right px-4 py-3" style={{ color: 'var(--text-on-dark)' }}>Direction</th>
-            </>
+            <th className="text-left px-4 py-3" style={{ color: 'var(--text-on-dark)' }}>Entity</th>
           }
         >
           {data?.entities.map((e) => (
@@ -562,18 +571,15 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
               className="group cursor-pointer transition-colors hover:bg-[var(--muted)]"
               style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}
             >
-              <td className="px-4 py-2 text-sm truncate max-w-[320px]" title={e.uri}>
-                <span
-                  className="underline decoration-dotted underline-offset-2 group-hover:decoration-solid"
-                  style={{ color: 'var(--navy)' }}
-                >
-                  {e.label || prettyId(e.uri)}
-                </span>
-              </td>
-              <td className="px-4 py-2">
-                <span className="flex items-center justify-end gap-2">
-                  {e.direction ? <DirectionBadge direction={e.direction} /> : null}
-                  <ChevronRight className="w-4 h-4 shrink-0 transition-transform group-hover:translate-x-0.5" style={{ color: 'var(--navy)' }} />
+              <td className="px-4 py-2 text-sm" title={e.uri}>
+                <span className="flex items-center gap-2">
+                  <span
+                    className="truncate underline decoration-dotted underline-offset-2 group-hover:decoration-solid"
+                    style={{ color: 'var(--navy)' }}
+                  >
+                    {e.label || prettyId(e.uri)}
+                  </span>
+                  <ChevronRight className="ml-auto w-4 h-4 shrink-0 transition-transform group-hover:translate-x-0.5" style={{ color: 'var(--navy)' }} />
                 </span>
               </td>
             </tr>
@@ -584,20 +590,3 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
   );
 }
 
-function DirectionBadge({ direction }: { direction: 'outgoing' | 'incoming' | 'both' }) {
-  const map = {
-    outgoing: { sym: '→', label: 'out' },
-    incoming: { sym: '←', label: 'in' },
-    both: { sym: '↔', label: 'both' },
-  } as const;
-  const { sym, label } = map[direction];
-  return (
-    <span
-      className="text-xs px-2 py-0.5 shrink-0 whitespace-nowrap"
-      style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 'var(--radius-sm)' }}
-      title={`Has ${direction} link${direction === 'both' ? 's (incoming and outgoing)' : ''}`}
-    >
-      {sym} {label}
-    </span>
-  );
-}

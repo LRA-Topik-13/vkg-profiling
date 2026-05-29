@@ -83,7 +83,7 @@ export default function AccuracyPropertyMisuse() {
     <div className="space-y-6">
       <Section title="How It Works">
         <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
-          This check compares observed property usage with the property domain defined in the ontology. A misuse is reported when the property appears on a class outside its expected domain.
+          This check compares observed property usage with the subject classes defined by the property's ontology domain. A misuse is reported when the property appears on a class outside those expected classes.
         </p>
       </Section>
 
@@ -110,12 +110,12 @@ export default function AccuracyPropertyMisuse() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <MetricCard value={formatCount(result.total_property_uses)} label="Observed Uses" sub={resultPropertyLabel} />
-            <MetricCard value={formatCount(result.total_expected_count)} label="Expected Uses" sub="Ontology domain" color="#1F8A4C" />
-            <MetricCard value={formatCount(result.total_misuse_count)} label="Misuse Uses" sub="Unexpected domain" color={result.total_misuse_count > 0 ? '#9E2B0A' : '#1F8A4C'} />
+            <MetricCard value={formatCount(result.total_expected_count)} label="Expected Uses" sub="Expected classes" color="#1F8A4C" />
+            <MetricCard value={formatCount(result.total_misuse_count)} label="Misuse Uses" sub="Outside expected classes" color={result.total_misuse_count > 0 ? '#9E2B0A' : '#1F8A4C'} />
             <AccuracyScoreDonut title="Property Misuse Score" percentage={result.sa4_score} sub="expected / observed" />
           </div>
 
-          <Section title="Expected Domain" subtitle={`Expected domain for ${resultPropertyLabel} based on the ontology.`}>
+          <Section title="Expected Domain Classes" subtitle={`Classes expected to use ${resultPropertyLabel}, based on the ontology domain.`}>
             {expectedDomain.length === 0 ? (
               <EmptyState message="No expected classes are defined for this property." />
             ) : (
@@ -133,7 +133,7 @@ export default function AccuracyPropertyMisuse() {
 
           <Section
             title="Class Breakdown"
-            subtitle="Misuse means the property appears on a class outside the expected ontology domain."
+            subtitle="Misuse means the property appears on a class outside the expected classes from the ontology domain."
             right={
               <button
                 onClick={() => setShowAllClasses((value) => !value)}
@@ -175,7 +175,7 @@ export default function AccuracyPropertyMisuse() {
                           <td className="px-4 py-3 text-sm" style={{ color: 'var(--text)' }}>{formatCount(row.count)}</td>
                           <td className="px-4 py-3">
                             {row.expected ? (
-                              <span className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Expected domain.</span>
+                              <span className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Expected class.</span>
                             ) : row.entity_uris.length === 0 ? (
                               <span className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Misuse detected.</span>
                             ) : (

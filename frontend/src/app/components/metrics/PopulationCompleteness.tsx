@@ -1,31 +1,33 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { completenessApi, PopulationSummary, PopulationEntry, PopulationEntities, statusColor } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList, EntityRow } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, EntityRow } from './_shared';
 
 const PAGE = 25;
 
 export default function PopulationCompleteness() {
   const [data, setData] = useState<PopulationSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
-  const detailRef = useRef<HTMLDivElement>(null);
+  const [selectedUri, setSelectedUri] = useState<string>('');
+  const [analyzedUri, setAnalyzedUri] = useState<string | null>(null);
+  const configRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     completenessApi.populationSummary().then(setData).catch((e) => setError(String(e)));
   }, []);
 
-  function selectAndScroll(key: string | null) {
-    setSelected(key);
-    if (key) setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  function pickFromChart(uri: string) {
+    setSelectedUri(uri);
+    setTimeout(() => configRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }
 
   if (error) return <ErrorState message={error} />;
   if (!data) return <LoadingState />;
 
-  const sel = data.classes.find((c) => c.uri === selected) || null;
+  const sel = data.classes.find((c) => c.uri === analyzedUri) || null;
   const reachable = data.source_reachable;
+  const stale = sel !== null && selectedUri !== '' && selectedUri !== analyzedUri;
 
   return (
     <div className="space-y-6">
@@ -71,53 +73,74 @@ export default function PopulationCompleteness() {
       )}
 
       {reachable && (
-        <Section title="Completeness Ranking" subtitle="Click a bar to inspect that class below." collapsible>
-          <Ranking entries={data.classes} onSelect={selectAndScroll} selected={selected} />
+        <Section title="Completeness Ranking" subtitle="Click a bar to load that class into the configuration below." collapsible>
+          <Ranking entries={data.classes} onSelect={pickFromChart} selected={selectedUri || null} />
         </Section>
       )}
 
-      <div ref={detailRef} className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-        <div className="lg:col-span-2">
-          <ClassSelectList
-            title="Classes"
-            items={[...data.classes]}
-            getKey={(c) => c.uri}
-            getSearchText={(c) => `${c.label || ''} ${c.class}`}
-            selectedKey={selected}
-            onSelect={(k) => selectAndScroll(k === selected ? null : k)}
-            renderRow={(c) => <ClassRow entry={c} reachable={reachable} />}
-            maxHeight={560}
-          />
-        </div>
-        <div className="lg:col-span-3 lg:sticky lg:top-4">
-          {sel ? (
-            <ClassDetail entry={sel} reachable={reachable} onClose={() => setSelected(null)} />
-          ) : (
-            <Section title="Class Detail">
-              <div className="py-8 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>No class selected.</div>
-            </Section>
-          )}
-        </div>
+      <div ref={configRef}>
+        <Section
+          title="Configuration"
+          subtitle="Select a class to inspect its represented vs source population and entity breakdown."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Class">
+              <select
+                value={selectedUri}
+                onChange={(e) => setSelectedUri(e.target.value)}
+                className="w-full px-3 py-2 border"
+                style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+              >
+                <option value="">Choose a class…</option>
+                {[...data.classes].map((c) => (
+                  <option key={c.uri} value={c.uri}>{c.label || c.class}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <button
+            onClick={() => selectedUri && setAnalyzedUri(selectedUri)}
+            disabled={!selectedUri}
+            className="mt-6 inline-flex items-center gap-2 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
+          >
+            <Search className="w-4 h-4" />
+            Analyze
+          </button>
+        </Section>
       </div>
+
+      {stale && (
+        <div
+          className="flex items-start gap-2 px-3 py-2 text-sm border"
+          style={{ backgroundColor: '#FEF7E6', color: '#8A5A00', borderColor: 'rgba(224,139,26,0.4)', borderRadius: 'var(--radius-md)' }}
+        >
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <div>Selection changed since last analysis. Click <strong>Analyze</strong> to refresh results.</div>
+        </div>
+      )}
+
+      {sel && (
+        <ClassDetail
+          entry={sel}
+          reachable={reachable}
+          onClose={() => {
+            setAnalyzedUri(null);
+            setSelectedUri('');
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function ClassRow({ entry, reachable }: { entry: PopulationEntry; reachable: boolean }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <>
-      <div className="min-w-0">
-        <div className="truncate" style={{ color: 'var(--text)' }}>{entry.label || entry.class}</div>
-        <div className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>{entry.class}</div>
-      </div>
-      <div className="flex items-center gap-3 shrink-0">
-        <span className="text-xs tabular-nums whitespace-nowrap" style={{ color: 'var(--muted-foreground)' }}>
-          {entry.represented.toLocaleString()}
-          {reachable && entry.source_population != null ? ` / ${entry.source_population.toLocaleString()}` : ''}
-        </span>
-        {reachable && entry.completeness != null ? <StatusBadge percent={entry.completeness} /> : null}
-      </div>
-    </>
+    <div>
+      <div className="mb-1 text-sm" style={{ color: 'var(--text)' }}>{label}</div>
+      {children}
+    </div>
   );
 }
 

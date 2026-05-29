@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { ChevronLeft, ChevronRight, ArrowRight, ArrowLeft } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowRight, ArrowLeft, Search, AlertTriangle } from 'lucide-react';
 import {
   completenessApi,
   Interlinking,
@@ -11,29 +11,34 @@ import {
   LinkDetail,
   statusColor,
 } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge, ClassSelectList, EntityRow, prettyId } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, EntityRow, prettyId } from './_shared';
 
 const PAGE = 25;
 
 export default function InterlinkingCompleteness() {
   const [data, setData] = useState<Interlinking | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
-  const detailRef = useRef<HTMLDivElement>(null);
+  const [selectedClass, setSelectedClass] = useState<string>('');
+  const [analyzedClass, setAnalyzedClass] = useState<string | null>(null);
+  const configRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     completenessApi.interlinking().then(setData).catch((e) => setError(String(e)));
   }, []);
 
-  function selectAndScroll(key: string | null) {
-    setSelected(key);
-    if (key) setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  function pickFromChart(classKey: string) {
+    setSelectedClass(classKey);
+    setTimeout(() => configRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }
 
   if (error) return <ErrorState message={error} />;
   if (!data) return <LoadingState />;
 
-  const sel = data.classes.find((c) => c.class === selected) || null;
+  const classOptions = [...data.classes]
+    .filter((c) => c.total_entities > 0)
+    .sort((a, b) => a.ratio - b.ratio);
+  const sel = data.classes.find((c) => c.class === analyzedClass) || null;
+  const stale = sel !== null && selectedClass !== '' && selectedClass !== analyzedClass;
 
   return (
     <div className="space-y-6">
@@ -55,56 +60,74 @@ export default function InterlinkingCompleteness() {
 
       <Section
         title="Linked vs Isolated per Class"
-        subtitle="Click a bar to inspect that class below."
+        subtitle="Click a bar to load that class into the configuration below."
         collapsible
       >
-        <StackedLinkChart classes={data.classes} onSelect={selectAndScroll} selected={selected} />
+        <StackedLinkChart classes={data.classes} onSelect={pickFromChart} selected={selectedClass || null} />
       </Section>
 
-      <div ref={detailRef} className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-        <div className="lg:col-span-2">
-          <ClassSelectList
-            title="Classes"
-            subtitle="Search or pick a class to see its details."
-            items={[...data.classes].filter((c) => c.total_entities > 0).sort((a, b) => a.ratio - b.ratio)}
-            getKey={(c) => c.class}
-            getSearchText={(c) => `${c.label || ''} ${c.class}`}
-            selectedKey={selected}
-            onSelect={(k) => selectAndScroll(k === selected ? null : k)}
-            renderRow={(c) => <ClassRow entry={c} />}
-            maxHeight={560}
-          />
-        </div>
-        <div className="lg:col-span-3">
-          {sel ? (
-            <ClassDetail entry={sel} onClose={() => setSelected(null)} />
-          ) : (
-            <Section
-              title="Class Detail"
-            >
-              <div className="py-8 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>No class selected.</div>
-            </Section>
-          )}
-        </div>
+      <div ref={configRef}>
+        <Section
+          title="Configuration"
+          subtitle="Select a class to inspect its linked vs isolated entities and link properties."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Class">
+              <select
+                value={selectedClass}
+                onChange={(e) => setSelectedClass(e.target.value)}
+                className="w-full px-3 py-2 border"
+                style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
+              >
+                <option value="">Choose a class…</option>
+                {classOptions.map((c) => (
+                  <option key={c.class} value={c.class}>{c.label || c.class}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <button
+            onClick={() => selectedClass && setAnalyzedClass(selectedClass)}
+            disabled={!selectedClass}
+            className="mt-6 inline-flex items-center gap-2 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
+          >
+            <Search className="w-4 h-4" />
+            Analyze
+          </button>
+        </Section>
       </div>
+
+      {stale && (
+        <div
+          className="flex items-start gap-2 px-3 py-2 text-sm border"
+          style={{ backgroundColor: '#FEF7E6', color: '#8A5A00', borderColor: 'rgba(224,139,26,0.4)', borderRadius: 'var(--radius-md)' }}
+        >
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <div>Selection changed since last analysis. Click <strong>Analyze</strong> to refresh results.</div>
+        </div>
+      )}
+
+      {sel && (
+        <ClassDetail
+          entry={sel}
+          onClose={() => {
+            setAnalyzedClass(null);
+            setSelectedClass('');
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function ClassRow({ entry }: { entry: InterlinkingClass }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <>
-      <div className="min-w-0">
-        <div className="truncate" style={{ color: 'var(--text)' }}>{entry.label || entry.class}</div>
-        <div className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>{entry.class}</div>
-      </div>
-      <div className="flex items-center gap-3 shrink-0">
-        <span className="text-xs tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
-          {entry.linked.toLocaleString()}/{entry.total_entities.toLocaleString()}
-        </span>
-        <StatusBadge percent={entry.ratio} />
-      </div>
-    </>
+    <div>
+      <div className="mb-1 text-sm" style={{ color: 'var(--text)' }}>{label}</div>
+      {children}
+    </div>
   );
 }
 

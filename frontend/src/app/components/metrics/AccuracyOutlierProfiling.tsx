@@ -118,10 +118,6 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
     { label: 'Upper Fence', value: upper },
     { label: 'Max', value: max },
   ];
-  const fenceGroups = groupedStats([
-    { label: 'Lower Fence', value: lower },
-    { label: 'Upper Fence', value: upper },
-  ]);
   const countGroups = Array.from(rows.reduce((acc, row) => {
     const current = acc.get(row.count) || { count: row.count, total: 0, outliers: 0 };
     current.total += 1;
@@ -156,8 +152,8 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
           Red dots are flagged counts
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span style={{ width: 18, borderTop: '2px dashed #9E2B0A' }} />
-          Dashed lines are Tukey fences
+          <span style={{ width: 18, borderTop: '3px solid var(--navy)' }} />
+          Blue whiskers show the non-outlier range
         </span>
       </div>
       <div className="relative w-full overflow-x-auto">
@@ -169,9 +165,6 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
           <line x1={x(whiskerHigh)} x2={x(whiskerHigh)} y1={y - 20} y2={y + 20} stroke="var(--navy)" strokeWidth="2" />
           <rect x={x(q1)} y={y - boxH / 2} width={Math.max(4, x(q3) - x(q1))} height={boxH} fill="var(--info-soft)" stroke="var(--navy)" strokeWidth="2" rx="4" />
           <line x1={x(med)} x2={x(med)} y1={y - boxH / 2} y2={y + boxH / 2} stroke="var(--accent)" strokeWidth="3" />
-          {fenceGroups.map((group) => (
-            <line key={group.value} x1={x(group.value)} x2={x(group.value)} y1={y - 48} y2={y + 48} stroke="#9E2B0A" strokeDasharray="5 4" strokeWidth="2" opacity="0.85" />
-          ))}
           {countGroups.map((group) => {
             const cy = pointY;
             const isOutlier = group.outliers > 0;

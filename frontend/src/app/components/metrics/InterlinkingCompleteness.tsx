@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { ChevronLeft, ChevronRight, ArrowRight, ArrowLeft, Search, AlertTriangle, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, AlertTriangle, FileText } from 'lucide-react';
 import {
   completenessApi,
   Interlinking,
@@ -12,14 +12,33 @@ import {
   statusColor,
 } from '../../lib/api';
 import { Headline, Section, LoadingState, ErrorState, SwatchLegend, PaginatedTable, SearchInput, prettyId } from './_shared';
+import { SourceBadge, getEntitySource } from './accuracyShared';
+import { useSources } from '../../lib/sources';
 
 const LINK_LEGEND = [
   { label: 'Linked', color: '#1F8A4C' },
-  { label: 'Isolated', color: '#9E2B0A' },
+  { label: 'Not Linked', color: '#9E2B0A' },
 ];
 
 const PAGE = 10;
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
+
+// Strip the datasource prefix from an entity URI so chips/tables show just the
+// local id (e.g. "course/1"); the source is surfaced separately via <SourceBadge>.
+function entityLocalId(uri: string): string {
+  const src = getEntitySource(uri);
+  if (src !== 'unknown' && uri.startsWith(src)) {
+    const tail = uri.slice(src.length);
+    if (tail) {
+      try {
+        return decodeURIComponent(tail);
+      } catch {
+        return tail;
+      }
+    }
+  }
+  return prettyId(uri);
+}
 
 export default function InterlinkingCompleteness() {
   const [data, setData] = useState<Interlinking | null>(null);
@@ -69,7 +88,7 @@ export default function InterlinkingCompleteness() {
         />
         <Headline
           value={data ? String(data.classes.reduce((s, c) => s + c.not_linked, 0)) : '…'}
-          label="Isolated Entities"
+          label="Not Linked Entities"
           sub="No incoming or outgoing link"
           color={data ? statusColor(100 - data.overall_ratio) : 'var(--navy)'}
         />
@@ -203,7 +222,7 @@ function StackedLinkChart({
                   <ul style={{ color: 'var(--text)', margin: 0, paddingLeft: '1.25rem', listStyleType: 'disc' }}>
                     <li>{Number(d.total).toLocaleString()} total entities</li>
                     <li>{Number(d.linked).toLocaleString()} linked ({d.ratio.toFixed(1)}%)</li>
-                    <li>{Number(d.not_linked).toLocaleString()} isolated ({(100 - d.ratio).toFixed(1)}%)</li>
+                    <li>{Number(d.not_linked).toLocaleString()} not linked ({(100 - d.ratio).toFixed(1)}%)</li>
                   </ul>
                 </div>
               );
@@ -221,7 +240,7 @@ function StackedLinkChart({
           />
           <Bar
             dataKey="not_linked"
-            name="Isolated"
+            name="Not Linked"
             stackId="a"
             fill="#9E2B0A"
             radius={[0, 6, 6, 0]}
@@ -257,8 +276,8 @@ function ClassDetail({ entry, onClose }: { entry: InterlinkingClass; onClose: ()
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <LinkList title="Outgoing properties" links={outgoing} icon={<ArrowRight className="w-4 h-4" />} />
-        <LinkList title="Incoming properties" links={incoming} icon={<ArrowLeft className="w-4 h-4" />} />
+        <LinkList title="Outgoing properties" links={outgoing} />
+        <LinkList title="Incoming properties" links={incoming} />
       </div>
 
       <EntityDrilldown classUri={entry.uri} />
@@ -279,15 +298,14 @@ function Stat({ label, value, color, sub }: { label: string; value: number; colo
   );
 }
 
-function LinkCard({ title, icon, count, children }: { title: string; icon: React.ReactNode; count: number; children: React.ReactNode }) {
+function LinkCard({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
   return (
     <div
       className="p-4 border"
       style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)' }}
     >
-      <div className="flex items-center gap-2 mb-3" style={{ color: 'var(--navy)' }}>
-        {icon}
-        <span>{title}</span>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="font-medium" style={{ color: 'var(--navy)' }}>{title}</span>
         <span className="ml-auto text-xs" style={{ color: 'var(--muted-foreground)' }}>{count}</span>
       </div>
       {children}
@@ -299,55 +317,38 @@ function EmptyText({ text = 'None' }: { text?: string }) {
   return <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>{text}</div>;
 }
 
-function TypeBadge({ kind }: { kind: 'class' | 'property' }) {
-  const isClass = kind === 'class';
+function LinkList({ title, links }: { title: string; links: LinkDetail[] }) {
   return (
-    <span
-      className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 shrink-0"
-      style={{
-        backgroundColor: isClass ? 'var(--info-soft)' : 'var(--accent-soft)',
-        color: isClass ? 'var(--navy)' : 'var(--accent)',
-        borderRadius: 'var(--radius-sm)',
-      }}
-    >
-      {isClass ? 'Class' : 'Property'}
-    </span>
-  );
-}
-
-function LinkList({ title, links, icon }: { title: string; links: LinkDetail[]; icon: React.ReactNode }) {
-  return (
-    <LinkCard title={title} icon={icon} count={links.length}>
+    <LinkCard title={title} count={links.length}>
       {links.length === 0 ? (
         <EmptyText />
       ) : (
-        <ul className="always-scrollbar space-y-2 max-h-72 overflow-y-scroll pr-1">
+        <ul className="always-scrollbar space-y-2.5 max-h-72 overflow-y-scroll pr-1">
           {links.map((l, i) => {
             const otherClass = l.direction === 'outgoing' ? l.targetClass : l.sourceClass;
-            const arrow = l.direction === 'outgoing' ? '→' : '←';
+            const prep = l.direction === 'outgoing' ? 'to' : 'from';
             return (
               <li key={`${l.direction}-${l.property}-${i}`} className="text-sm">
-                <div className="flex items-center gap-2">
-                  <TypeBadge kind="property" />
-                  <span className="truncate" style={{ color: 'var(--text)' }}>{l.propertyLabel || l.property}</span>
-                </div>
-                <div className="mt-1 text-xs flex items-center gap-2" style={{ color: 'var(--muted-foreground)' }}>
-                  <span className="shrink-0">{arrow}</span>
-                  <TypeBadge kind="class" />
-                  <span className="truncate">
-                    {otherClass ? (
-                      otherClass
-                    ) : (
-                      <span
-                        className="italic"
-                        style={{ opacity: 0.6 }}
-                        title="Linked resource has no known class in the data (not resolved from the source)"
-                      >
-                        Unknown
-                      </span>
-                    )}
+                <div className="flex items-baseline gap-2">
+                  <span className="truncate font-medium" style={{ color: 'var(--text)' }}>
+                    {l.propertyLabel || l.property}
                   </span>
-                  <span className="ml-auto tabular-nums whitespace-nowrap">{l.count} links</span>
+                  <span className="ml-auto tabular-nums whitespace-nowrap text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                    {l.count} {l.count === 1 ? 'link' : 'links'}
+                  </span>
+                </div>
+                <div className="mt-0.5 text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>
+                  {prep}{' '}
+                  {otherClass ? (
+                    <span style={{ color: 'var(--text)' }}>{otherClass}</span>
+                  ) : (
+                    <span
+                      className="italic"
+                      title="Linked resource has no known class in the data (not resolved from the source)"
+                    >
+                      an unknown class
+                    </span>
+                  )}
                 </div>
               </li>
             );
@@ -358,33 +359,32 @@ function LinkList({ title, links, icon }: { title: string; links: LinkDetail[]; 
   );
 }
 
-function EntityLinkColumn({ title, icon, groups }: { title: string; icon: React.ReactNode; groups: InterlinkingEntityGroup[] }) {
+function EntityLinkColumn({ title, groups }: { title: string; groups: InterlinkingEntityGroup[] }) {
+  useSources(); // ensure source labels resolve and re-render once loaded
   const total = groups.reduce((s, g) => s + g.count, 0);
   return (
-    <LinkCard title={title} icon={icon} count={total}>
+    <LinkCard title={title} count={total}>
       {groups.length === 0 ? (
         <EmptyText />
       ) : (
         <ul className="always-scrollbar space-y-3 max-h-96 overflow-y-scroll pr-1">
           {groups.map((g) => (
             <li key={g.class.uri}>
-              <div className="flex items-center gap-2 text-sm">
-                <TypeBadge kind="class" />
-                <span className="truncate" style={{ color: 'var(--text)' }}>
+              <div className="flex items-baseline gap-2 text-sm">
+                <span className="truncate font-medium" style={{ color: 'var(--text)' }}>
                   {g.class.label || prettyId(g.class.uri)}
                 </span>
                 <span className="ml-auto text-xs tabular-nums" style={{ color: 'var(--muted-foreground)' }}>
                   {g.count}
                 </span>
               </div>
-              <ul className="mt-1 ml-3 space-y-1">
+              <ul className="mt-1.5 ml-1 space-y-1 pl-3" style={{ borderLeft: '1px solid var(--border)' }}>
                 {g.properties.map((p) => (
                   <li
                     key={p.uri}
-                    className="text-xs flex items-center gap-2"
+                    className="text-xs flex items-baseline gap-2"
                     style={{ color: 'var(--muted-foreground)' }}
                   >
-                    <TypeBadge kind="property" />
                     <span className="truncate">{p.label || p.localName}</span>
                     <span className="ml-auto tabular-nums whitespace-nowrap">{p.count}</span>
                   </li>
@@ -395,11 +395,12 @@ function EntityLinkColumn({ title, icon, groups }: { title: string; icon: React.
                   {g.entities.map((e) => (
                     <span
                       key={e.uri}
-                      className="text-xs px-2 py-0.5 truncate max-w-[180px]"
-                      style={{ backgroundColor: 'var(--muted)', color: 'var(--text)', borderRadius: 'var(--radius-sm)' }}
+                      className="inline-flex items-center gap-1 text-xs pl-1 pr-2 py-0.5 max-w-[220px]"
+                      style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)' }}
                       title={e.uri}
                     >
-                      {e.label || prettyId(e.uri)}
+                      <SourceBadge source={getEntitySource(e.uri)} />
+                      <span className="truncate">{e.label || entityLocalId(e.uri)}</span>
                     </span>
                   ))}
                   {g.entity_count > g.entities.length && (
@@ -473,8 +474,8 @@ function EntityDetailCard({
         <LoadingState />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <EntityLinkColumn title="Outgoing" icon={<ArrowRight className="w-4 h-4" />} groups={data.outgoing} />
-          <EntityLinkColumn title="Incoming" icon={<ArrowLeft className="w-4 h-4" />} groups={data.incoming} />
+          <EntityLinkColumn title="Outgoing links" groups={data.outgoing} />
+          <EntityLinkColumn title="Incoming links" groups={data.incoming} />
         </div>
       )}
     </div>
@@ -482,6 +483,7 @@ function EntityDetailCard({
 }
 
 function EntityDrilldown({ classUri }: { classUri: string }) {
+  useSources(); // ensure source labels resolve and re-render once loaded
   const [status, setStatus] = useState<'linked' | 'not_linked'>('not_linked');
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useState(PAGE);
@@ -546,7 +548,7 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
             color: status === 'not_linked' ? 'var(--accent)' : 'var(--text)',
           }}
         >
-          Isolated
+          Not Linked
         </button>
         <button
           onClick={() => setStatus('linked')}
@@ -578,7 +580,7 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
         <div className="py-6 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>Loading…</div>
       ) : (
         <PaginatedTable
-          colSpan={1}
+          colSpan={2}
           pagination={data?.pagination ?? null}
           pageSize={pageSize}
           pageSizeOptions={PAGE_SIZE_OPTIONS}
@@ -596,7 +598,10 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
             </div>
           }
           head={
-            <th className="text-left px-4 py-3" style={{ color: 'var(--text-on-dark)' }}>Entity</th>
+            <>
+              <th className="text-left px-4 py-3" style={{ color: 'var(--text-on-dark)' }}>Entity</th>
+              <th className="text-left px-4 py-3" style={{ color: 'var(--text-on-dark)' }}>Source</th>
+            </>
           }
         >
           {data?.entities.map((e) => (
@@ -607,14 +612,17 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
               style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}
             >
               <td className="px-4 py-2 text-sm" title={e.uri}>
-                <span className="flex items-center gap-2">
-                  <span
-                    className="truncate underline decoration-dotted underline-offset-2 group-hover:decoration-solid"
-                    style={{ color: 'var(--navy)' }}
-                  >
-                    {e.label || prettyId(e.uri)}
-                  </span>
-                  <ChevronRight className="ml-auto w-4 h-4 shrink-0 transition-transform group-hover:translate-x-0.5" style={{ color: 'var(--navy)' }} />
+                <span
+                  className="truncate underline decoration-dotted underline-offset-2 group-hover:decoration-solid"
+                  style={{ color: 'var(--navy)' }}
+                >
+                  {e.label || entityLocalId(e.uri)}
+                </span>
+              </td>
+              <td className="px-4 py-2 text-sm">
+                <span className="flex items-center justify-between gap-2">
+                  <SourceBadge source={getEntitySource(e.uri)} />
+                  <ChevronRight className="w-4 h-4 shrink-0 transition-transform group-hover:translate-x-0.5" style={{ color: 'var(--navy)' }} />
                 </span>
               </td>
             </tr>

@@ -330,29 +330,31 @@ def _property_meta_for_uris(class_uri: str, prop_uris: list[str]) -> list[dict]:
     return info
 
 
-def parse_facets(filter_facets: Optional[str]) -> list[tuple[str, str]]:
+def parse_facets(filter_facets: Optional[str]) -> list[tuple[str, Optional[str]]]:
     if not filter_facets:
         return []
-    pairs: list[tuple[str, str]] = []
+    pairs: list[tuple[str, Optional[str]]] = []
     for token in filter_facets.split(","):
         token = token.strip()
         if not token:
             continue
-        if "::" not in token:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid facet format '{token}'. Expected 'predicateUri::objectUri'",
-            )
-        pred, obj = token.split("::", 1)
-        pred = pred.strip()
-        obj = obj.strip()
-        if not pred or not obj:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid facet '{token}'. Both predicate and object are required.",
-            )
+        if "::" in token:
+            pred, obj = token.split("::", 1)
+            pred = pred.strip()
+            obj = obj.strip()
+            if not pred or not obj:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid facet '{token}'. Both predicate and object are required when using '::'.",
+                )
+        else:
+            # Bare predicate = "any value (exists)" facet: keep entities that use
+            # this object property at all, regardless of which object it points to.
+            pred = token.strip()
+            obj = None
         _validate_http_uri(pred, "facet predicate URI")
-        _validate_http_uri(obj, "facet object URI")
+        if obj is not None:
+            _validate_http_uri(obj, "facet object URI")
         prop_type = _property_type(pred)
         if prop_type is None:
             raise HTTPException(status_code=404, detail=f"Facet property '{pred}' not found")
@@ -375,13 +377,18 @@ def _property_type(uri: str) -> Optional[str]:
     return None
 
 
-def build_facet_clauses(facets: list[tuple[str, str]], subject_var: str = "entity") -> str:
+def build_facet_clauses(facets: list[tuple[str, Optional[str]]], subject_var: str = "entity") -> str:
     if not facets:
         return ""
-    return "\n".join(
-        f"?{subject_var} <{pred}> <{obj}> ."
-        for pred, obj in facets
-    )
+    lines: list[str] = []
+    for i, (pred, obj) in enumerate(facets):
+        if obj is None:
+            # "Any value (exists)" facet: entity must use this predicate at all.
+            # The throwaway binding var is collapsed by the COUNT(DISTINCT ...) aggregates.
+            lines.append(f"?{subject_var} <{pred}> ?_facetval{i} .")
+        else:
+            lines.append(f"?{subject_var} <{pred}> <{obj}> .")
+    return "\n".join(lines)
 
 
 def build_exists_bindings(prop_uris: list[str]) -> tuple[str, list[str], list[str]]:
@@ -403,7 +410,7 @@ async def _by_entity_compute(
     class_uri: str,
     class_entry: dict,
     prop_uris: list[str],
-    facets: list[tuple[str, str]],
+    facets: list[tuple[str, Optional[str]]],
     limit: int,
     offset: int,
     include_total: bool,
@@ -520,7 +527,7 @@ async def _by_property_compute(
     class_uri: str,
     class_entry: dict,
     prop_uris: list[str],
-    facets: list[tuple[str, str]],
+    facets: list[tuple[str, Optional[str]]],
 ) -> dict:
     facet_clauses = build_facet_clauses(facets)
 

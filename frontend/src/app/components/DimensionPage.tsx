@@ -30,7 +30,7 @@ const dimensionConfig = {
     title: 'Conciseness',
     description: 'Evaluate the efficiency and brevity of data representation',
     color: '#5B8DBE',
-    tabs: ['Intrasource Duplicates', 'Cross-source Duplicates'],
+    tabs: ['Intra-source Uniqueness', 'Cross-source Uniqueness'],
   },
 };
 

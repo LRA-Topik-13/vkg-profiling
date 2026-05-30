@@ -34,7 +34,7 @@ const DIMENSIONS = [
     title: 'Conciseness',
     icon: FileText,
     path: '/conciseness',
-    tabs: ['Intrasource Duplicates', 'Cross-source Duplicates'],
+    tabs: ['Intra-source Uniqueness', 'Cross-source Uniqueness'],
   },
 ];
 

@@ -172,7 +172,7 @@ function CrossClassSummarySection({ onBarClick }: { onBarClick: (classUri: strin
   }, [data]);
 
   return (
-    <Section title="Cross-Source Conciseness of All Classes" subtitle="Click a bar to select that class below, then Analyze." collapsible>
+    <Section title="Cross-source Uniqueness of All Classes" subtitle="Click a bar to select that class below, then Analyze." collapsible>
       {loading && <LoadingState message="Loading class summary..." />}
       {error && <ErrorState message={error} />}
       {!loading && !error && ranked.length === 0 && data && (
@@ -199,7 +199,8 @@ function CrossClassSummarySection({ onBarClick }: { onBarClick: (classUri: strin
                       <ul style={{ color: 'var(--text)', margin: 0, paddingLeft: '1.25rem', listStyleType: 'disc' }}>
                         <li>{Number(d.total).toLocaleString()} total entities</li>
                         <li>{Number(d.ambiguous).toLocaleString()} ambiguous instances</li>
-                        <li>score: {Number(d.score).toFixed(2)}%</li>
+                        <li>{Number(d.unique).toLocaleString()} unambiguous instances</li>
+                        <li>score: {Number(d.score).toFixed(2)}% is unambiguous</li>
                       </ul>
                     </div>
                   );
@@ -462,7 +463,7 @@ export default function CrosssourceConciseness() {
 
       {/* Configuration */}
       <div ref={configRef}>
-      <Section title="Cross-Source Conciseness of a Class">
+      <Section title="Cross-source Uniqueness of a Class">
         {/* Class */}
         <Field label="Class">
           <select

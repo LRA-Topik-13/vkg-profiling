@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Search, X, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { Headline, Section, LoadingState, ErrorState, PaginatedTable } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, StatusLegend, PaginatedTable } from './_shared';
 import { makePropertyLabelLookup, labelFromLookup } from './accuracyShared';
 import {
   metadataApi,
@@ -179,6 +179,8 @@ function CrossClassSummarySection({ onBarClick }: { onBarClick: (classUri: strin
         <div className="py-6 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>No data available.</div>
       )}
       {!loading && !error && ranked.length > 0 && (
+        <>
+        <StatusLegend className="justify-end mb-2" />
         <div className="always-scrollbar max-h-[400px] overflow-y-auto">
           <ResponsiveContainer width="100%" height={Math.max(200, ranked.length * 44)}>
             <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 48 }}>
@@ -211,6 +213,7 @@ function CrossClassSummarySection({ onBarClick }: { onBarClick: (classUri: strin
             </BarChart>
           </ResponsiveContainer>
         </div>
+        </>
       )}
     </Section>
   );

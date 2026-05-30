@@ -10,7 +10,7 @@ import {
   ClassSummary,
   statusColor,
 } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge, PaginatedTable, SearchInput, EmptyState, prettyId } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, StatusBadge, StatusLegend, PaginatedTable, SearchInput, EmptyState, prettyId } from './_shared';
 
 const PAGE = 10;
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
@@ -454,6 +454,7 @@ function ResultsView({
       <Section
         title="Completeness per Property"
       >
+        <StatusLegend className="justify-end mb-2" />
         <ResponsiveContainer width="100%" height={Math.max(220, barData.length * 48)}>
           <BarChart data={barData} layout="vertical" margin={{ left: 24, right: 24 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
@@ -608,6 +609,7 @@ function ClassCompletenessOverview({ onBarClick }: { onBarClick: (classUri: stri
 
   return (
     <Section title="Property Completeness of All Classes" subtitle="Click a bar to select that class below, then Analyze." collapsible>
+      <StatusLegend className="justify-end mb-2" />
       <div className="always-scrollbar max-h-[340px] overflow-y-auto">
         <ResponsiveContainer width="100%" height={Math.max(200, ranked.length * 36)}>
           <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 24 }}>

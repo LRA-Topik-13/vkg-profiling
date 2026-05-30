@@ -680,6 +680,8 @@ export default function AccuracyOutlierProfiling() {
                   key={option.value}
                   onClick={() => {
                     setMode(option.value as OutlierMode);
+                    setFacets([]);
+                    setFacetDraft(EMPTY_FACET_DRAFT);
                     setResult(null);
                     setError(null);
                   }}

@@ -11,9 +11,10 @@ import {
   LinkDetail,
   statusColor,
 } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, PaginatedTable, prettyId } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, PaginatedTable, SearchInput, prettyId } from './_shared';
 
-const PAGE = 25;
+const PAGE = 10;
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
 export default function InterlinkingCompleteness() {
   const [data, setData] = useState<Interlinking | null>(null);
@@ -290,6 +291,22 @@ function EmptyText({ text = 'None' }: { text?: string }) {
   return <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>{text}</div>;
 }
 
+function TypeBadge({ kind }: { kind: 'class' | 'property' }) {
+  const isClass = kind === 'class';
+  return (
+    <span
+      className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 shrink-0"
+      style={{
+        backgroundColor: isClass ? 'var(--info-soft)' : 'var(--accent-soft)',
+        color: isClass ? 'var(--navy)' : 'var(--accent)',
+        borderRadius: 'var(--radius-sm)',
+      }}
+    >
+      {isClass ? 'Class' : 'Property'}
+    </span>
+  );
+}
+
 function LinkList({ title, links, icon }: { title: string; links: LinkDetail[]; icon: React.ReactNode }) {
   return (
     <LinkCard title={title} icon={icon} count={links.length}>
@@ -302,10 +319,14 @@ function LinkList({ title, links, icon }: { title: string; links: LinkDetail[]; 
             const arrow = l.direction === 'outgoing' ? '→' : '←';
             return (
               <li key={`${l.direction}-${l.property}-${i}`} className="text-sm">
-                <div style={{ color: 'var(--text)' }}>{l.propertyLabel || l.property}</div>
-                <div className="text-xs flex items-center gap-2" style={{ color: 'var(--muted-foreground)' }}>
+                <div className="flex items-center gap-2">
+                  <TypeBadge kind="property" />
+                  <span className="truncate" style={{ color: 'var(--text)' }}>{l.propertyLabel || l.property}</span>
+                </div>
+                <div className="mt-1 text-xs flex items-center gap-2" style={{ color: 'var(--muted-foreground)' }}>
+                  <span className="shrink-0">{arrow}</span>
+                  <TypeBadge kind="class" />
                   <span className="truncate">
-                    {arrow}{' '}
                     {otherClass ? (
                       otherClass
                     ) : (
@@ -340,12 +361,7 @@ function EntityLinkColumn({ title, icon, groups }: { title: string; icon: React.
           {groups.map((g) => (
             <li key={g.class.uri}>
               <div className="flex items-center gap-2 text-sm">
-                <span
-                  className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 shrink-0"
-                  style={{ backgroundColor: 'var(--info-soft)', color: 'var(--navy)', borderRadius: 'var(--radius-sm)' }}
-                >
-                  Class
-                </span>
+                <TypeBadge kind="class" />
                 <span className="truncate" style={{ color: 'var(--text)' }}>
                   {g.class.label || prettyId(g.class.uri)}
                 </span>
@@ -360,12 +376,7 @@ function EntityLinkColumn({ title, icon, groups }: { title: string; icon: React.
                     className="text-xs flex items-center gap-2"
                     style={{ color: 'var(--muted-foreground)' }}
                   >
-                    <span
-                      className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 shrink-0"
-                      style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: 'var(--radius-sm)' }}
-                    >
-                      Property
-                    </span>
+                    <TypeBadge kind="property" />
                     <span className="truncate">{p.label || p.localName}</span>
                     <span className="ml-auto tabular-nums whitespace-nowrap">{p.count}</span>
                   </li>
@@ -469,25 +480,37 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
   const [data, setData] = useState<InterlinkingEntities | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<{ uri: string; label?: string | null } | null>(null);
+  const [query, setQuery] = useState('');
+  const [appliedQuery, setAppliedQuery] = useState('');
 
   useEffect(() => {
     setOffset(0);
     setData(null);
     setSelected(null);
+    setQuery('');
+    setAppliedQuery('');
   }, [classUri, status]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setAppliedQuery(query);
+      setOffset(0);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     completenessApi
-      .interlinkingEntities({ class_uri: classUri, status, limit: pageSize, offset })
+      .interlinkingEntities({ class_uri: classUri, status, limit: pageSize, offset, q: appliedQuery.trim() || undefined })
       .then((r) => !cancelled && setData(r))
       .catch(() => !cancelled && setData(null))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [classUri, status, offset, pageSize]);
+  }, [classUri, status, offset, pageSize, appliedQuery]);
 
   if (selected) {
     return (
@@ -529,9 +552,12 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
         >
           Linked
         </button>
-        <span className="ml-auto text-xs" style={{ color: 'var(--muted-foreground)' }}>
-          {total != null ? `${total.toLocaleString()} entities` : ' '}
-        </span>
+        <div className="ml-auto flex items-center gap-3">
+          <SearchInput value={query} onChange={setQuery} placeholder="Search entities…" compact width="w-48" />
+          <span className="text-xs whitespace-nowrap" style={{ color: 'var(--muted-foreground)' }}>
+            {total != null ? `${total.toLocaleString()} entities` : ' '}
+          </span>
+        </div>
       </div>
 
       {data && data.entities.length > 0 && (
@@ -547,6 +573,7 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
           colSpan={1}
           pagination={data?.pagination ?? null}
           pageSize={pageSize}
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
           loading={loading}
           onPageSizeChange={(s) => {
             setPageSize(s);
@@ -557,7 +584,7 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
           emptyState={
             <div className="py-10 text-center" style={{ color: 'var(--muted-foreground)' }}>
               <FileText className="mx-auto mb-3 w-10 h-10 opacity-40" />
-              <p className="text-sm font-medium">No entities in this category.</p>
+              <p className="text-sm font-medium">{appliedQuery.trim() ? `No entities match “${appliedQuery.trim()}”.` : 'No entities in this category.'}</p>
             </div>
           }
           head={

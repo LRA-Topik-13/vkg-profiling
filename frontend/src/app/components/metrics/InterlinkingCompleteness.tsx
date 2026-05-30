@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { ChevronLeft, ChevronRight, ArrowRight, ArrowLeft, Search, AlertTriangle, FileText } from 'lucide-react';
 import {
   completenessApi,
@@ -11,7 +11,12 @@ import {
   LinkDetail,
   statusColor,
 } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, PaginatedTable, SearchInput, prettyId } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, SwatchLegend, PaginatedTable, SearchInput, prettyId } from './_shared';
+
+const LINK_LEGEND = [
+  { label: 'Linked', color: '#1F8A4C' },
+  { label: 'Isolated', color: '#9E2B0A' },
+];
 
 const PAGE = 10;
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
@@ -181,6 +186,8 @@ function StackedLinkChart({
   );
 
   return (
+    <>
+    <SwatchLegend items={LINK_LEGEND} className="justify-end mb-2" />
     <div className="always-scrollbar max-h-[340px] overflow-y-auto">
       <ResponsiveContainer width="100%" height={Math.max(200, sorted.length * 36)}>
         <BarChart data={sorted} layout="vertical" margin={{ left: 24, right: 24 }}>
@@ -203,9 +210,9 @@ function StackedLinkChart({
               );
             }}
           />
-          <Legend />
           <Bar
             dataKey="linked"
+            name="Linked"
             stackId="a"
             fill="#1F8A4C"
             radius={[0, 0, 0, 0]}
@@ -215,6 +222,7 @@ function StackedLinkChart({
           />
           <Bar
             dataKey="not_linked"
+            name="Isolated"
             stackId="a"
             fill="#9E2B0A"
             radius={[0, 6, 6, 0]}
@@ -225,6 +233,7 @@ function StackedLinkChart({
         </BarChart>
       </ResponsiveContainer>
     </div>
+    </>
   );
 }
 

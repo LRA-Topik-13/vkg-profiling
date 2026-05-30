@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { AlertTriangle, Search, FileText } from 'lucide-react';
 import { completenessApi, PopulationSummary, PopulationEntry, PopulationEntities, statusColor } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, PaginatedTable, SearchInput, prettyId } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, StatusLegend, PaginatedTable, SearchInput, prettyId } from './_shared';
 
 const PAGE = 10;
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
@@ -193,6 +193,8 @@ function Ranking({
   }
 
   return (
+    <>
+    <StatusLegend className="justify-end mb-2" />
     <div className="always-scrollbar max-h-[340px] overflow-y-auto">
       <ResponsiveContainer width="100%" height={Math.max(200, ranked.length * 36)}>
         <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 24 }}>
@@ -230,6 +232,7 @@ function Ranking({
         </BarChart>
       </ResponsiveContainer>
     </div>
+    </>
   );
 }
 

@@ -228,6 +228,36 @@ export function StatusBadge({ percent }: { percent: number }) {
   );
 }
 
+// Colors are derived from statusColor so the legend never drifts from the bars.
+const STATUS_LEGEND_TIERS = [
+  { label: 'Acceptable (≥ 90%)', color: statusColor(95) },
+  { label: 'At Risk (70% – 90%)', color: statusColor(80) },
+  { label: 'Critical (< 70%)', color: statusColor(50) },
+];
+
+export function SwatchLegend({
+  items,
+  className = '',
+}: {
+  items: { label: string; color: string }[];
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 ${className}`}>
+      {items.map((t) => (
+        <span key={t.label} className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+          <span className="inline-block shrink-0" style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: t.color }} />
+          {t.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export function StatusLegend({ className = '' }: { className?: string }) {
+  return <SwatchLegend items={STATUS_LEGEND_TIERS} className={className} />;
+}
+
 export function Section({
   title,
   subtitle,

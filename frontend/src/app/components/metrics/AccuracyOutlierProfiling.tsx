@@ -427,7 +427,7 @@ function PresenceMatrix({
                         </td>
                       );
                     })}
-                    <td className="px-4 py-3"><StatusPill tone={entity.is_outlier ? 'warn' : 'good'}>{entity.is_outlier ? 'Anomaly' : 'OK'}</StatusPill></td>
+                    <td className="px-4 py-3"><StatusPill tone={entity.is_outlier ? 'warn' : 'good'}>{entity.is_outlier ? 'Outlier' : 'OK'}</StatusPill></td>
                     <td className="px-4 py-3 text-sm" style={{ color: entity.is_outlier ? 'var(--accent)' : 'var(--muted-foreground)' }}>
                       {entity.outlier_properties.length === 0 ? (
                         'No violation'
@@ -518,7 +518,7 @@ function OutlierSummary({
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
       <MetricCard value={formatCount(result.total)} label="Total Entities" sub={classLabel} />
-      <MetricCard value={formatCount(result.outlier_count)} label="Flagged Entities" sub="Potential semantic anomalies" color={result.outlier_count > 0 ? '#9E2B0A' : '#1F8A4C'} />
+      <MetricCard value={formatCount(result.outlier_count)} label="Flagged Entities" sub="Potential outliers" color={result.outlier_count > 0 ? '#9E2B0A' : '#1F8A4C'} />
       <AccuracyScoreDonut title={scoreTitle} percentage={cleanScore} sub="Entities without flags" />
       <MetricCard value={isRelationship ? propertyLabel || '-' : formatCount(result.properties_checked?.length || 0)} label={isRelationship ? 'Property' : 'Properties Checked'} sub={isRelationship ? 'Object property' : 'Mapped class properties'} />
     </div>

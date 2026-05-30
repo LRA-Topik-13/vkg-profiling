@@ -673,8 +673,8 @@ export default function AccuracyOutlierProfiling() {
           <Field label="Outlier Type">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {[
-                { value: 'relationship_count', label: 'Relationship Count', hint: 'Counts values for one object property.' },
-                { value: 'property_presence_anomaly', label: 'Property Presence Pattern', hint: 'Checks present and absent property patterns.' },
+                { value: 'relationship_count', label: 'Relationship Count', hint: 'Counts how many relationships each entity has for one selected property.' },
+                { value: 'property_presence_anomaly', label: 'Property Presence Pattern', hint: 'Checks whether an entity follows the class property presence pattern.' },
               ].map((option) => (
                 <button
                   key={option.value}

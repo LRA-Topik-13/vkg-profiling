@@ -172,7 +172,7 @@ function CrossClassSummarySection({ onBarClick }: { onBarClick: (classUri: strin
   }, [data]);
 
   return (
-    <Section title="Cross-Source Conciseness of All Classes" collapsible>
+    <Section title="Cross-Source Conciseness of All Classes" subtitle="Click a bar to select that class below, then Analyze." collapsible>
       {loading && <LoadingState message="Loading class summary..." />}
       {error && <ErrorState message={error} />}
       {!loading && !error && ranked.length === 0 && data && (

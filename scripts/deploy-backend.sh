@@ -28,16 +28,44 @@ CREATE TABLE IF NOT EXISTS legacy_student (
   s_id int NOT NULL,
   first_name varchar(40) NOT NULL,
   last_name varchar(40) NOT NULL,
+  birth_date date NOT NULL,
+  email varchar(100) NOT NULL,
   PRIMARY KEY (s_id)
 );
 
-INSERT INTO legacy_student VALUES
-  (9001, 'Alice', 'Legacy'),
-  (9002, 'Bob', 'Legacy'),
-  (9003, 'Carol', 'Legacy')
+SET @ddl = IF(
+  (SELECT COUNT(*) FROM information_schema.columns
+   WHERE table_schema = DATABASE()
+     AND table_name = 'legacy_student'
+     AND column_name = 'birth_date') = 0,
+  'ALTER TABLE legacy_student ADD COLUMN birth_date date NOT NULL DEFAULT ''2000-01-01''',
+  'SELECT 1'
+);
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @ddl = IF(
+  (SELECT COUNT(*) FROM information_schema.columns
+   WHERE table_schema = DATABASE()
+     AND table_name = 'legacy_student'
+     AND column_name = 'email') = 0,
+  'ALTER TABLE legacy_student ADD COLUMN email varchar(100) NOT NULL DEFAULT ''''',
+  'SELECT 1'
+);
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+INSERT INTO legacy_student (s_id, first_name, last_name, birth_date, email) VALUES
+  (9001, 'Alice', 'Legacy', '2000-03-21', 'alice.legacy@gmail.com'),
+  (9002, 'Bob', 'Legacy', '2001-07-14', 'bob.legacy@gmail.com'),
+  (9003, 'Carol', 'Legacy', '2002-11-30', 'carol.legacy@gmail.com')
 ON DUPLICATE KEY UPDATE
   first_name = VALUES(first_name),
-  last_name = VALUES(last_name);
+  last_name = VALUES(last_name),
+  birth_date = VALUES(birth_date),
+  email = VALUES(email);
 SQL
 
 docker compose --profile healthy stop teiid ontop-teiid || true

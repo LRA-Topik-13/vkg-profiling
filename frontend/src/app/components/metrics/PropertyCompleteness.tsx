@@ -10,9 +10,10 @@ import {
   ClassSummary,
   statusColor,
 } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge, PaginatedTable, prettyId } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, StatusBadge, PaginatedTable, SearchInput, EmptyState, prettyId } from './_shared';
 
-const PAGE = 25;
+const PAGE = 10;
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
 interface Facet {
   propUri: string;
@@ -49,7 +50,9 @@ export default function PropertyCompleteness() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [analyzedSignature, setAnalyzedSignature] = useState<string | null>(null);
+  const [tableQuery, setTableQuery] = useState('');
   const configRef = useRef<HTMLDivElement>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentSignature = useMemo(() => {
     if (!selectedClassUri || selectedPropUris.length === 0) return null;
@@ -75,6 +78,7 @@ export default function PropertyCompleteness() {
     setDraft(EMPTY_DRAFT);
     setData(null);
     setAnalyzedSignature(null);
+    setTableQuery('');
     if (!selectedClass) {
       setProps([]);
       return;
@@ -143,7 +147,7 @@ export default function PropertyCompleteness() {
     setFacets((prev) => prev.filter((_, i) => i !== index));
   }
 
-  async function analyze(newOffset = 0, newPageSize = pageSize) {
+  async function analyze(newOffset = 0, newPageSize = pageSize, q = tableQuery) {
     if (!selectedClassUri || selectedPropUris.length === 0) return;
     setLoading(true);
     setError(null);
@@ -155,6 +159,7 @@ export default function PropertyCompleteness() {
         limit: newPageSize,
         offset: newOffset,
         sort: 'completeness',
+        q: q.trim() || undefined,
       });
       setData(r);
       setOffset(newOffset);
@@ -165,6 +170,13 @@ export default function PropertyCompleteness() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // Debounced re-query of the entity table when the search text changes.
+  function onTableSearch(value: string) {
+    setTableQuery(value);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => analyze(0, pageSize, value), 300);
   }
 
   return (
@@ -342,7 +354,7 @@ export default function PropertyCompleteness() {
         )}
 
         <button
-          onClick={() => analyze(0)}
+          onClick={() => { setTableQuery(''); analyze(0, pageSize, ''); }}
           disabled={!selectedClassUri || selectedPropUris.length === 0 || loading}
           className="mt-6 inline-flex items-center gap-2 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}
@@ -377,6 +389,8 @@ export default function PropertyCompleteness() {
           offset={offset}
           pageSize={pageSize}
           loading={loading}
+          search={tableQuery}
+          onSearch={onTableSearch}
           onPage={(o) => analyze(o)}
           onPageSizeChange={(s) => analyze(0, s)}
         />
@@ -397,6 +411,8 @@ function ResultsView({
   offset,
   pageSize,
   loading,
+  search,
+  onSearch,
   onPage,
   onPageSizeChange,
 }: {
@@ -404,6 +420,8 @@ function ResultsView({
   offset: number;
   pageSize: number;
   loading: boolean;
+  search: string;
+  onSearch: (value: string) => void;
   onPage: (o: number) => void;
   onPageSizeChange: (size: number) => void;
 }) {
@@ -470,15 +488,20 @@ function ResultsView({
       <Section
         title="Completeness per Entity"
         subtitle="Each row is an entity; ✓ marks a filled property. Ordered by lowest completeness first."
+        right={<SearchInput value={search} onChange={onSearch} placeholder="Search entities…" />}
       >
         <PaginatedTable
           colSpan={data.properties.length + 2}
           pagination={data.pagination ?? null}
           pageSize={pageSize}
+          pageSizeOptions={PAGE_SIZE_OPTIONS}
           loading={loading}
           onPageSizeChange={onPageSizeChange}
           onPrev={() => onPage(Math.max(0, offset - pageSize))}
           onNext={() => onPage(offset + pageSize)}
+          emptyState={
+            <EmptyState message={search.trim() ? `No entities match “${search.trim()}”.` : 'No entities.'} />
+          }
           head={
             <>
               <th

@@ -394,14 +394,14 @@ export const completenessApi = {
   mappingCoverage: () => get<MappingCoverage>('/completeness/mapping-coverage'),
   mappingItems: (params: { kind: MappingItemKind; status: MappingItemStatus; q?: string; limit?: number; offset?: number; include_total?: boolean }) =>
     get<MappingItemsResponse>('/completeness/mapping-items', params),
-  matrix: (params: { class_uri: string; properties: string; filter_facets?: string; limit?: number; offset?: number; sort?: 'entity' | 'completeness' }) =>
+  matrix: (params: { class_uri: string; properties: string; filter_facets?: string; limit?: number; offset?: number; sort?: 'entity' | 'completeness'; q?: string }) =>
     get<CompletenessMatrix>('/completeness/matrix', params),
   classSummary: () => get<ClassSummary>('/completeness/class-summary'),
   populationSummary: () => get<PopulationSummary>('/completeness/population-summary'),
-  populationEntities: (params: { class_uri: string; limit?: number; offset?: number }) =>
+  populationEntities: (params: { class_uri: string; limit?: number; offset?: number; q?: string }) =>
     get<PopulationEntities>('/completeness/population-entities', params),
   interlinking: () => get<Interlinking>('/completeness/interlinking'),
-  interlinkingEntities: (params: { class_uri: string; status: 'linked' | 'not_linked'; limit?: number; offset?: number }) =>
+  interlinkingEntities: (params: { class_uri: string; status: 'linked' | 'not_linked'; limit?: number; offset?: number; q?: string }) =>
     get<InterlinkingEntities>('/completeness/interlinking/entities', params),
   interlinkingEntity: (params: { class_uri: string; entity_uri: string }) =>
     get<InterlinkingEntityDetail>('/completeness/interlinking/entity', params),

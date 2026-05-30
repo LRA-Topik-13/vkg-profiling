@@ -20,7 +20,7 @@ const DIMENSIONS = [
     title: 'Accuracy',
     icon: Target,
     path: '/accuracy',
-    tabs: ['Outlier Profiling', 'Value Conflict', 'Property Misuse'],
+    tabs: ['Outlier Profiling', 'Property Value Conflict', 'Property Misuse'],
   },
   {
     id: 'completeness',
@@ -34,7 +34,7 @@ const DIMENSIONS = [
     title: 'Conciseness',
     icon: FileText,
     path: '/conciseness',
-    tabs: ['Intrasource Duplicates', 'Cross-source Duplicates'],
+    tabs: ['Intra-source Uniqueness', 'Cross-source Uniqueness'],
   },
 ];
 

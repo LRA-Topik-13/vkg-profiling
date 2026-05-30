@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { AlertTriangle, Search, FileText } from 'lucide-react';
 import { completenessApi, PopulationSummary, PopulationEntry, PopulationEntities, statusColor } from '../../lib/api';
 import { Headline, Section, LoadingState, ErrorState, StatusLegend, PaginatedTable, SearchInput, prettyId } from './_shared';
+import { SourceBadge } from './accuracyShared';
 
 const PAGE = 10;
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
@@ -361,24 +362,17 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
       head={
         <>
           <th className="text-left px-4 py-3" style={{ color: 'var(--text-on-dark)' }}>Entity</th>
-          <th className="text-right px-4 py-3" style={{ color: 'var(--text-on-dark)' }}>Source</th>
+          <th className="text-left px-4 py-3" style={{ color: 'var(--text-on-dark)' }}>Source</th>
         </>
       }
     >
       {data?.entities.map((e) => (
         <tr key={e.uri} style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
-          <td className="px-4 py-2 text-sm truncate max-w-[320px]" style={{ color: 'var(--text)' }} title={e.uri}>
-            {e.label || prettyId(e.uri)}
+          <td className="px-4 py-2 text-sm" style={{ color: 'var(--text)' }} title={e.uri}>
+            <span className="block truncate max-w-[420px]">{e.label || prettyId(e.uri)}</span>
           </td>
-          <td className="px-4 py-2 text-right">
-            {e.source ? (
-              <span
-                className="text-xs px-2 py-0.5"
-                style={{ backgroundColor: 'var(--muted)', color: 'var(--muted-foreground)', borderRadius: 'var(--radius-sm)' }}
-              >
-                {e.source}
-              </span>
-            ) : null}
+          <td className="px-4 py-2 text-left">
+            {e.source ? <SourceBadge source={e.source} /> : null}
           </td>
         </tr>
       ))}

@@ -473,7 +473,7 @@ export default function AccuracyValueConflict() {
         </div>
       </Section>
 
-      <Section title="Value Conflict of a Class">
+      <Section title="Property Value Conflict of a Class">
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="Class">
@@ -603,7 +603,7 @@ export default function AccuracyValueConflict() {
       </Section>
 
       {error && <ErrorState message={error} />}
-      {summaryLoading && <LoadingState message="Calculating value conflict summaries..." />}
+      {summaryLoading && <LoadingState message="Calculating property value conflict summaries..." />}
 
       {(intraSummary || crossSummary) && !summaryLoading && (
         <>
@@ -611,7 +611,7 @@ export default function AccuracyValueConflict() {
             <MetricCard value={formatCount(activeSummary?.total_matched || 0)} label="Matched Pairs" sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : summaryLabel(activeMode)} />
             <MetricCard value={formatCount(activeSummary?.conflicting_pairs || 0)} label="Conflicting Pairs" sub="Evidence rows" color={(activeSummary?.conflicting_pairs || 0) > 0 ? '#9E2B0A' : '#1F8A4C'} />
             <MetricCard value={formatNullablePercent(activeSummary?.conflict_rate)} label="Conflict Rate" sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : 'conflicts / matched pairs'} color={(activeSummary?.conflict_rate || 0) > 0 ? '#9E2B0A' : 'var(--navy)'} />
-            <AccuracyScoreDonut title="Value Conflict Score" percentage={activeScore} sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : '1 - conflict rate'} />
+            <AccuracyScoreDonut title="Property Value Conflict Score" percentage={activeScore} sub={activeSummary?.total_matched === 0 ? 'No comparable pairs' : '1 - conflict rate'} />
           </div>
 
           {hasCross && (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, X, AlertTriangle, Check, FileText } from 'lucide-react';
+import { Search, AlertTriangle, Check, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import {
   completenessApi,
@@ -11,15 +11,14 @@ import {
   statusColor,
 } from '../../lib/api';
 import { Headline, Section, LoadingState, ErrorState, StatusBadge, StatusLegend, PaginatedTable, SearchInput, EmptyState, prettyId } from './_shared';
+import { AccuracyFacet, facetsToParam, ActiveFacetList } from './accuracyShared';
 
 const PAGE = 10;
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
-interface Facet {
-  propUri: string;
-  propLabel: string;
-  valueUri: string;
-}
+// Sentinel value for the "Any value (exists)" facet option, matching the
+// Accuracy/Conciseness pages. It maps to a null valueUri (predicate-only facet).
+const FACET_ANY_VALUE = '__any_value_exists__';
 
 interface FacetDraft {
   propUri: string;
@@ -42,7 +41,7 @@ export default function PropertyCompleteness() {
   const [props, setProps] = useState<PropertyMeta[]>([]);
   const [selectedClassUri, setSelectedClassUri] = useState<string>('');
   const [selectedPropUris, setSelectedPropUris] = useState<string[]>([]);
-  const [facets, setFacets] = useState<Facet[]>([]);
+  const [facets, setFacets] = useState<AccuracyFacet[]>([]);
   const [draft, setDraft] = useState<FacetDraft>(EMPTY_DRAFT);
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useState(PAGE);
@@ -56,7 +55,7 @@ export default function PropertyCompleteness() {
 
   const currentSignature = useMemo(() => {
     if (!selectedClassUri || selectedPropUris.length === 0) return null;
-    const facetKey = facets.map((f) => `${f.propUri}::${f.valueUri}`).sort().join('|');
+    const facetKey = facets.map((f) => (f.valueUri ? `${f.propUri}::${f.valueUri}` : f.propUri)).sort().join('|');
     const propKey = [...selectedPropUris].sort().join('|');
     return `${selectedClassUri}::${propKey}::${facetKey}`;
   }, [selectedClassUri, selectedPropUris, facets]);
@@ -125,10 +124,11 @@ export default function PropertyCompleteness() {
     setSelectedPropUris((prev) => (prev.includes(uri) ? prev.filter((p) => p !== uri) : [...prev, uri]));
   }
 
-  function addFacet(valueUri: string) {
-    if (!draft.propUri || !valueUri) return;
+  function addFacet(value: string) {
+    if (!draft.propUri || !value) return;
     const propEntry = props.find((p) => p.uri === draft.propUri);
     if (!propEntry) return;
+    const valueUri = value === FACET_ANY_VALUE ? null : value;
     const duplicate = facets.some((f) => f.propUri === draft.propUri && f.valueUri === valueUri);
     if (!duplicate) {
       setFacets((prev) => [
@@ -137,6 +137,7 @@ export default function PropertyCompleteness() {
           propUri: draft.propUri,
           propLabel: propEntry.label || propEntry.localName,
           valueUri,
+          valueLabel: valueUri ? shortenUri(valueUri) : '(exists)',
         },
       ]);
     }
@@ -155,7 +156,7 @@ export default function PropertyCompleteness() {
       const r = await completenessApi.matrix({
         class_uri: selectedClassUri,
         properties: selectedPropUris.join(','),
-        filter_facets: facets.length > 0 ? facets.map((f) => `${f.propUri}::${f.valueUri}`).join(',') : undefined,
+        filter_facets: facetsToParam(facets),
         limit: newPageSize,
         offset: newOffset,
         sort: 'completeness',
@@ -289,11 +290,16 @@ export default function PropertyCompleteness() {
               <select
                 disabled={!draft.propUri || draft.loading}
                 value={draft.valueUri}
-                onChange={(e) => { if (e.target.value) addFacet(e.target.value); }}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value) addFacet(value);
+                  else setDraft((d) => ({ ...d, valueUri: '' }));
+                }}
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
                 <option value="">{draft.loading ? 'Loading values...' : 'Select a value...'}</option>
+                <option value={FACET_ANY_VALUE}>Any value (exists)</option>
                 {draft.values.map((v) => (
                   <option key={v} value={v}>{shortenUri(v)}</option>
                 ))}
@@ -301,56 +307,18 @@ export default function PropertyCompleteness() {
             </div>
             {draft.error && (
               <div className="mt-1 text-xs" style={{ color: 'var(--accent)' }}>
-                Failed to load facet values. Check API connectivity.
+                Failed to load facet values. You can still choose Any value (exists).
+              </div>
+            )}
+            {!draft.loading && !draft.error && draft.propUri && draft.values.length === 0 && (
+              <div className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                No exact values were found for this predicate. You can still choose Any value (exists).
               </div>
             )}
           </Field>
         </div>
 
-        {facets.length > 0 && (
-          <div className="mt-3">
-            <div className="flex items-center justify-between mb-2 text-sm" style={{ color: 'var(--text)' }}>
-              <span>
-                Active facets <span style={{ color: 'var(--muted-foreground)' }}>(AND)</span>
-              </span>
-              <button
-                onClick={() => setFacets([])}
-                className="text-xs underline"
-                style={{ color: 'var(--accent)' }}
-              >
-                Clear all
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {facets.map((f, i) => (
-                <span
-                  key={`${f.propUri}::${f.valueUri}`}
-                  className="inline-flex items-center gap-2 px-2 py-1 text-xs border"
-                  style={{
-                    backgroundColor: 'var(--accent-soft)',
-                    color: 'var(--accent)',
-                    borderColor: 'var(--border)',
-                    borderRadius: 'var(--radius-sm)',
-                  }}
-                >
-                  <span>
-                    <span style={{ color: 'var(--text)' }}>{f.propLabel}</span>
-                    <span style={{ color: 'var(--muted-foreground)' }}> = </span>
-                    <span>{shortenUri(f.valueUri)}</span>
-                  </span>
-                  <button
-                    onClick={() => removeFacet(i)}
-                    className="inline-flex items-center"
-                    style={{ color: 'var(--accent)' }}
-                    title="Remove facet"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+        <ActiveFacetList facets={facets} onRemove={removeFacet} onClear={() => setFacets([])} />
 
         <button
           onClick={() => { setTableQuery(''); analyze(0, pageSize, ''); }}

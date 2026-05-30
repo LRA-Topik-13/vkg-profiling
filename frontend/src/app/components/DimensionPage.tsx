@@ -18,7 +18,7 @@ const dimensionConfig = {
     title: 'Accuracy',
     description: 'Find potential semantic accuracy issues in VKG data',
     color: 'var(--accent)',
-    tabs: ['Outlier Profiling', 'Value Conflict', 'Property Misuse'],
+    tabs: ['Outlier Profiling', 'Property Value Conflict', 'Property Misuse'],
   },
   completeness: {
     title: 'Completeness',
@@ -30,7 +30,7 @@ const dimensionConfig = {
     title: 'Conciseness',
     description: 'Evaluate the efficiency and brevity of data representation',
     color: '#5B8DBE',
-    tabs: ['Intrasource Duplicates', 'Cross-source Duplicates'],
+    tabs: ['Intra-source Uniqueness', 'Cross-source Uniqueness'],
   },
 };
 

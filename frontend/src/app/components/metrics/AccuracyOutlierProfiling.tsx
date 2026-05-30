@@ -149,15 +149,15 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
       <div className="mb-3 flex flex-wrap gap-3 text-xs" style={{ color: 'var(--muted-foreground)' }}>
         <span className="inline-flex items-center gap-1.5">
           <span style={{ width: 9, height: 9, borderRadius: 999, backgroundColor: 'var(--navy)', opacity: 0.38 }} />
-          Blue dots are relationship counts
+          Blue dots show counts
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span style={{ width: 9, height: 9, borderRadius: 999, backgroundColor: '#9E2B0A', opacity: 0.88 }} />
-          Red dots are flagged counts
+          Red dots show outlier counts
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span style={{ width: 18, borderTop: '3px solid var(--navy)' }} />
-          Blue whiskers show the non-outlier range
+          Whiskers show the lowest and highest counts within the fences
         </span>
       </div>
       <div className="relative w-full overflow-x-auto">
@@ -180,6 +180,8 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
                 r={Math.min(12, 4 + Math.sqrt(group.total) * 1.25)}
                 fill={isOutlier ? '#9E2B0A' : 'var(--navy)'}
                 opacity={isOutlier ? 0.88 : 0.34}
+                stroke={isOutlier ? '#6F1D08' : 'var(--card)'}
+                strokeWidth="2"
                 onMouseEnter={(event) => showTooltip(event, group)}
                 onMouseMove={(event) => showTooltip(event, group)}
                 onMouseLeave={() => setHovered(null)}
@@ -205,6 +207,9 @@ function RelationshipCountBoxPlot({ result }: { result: AccuracyOutlierResult })
           </div>
         )}
       </div>
+      <p className="mt-3 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+        Counts below the lower fence or above the upper fence are flagged as outliers. The fence values are shown below the plot.
+      </p>
       <div className="mt-3 flex flex-wrap gap-2">
         {statItems.map((item) => (
           <span

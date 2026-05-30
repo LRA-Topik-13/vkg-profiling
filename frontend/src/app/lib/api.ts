@@ -168,36 +168,15 @@ export interface AccuracyRelationshipEntity {
   violations: AccuracyViolation[];
 }
 
-export interface AccuracyPresencePropertyStat {
-  property: string;
-  fill_count: number;
-  fill_rate: number;
-  threshold: number;
-  is_majority: boolean;
-}
-
-export interface AccuracyPresenceEntity {
-  uri: string;
-  filled_count: number;
-  total_props: number;
-  prop_status: Record<string, boolean>;
-  outlier_properties: Array<{ property: string; fill_rate: number; fill_pct: number; has_value: boolean; is_majority: boolean }>;
-  is_outlier: boolean;
-  status: 'ok' | 'warning' | string;
-  violations: AccuracyViolation[];
-}
-
 export interface AccuracyOutlierResult {
   uri: string;
   class: string;
-  property?: string;
-  type: 'relationship_count' | 'property_presence_anomaly' | string;
+  property: string;
+  type: 'relationship_count';
   statistics: Partial<{ q1: number; q3: number; iqr: number; lower_fence: number; upper_fence: number; insufficient_data: boolean }>;
-  properties_checked?: string[];
-  property_stats?: AccuracyPresencePropertyStat[];
   outlier_count: number;
   total: number;
-  entities: Array<AccuracyRelationshipEntity | AccuracyPresenceEntity>;
+  entities: AccuracyRelationshipEntity[];
 }
 
 export interface AccuracyPairEndpointEntity {
@@ -281,7 +260,7 @@ export interface AccuracyPropertyMisuseResult {
 }
 
 export const accuracyApi = {
-  outliers: (params: { class_uri: string; type: string; property_uri?: string; filter_facets?: string }) =>
+  outliers: (params: { class_uri: string; property_uri: string; filter_facets?: string }) =>
     get<AccuracyOutlierResult>('/accuracy/outliers', params),
   valueConflictSummary: (params: { class_uri: string; identity_props: string; target_prop: string; sources?: string; filter_facets?: string }) =>
     get<AccuracyValueConflictSummary>('/accuracy/value-conflict/summary', params),

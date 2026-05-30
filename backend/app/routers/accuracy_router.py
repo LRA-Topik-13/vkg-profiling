@@ -231,67 +231,6 @@ def _compute_tukey(values: list[float]) -> dict:
     }
 
 
-async def _fetch_property_presence_rows(
-    class_uri: str,
-    props: list[dict],
-    facets: list[tuple[str, str | None]],
-) -> list[dict]:
-    """
-    Returns per-entity property-existence data using N+1 INNER JOIN queries
-    instead of a single OPTIONAL+BIND query.
-
-    Rationale: Ontop's SQL generation for OPTIONAL+BIND fails when a property
-    has multiple OBDA source mappings that span different databases (e.g. attends
-    maps to both compsci.course_registration and mathsci.registration). With INNER
-    JOIN semantics Ontop can eliminate impossible cross-database joins via
-    URI-template matching and Teiid executes each query cleanly.
-
-    Returns a list of {"uri": str, "prop_status": {name: bool}} dicts.
-    """
-    prop_names = [p["localName"] for p in props]
-    facet_clauses = _build_facet_clauses("?entity", facets)
-
-    entity_q = f"""
-        {PREFIXES}
-        SELECT DISTINCT ?entity WHERE {{
-            ?entity a <{class_uri}> .
-{facet_clauses}
-        }}
-    """
-    entity_raw = await execute_sparql(entity_q)
-    all_uris = sorted(b["entity"]["value"] for b in _bindings(entity_raw))
-    if not all_uris:
-        return []
-
-    async def fetch_prop_entity_set(p: dict) -> tuple[str, set[str]]:
-        """Fetch the set of entities that have one selected property."""
-        q = f"""
-            {PREFIXES}
-            SELECT DISTINCT ?entity WHERE {{
-                ?entity a <{class_uri}> .
-{facet_clauses}
-                ?entity <{p["uri"]}> ?val .
-            }}
-        """
-        raw = await execute_sparql(q)
-        has_set = {b["entity"]["value"] for b in _bindings(raw)}
-        return p["localName"], has_set
-
-    prop_results = await asyncio.gather(*(fetch_prop_entity_set(p) for p in props))
-    prop_entity_sets = dict(prop_results)
-
-    return [
-        {
-            "uri": uri,
-            "prop_status": {
-                name: (uri in prop_entity_sets[name])
-                for name in prop_names
-            },
-        }
-        for uri in all_uris
-    ]
-
-
 async def _two_step_count_uris(
     class_uri: str,
     prop_uri: str,
@@ -428,112 +367,6 @@ async def _sa1_relationship_count(
     }
 
 
-async def _sa1_property_presence_anomaly(
-    class_uri: str,
-    class_name: str,
-    facets: list[tuple[str, str | None]],
-) -> dict:
-    """Run SA1 property-presence anomaly profiling for all mapped class properties."""
-    props = _get_class_props(class_uri)
-    if not props:
-        return {
-            "uri": class_uri, "class": class_name, "type": "property_presence_anomaly", "properties_checked": [],
-            "property_stats": [], "outlier_count": 0, "total": 0, "entities": [],
-        }
-
-    prop_names = [p["localName"] for p in props]
-
-    try:
-        rows = await _fetch_property_presence_rows(class_uri, props, facets)
-    except Exception as e:
-        raise _sparql_502(e)
-
-    if not rows:
-        return {
-            "uri": class_uri, "class": class_name, "type": "property_presence_anomaly", "properties_checked": prop_names,
-            "property_stats": [], "outlier_count": 0, "total": 0, "entities": [],
-        }
-
-    total = len(rows)
-    fill_counts = {
-        name: sum(1 for r in rows if r["prop_status"].get(name, False))
-        for name in prop_names
-    }
-    property_stats = [
-        {
-            "property":    name,
-            "fill_count":  fill_counts[name],
-            "fill_rate":   round(fill_counts[name] / total, 4) if total else 0.0,
-            "threshold":   0.5,
-            "is_majority": (fill_counts[name] / total > 0.5) if total else False,
-        }
-        for name in prop_names
-    ]
-
-    # Bidirectional majority rule:
-    #   fill_rate > 0.5 -> property is usually present, absence is unusual
-    #   fill_rate < 0.5 -> property is usually absent, presence is unusual
-    #   fill_rate = 0.5 -> no clear majority, no flag
-    entities = []
-    for r in rows:
-        outlier_props = []
-        violations = []
-        for name in prop_names:
-            fill_rate = fill_counts[name] / total if total else 0.0
-            has_value = r["prop_status"].get(name, False)
-            if fill_rate > 0.5 and not has_value:
-                outlier_props.append({
-                    "property":    name,
-                    "fill_rate":   round(fill_rate, 4),
-                    "fill_pct":    round(fill_rate * 100, 1),
-                    "has_value":   False,
-                    "is_majority": True,
-                })
-                violations.append({
-                    "criterion": "missing_common_property",
-                    "message": (
-                        f"{name} is absent here, but usually present for {class_name}."
-                    ),
-                })
-            elif fill_rate < 0.5 and has_value:
-                outlier_props.append({
-                    "property":    name,
-                    "fill_rate":   round(fill_rate, 4),
-                    "fill_pct":    round(fill_rate * 100, 1),
-                    "has_value":   True,
-                    "is_majority": False,
-                })
-                violations.append({
-                    "criterion": "has_rare_property",
-                    "message": (
-                        f"{name} is present here, but usually absent for {class_name}."
-                    ),
-                })
-        is_outlier = bool(violations)
-        filled = sum(1 for v in r["prop_status"].values() if v)
-        entities.append({
-            "uri":                r["uri"],
-            "filled_count":       filled,
-            "total_props":        len(props),
-            "prop_status":        r["prop_status"],
-            "outlier_properties": outlier_props,
-            "is_outlier":         is_outlier,
-            "status":             "warning" if is_outlier else "ok",
-            "violations":         violations,
-        })
-
-    return {
-        "uri":                class_uri,
-        "class":              class_name,
-        "type":               "property_presence_anomaly",
-        "properties_checked": prop_names,
-        "property_stats":     property_stats,
-        "outlier_count":      sum(1 for e in entities if e["is_outlier"]),
-        "total":              total,
-        "entities":           entities,
-    }
-
-
 # ── SA1: Outlier Profiling ────────────────────────────────────────────────────
 
 @router.get("/outliers")
@@ -541,11 +374,7 @@ async def accuracy_outliers(
     class_uri: str = Query(..., description="Full class URI, e.g. http://example.org/voc#GraduateStudent"),
     property_uri: Optional[str] = Query(
         None,
-        description="Required for type=relationship_count: full URI of the object property to count per entity.",
-    ),
-    type: str = Query(
-        "relationship_count",
-        description="'relationship_count' or 'property_presence_anomaly'",
+        description="Full URI of the object property to count per entity.",
     ),
     filter_facets: Optional[str] = Query(
         None,
@@ -555,42 +384,17 @@ async def accuracy_outliers(
     """
     SA1: Outlier Profiling.
 
-    Two modes:
-
-    relationship_count counts how many values each entity has for a given
-      object property. Flags entities outside Tukey's fences (Q1±1.5×IQR,
-      lower bound floored at 0). Criteria: tukey_lower_bound, tukey_upper_bound.
-
-    property_presence_anomaly checks each expected property of the class and
-      calculates the fill rate. Bidirectional majority rule:
-        - fill_rate > 50%: property is usually present, absence is flagged
-          (criterion: missing_common_property).
-        - fill_rate < 50%: property is usually absent, presence is flagged
-          (criterion: has_rare_property).
-        - fill_rate = 50%: no clear majority, no flag.
+    Counts how many values each entity has for a given object property. Flags
+    entities outside Tukey's fences (Q1±1.5×IQR, lower bound floored at 0).
+    Criteria: tukey_lower_bound, tukey_upper_bound.
     """
     class_entry = _validate_class_uri(class_uri)
     class_name = class_entry["localName"]
+    if not property_uri:
+        raise HTTPException(status_code=400, detail="'property_uri' is required for relationship-count outlier profiling.")
     facets = _parse_facets(filter_facets, class_uri)
 
-    if type == "relationship_count":
-        if not property_uri:
-            raise HTTPException(
-                status_code=400,
-                detail="'property_uri' is required when type=relationship_count"
-            )
-        return await _sa1_relationship_count(class_uri, class_name, property_uri, facets)
-
-    if type in {"property_presence_anomaly", "completeness"}:
-        return await _sa1_property_presence_anomaly(class_uri, class_name, facets)
-
-    raise HTTPException(
-        status_code=400,
-        detail=(
-            f"Unknown type '{type}'. Use 'relationship_count' or "
-            "'property_presence_anomaly'."
-        ),
-    )
+    return await _sa1_relationship_count(class_uri, class_name, property_uri, facets)
 
 
 # ── SA2: Value Conflict Detection ─────────────────────────────────────────────

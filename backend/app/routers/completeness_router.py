@@ -175,6 +175,16 @@ async def _labels_for_entities(class_uri: str, entity_uris: list[str]) -> dict[s
     return labels
 
 
+def _filter_uris_by_query(uris: list[str], labels: dict[str, str], q_norm: str) -> list[str]:
+    """Keep entity URIs whose resolved label or URI contains the search text."""
+    if not q_norm:
+        return uris
+    return [
+        u for u in uris
+        if q_norm in (labels.get(u) or "").lower() or q_norm in u.lower()
+    ]
+
+
 def _interlinking_metadata() -> tuple[list[dict], list[str], dict[str, dict], dict[str, str]]:
     from app.routers.metadata_router import KNOWN_CLASSES, ONTOLOGY_PROPERTIES
 
@@ -397,10 +407,21 @@ async def _by_entity_compute(
     limit: int,
     offset: int,
     include_total: bool,
+    sort: str = "entity",
+    q: str = "",
 ) -> dict:
     facet_clauses = build_facet_clauses(facets)
     optional_block, select_exprs, var_names = build_exists_bindings(prop_uris)
     var_list = " ".join(select_exprs)
+
+    # Ontop cannot ORDER BY aggregate expressions, and a text search has to
+    # match the (separately resolved) entity label, so whenever we sort by
+    # completeness or filter by a query we fetch every matching entity and
+    # sort/filter/paginate in Python. Completeness is derived per entity below.
+    q_norm = (q or "").strip().lower()
+    sort_by_completeness = sort == "completeness"
+    fetch_all = sort_by_completeness or bool(q_norm)
+    page_clause = "" if fetch_all else f"LIMIT {limit}\n        OFFSET {offset}"
 
     query = f"""
         {PREFIXES}
@@ -411,8 +432,7 @@ async def _by_entity_compute(
         }}
         GROUP BY ?entity
         ORDER BY ?entity
-        LIMIT {limit}
-        OFFSET {offset}
+        {page_clause}
     """
 
     count_query = f"""
@@ -424,7 +444,11 @@ async def _by_entity_compute(
     """
 
     try:
-        if include_total:
+        if fetch_all:
+            # Whole result set is fetched, so the total is the row count below.
+            raw = await execute_sparql(query)
+            total_entities = None
+        elif include_total:
             raw, total_raw = await asyncio.gather(
                 execute_sparql(query),
                 execute_sparql(count_query),
@@ -457,9 +481,25 @@ async def _by_entity_compute(
             "completeness": completeness,
         })
 
-    labels = await _labels_for_entities(class_uri, [e["uri"] for e in entities])
-    for e in entities:
-        e["label"] = labels.get(e["uri"])
+    if fetch_all:
+        # Labels are needed both for the text search and for display.
+        labels = await _labels_for_entities(class_uri, [e["uri"] for e in entities])
+        for e in entities:
+            e["label"] = labels.get(e["uri"])
+        if q_norm:
+            entities = [
+                e for e in entities
+                if q_norm in (e.get("label") or "").lower() or q_norm in e["uri"].lower()
+            ]
+        if sort_by_completeness:
+            # Worst (lowest completeness) first; entity URI breaks ties stably.
+            entities.sort(key=lambda e: (e["completeness"], e["uri"]))
+        total_entities = len(entities)
+        entities = entities[offset:offset + limit]
+    else:
+        labels = await _labels_for_entities(class_uri, [e["uri"] for e in entities])
+        for e in entities:
+            e["label"] = labels.get(e["uri"])
 
     return {
         "uri":        class_uri,
@@ -582,13 +622,15 @@ async def completeness_matrix(
     limit: int = DEFAULT_PAGE_LIMIT,
     offset: int = 0,
     include_total: bool = True,
+    sort: str = Query("entity", description="Entity ordering: 'entity' (URI) or 'completeness' (lowest first)"),
+    q: str = Query("", description="Filter entities whose label or URI contains this text"),
 ):
     limit, offset = _validate_pagination(limit, offset)
     class_entry = validate_class_uri(class_uri)
     prop_uris = parse_property_uris(properties)
     facets = parse_facets(filter_facets)
     entity_result, property_result = await asyncio.gather(
-        _by_entity_compute(class_uri, class_entry, prop_uris, facets, limit, offset, include_total),
+        _by_entity_compute(class_uri, class_entry, prop_uris, facets, limit, offset, include_total, sort, q),
         _by_property_compute(class_uri, class_entry, prop_uris, facets),
     )
 
@@ -796,6 +838,7 @@ async def interlinking_entities(
     limit: int = DEFAULT_PAGE_LIMIT,
     offset: int = 0,
     include_total: bool = True,
+    q: str = Query("", description="Filter entities whose label or URI contains this text"),
 ):
     limit, offset = _validate_pagination(limit, offset)
     if status not in {"linked", "not_linked"}:
@@ -816,6 +859,12 @@ async def interlinking_entities(
         page_body = _not_linked_filters(obj_prop_uris)
         count_body = page_body
 
+    # Search matches the separately resolved label, so when filtering we fetch
+    # every entity and filter/paginate in Python (datasets are small).
+    q_norm = (q or "").strip().lower()
+    fetch_all = bool(q_norm)
+    page_clause = "" if fetch_all else f"LIMIT {limit}\n        OFFSET {offset}"
+
     page_q = f"""
         {PREFIXES}
         {select_clause} WHERE {{
@@ -823,8 +872,7 @@ async def interlinking_entities(
             {page_body}
         }}
         ORDER BY ?e
-        LIMIT {limit}
-        OFFSET {offset}
+        {page_clause}
     """
     count_q = f"""
         {PREFIXES}
@@ -835,7 +883,10 @@ async def interlinking_entities(
     """
 
     try:
-        if include_total:
+        if fetch_all:
+            page_raw = await execute_sparql(page_q)
+            total = None
+        elif include_total:
             page_raw, total_raw = await asyncio.gather(
                 execute_sparql(page_q),
                 execute_sparql(count_q),
@@ -859,6 +910,10 @@ async def interlinking_entities(
             else {}
         )
         labels = await _labels_for_entities(class_uri, entity_uris)
+        if fetch_all:
+            entity_uris = _filter_uris_by_query(entity_uris, labels, q_norm)
+            total = len(entity_uris)
+            entity_uris = entity_uris[offset:offset + limit]
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
 
@@ -1539,33 +1594,49 @@ async def population_entities(
     class_uri: str = Query(..., description="Full class URI"),
     limit: int = Query(25, ge=1, le=MAX_PAGE_LIMIT),
     offset: int = Query(0, ge=0),
+    q: str = Query("", description="Filter entities whose label or URI contains this text"),
 ):
     class_entry = validate_class_uri(class_uri)
     limit, offset = _validate_pagination(limit, offset)
+    q_norm = (q or "").strip().lower()
 
-    count_q = f"""
-        {PREFIXES}
-        SELECT (COUNT(DISTINCT ?e) AS ?n) WHERE {{ ?e a <{class_uri}> . }}
-    """
-    page_q = f"""
-        {PREFIXES}
-        SELECT DISTINCT ?e WHERE {{ ?e a <{class_uri}> . }}
-        ORDER BY ?e LIMIT {limit} OFFSET {offset}
-    """
     try:
-        count_raw, page_raw = await asyncio.gather(
-            execute_sparql(count_q),
-            execute_sparql(page_q),
-        )
+        if q_norm:
+            # Search matches the separately resolved label, so fetch every
+            # entity and filter/paginate in Python (datasets are small).
+            all_q = f"""
+                {PREFIXES}
+                SELECT DISTINCT ?e WHERE {{ ?e a <{class_uri}> . }}
+                ORDER BY ?e
+            """
+            all_raw = await execute_sparql(all_q)
+            all_uris = [b["e"]["value"] for b in all_raw.get("results", {}).get("bindings", [])]
+            labels = await _labels_for_entities(class_uri, all_uris)
+            filtered = _filter_uris_by_query(all_uris, labels, q_norm)
+            total = len(filtered)
+            uris = filtered[offset:offset + limit]
+        else:
+            count_q = f"""
+                {PREFIXES}
+                SELECT (COUNT(DISTINCT ?e) AS ?n) WHERE {{ ?e a <{class_uri}> . }}
+            """
+            page_q = f"""
+                {PREFIXES}
+                SELECT DISTINCT ?e WHERE {{ ?e a <{class_uri}> . }}
+                ORDER BY ?e LIMIT {limit} OFFSET {offset}
+            """
+            count_raw, page_raw = await asyncio.gather(
+                execute_sparql(count_q),
+                execute_sparql(page_q),
+            )
+            total = _count_binding(count_raw, "n")
+            uris = [b["e"]["value"] for b in page_raw.get("results", {}).get("bindings", [])]
+            labels = await _labels_for_entities(class_uri, uris)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
 
-    total = _count_binding(count_raw, "n")
-    uris = [b["e"]["value"] for b in page_raw.get("results", {}).get("bindings", [])]
-    labels = await _labels_for_entities(class_uri, uris)
-
     def _source_of(uri: str) -> str | None:
-        m = re.search(r"voc#(uni\d+)/", uri)
+        m = re.search(r"voc#([^/]+)/", uri)
         return m.group(1) if m else None
 
     entities = [{"uri": u, "label": labels.get(u), "source": _source_of(u)} for u in uris]

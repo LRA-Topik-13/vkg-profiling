@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { AlertTriangle, Search, FileText } from 'lucide-react';
 import { completenessApi, PopulationSummary, PopulationEntry, PopulationEntities, statusColor } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, PaginatedTable, prettyId } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, PaginatedTable, SearchInput, prettyId } from './_shared';
 
-const PAGE = 25;
+const PAGE = 10;
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
 export default function PopulationCompleteness() {
   const [data, setData] = useState<PopulationSummary | null>(null);
@@ -297,34 +298,51 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
   const [pageSize, setPageSize] = useState(PAGE);
   const [data, setData] = useState<PopulationEntities | null>(null);
   const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState('');
+  const [appliedQuery, setAppliedQuery] = useState('');
 
   useEffect(() => {
     setOffset(0);
     setData(null);
+    setQuery('');
+    setAppliedQuery('');
   }, [classUri]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setAppliedQuery(query);
+      setOffset(0);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     completenessApi
-      .populationEntities({ class_uri: classUri, limit: pageSize, offset })
+      .populationEntities({ class_uri: classUri, limit: pageSize, offset, q: appliedQuery.trim() || undefined })
       .then((r) => !cancelled && setData(r))
       .catch(() => !cancelled && setData(null))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [classUri, offset, pageSize]);
+  }, [classUri, offset, pageSize, appliedQuery]);
 
   if (loading && !data) {
     return <div className="py-6 text-center text-sm" style={{ color: 'var(--muted-foreground)' }}>Loading…</div>;
   }
 
   return (
+    <>
+    <div className="flex justify-end mb-3">
+      <SearchInput value={query} onChange={setQuery} placeholder="Search entities…" />
+    </div>
     <PaginatedTable
       colSpan={2}
       pagination={data?.pagination ?? null}
       pageSize={pageSize}
+      pageSizeOptions={PAGE_SIZE_OPTIONS}
       loading={loading}
       onPageSizeChange={(s) => {
         setPageSize(s);
@@ -335,7 +353,7 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
       emptyState={
         <div className="py-10 text-center" style={{ color: 'var(--muted-foreground)' }}>
           <FileText className="mx-auto mb-3 w-10 h-10 opacity-40" />
-          <p className="text-sm font-medium">No entities for this class.</p>
+          <p className="text-sm font-medium">{appliedQuery.trim() ? `No entities match “${appliedQuery.trim()}”.` : 'No entities for this class.'}</p>
         </div>
       }
       head={
@@ -363,6 +381,7 @@ function EntityDrilldown({ classUri }: { classUri: string }) {
         </tr>
       ))}
     </PaginatedTable>
+    </>
   );
 }
 

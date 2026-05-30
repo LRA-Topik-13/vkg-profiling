@@ -93,7 +93,6 @@ export default function PopulationCompleteness() {
       <div ref={configRef}>
         <Section
           title="Population Completeness of a Class"
-          subtitle="Select a class to inspect its represented vs source population and entity breakdown."
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="Class">

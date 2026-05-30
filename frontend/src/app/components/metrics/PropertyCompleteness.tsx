@@ -189,7 +189,6 @@ export default function PropertyCompleteness() {
       <div ref={configRef}>
       <Section
         title="Property Completeness of a Class"
-        subtitle="Filter the analysis to one class and a subset of its properties. Optional facets (predicate + object) narrow entities further using AND semantics."
       >
         <Field label="Class">
           <select

@@ -203,7 +203,7 @@ function IntraClassSummarySection({ onBarClick }: { onBarClick: (classUri: strin
   );
 
   return (
-    <Section title="Intrasource Conciseness of All Classes" subtitle="Click a bar to select that class below, then Analyze." collapsible right={controls}>
+    <Section title="Intra-source Uniqueness of All Classes" subtitle="Click a bar to select that class below, then Analyze." collapsible right={controls}>
       {loading && <LoadingState message="Loading class summary..." />}
       {error && <ErrorState message={error} />}
       {!loading && !error && ranked.length === 0 && data && (
@@ -481,7 +481,7 @@ export default function IntrasourceConciseness() {
 
       {/* Configuration */}
       <div ref={configRef}>
-      <Section title="Intrasource Conciseness of a Class">
+      <Section title="Intra-source Uniqueness of a Class">
         {/* Class */}
         <Field label="Class">
           <select

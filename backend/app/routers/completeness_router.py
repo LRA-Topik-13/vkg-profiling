@@ -397,10 +397,17 @@ async def _by_entity_compute(
     limit: int,
     offset: int,
     include_total: bool,
+    sort: str = "entity",
 ) -> dict:
     facet_clauses = build_facet_clauses(facets)
     optional_block, select_exprs, var_names = build_exists_bindings(prop_uris)
     var_list = " ".join(select_exprs)
+
+    # Ontop cannot ORDER BY aggregate expressions, so to order entities by
+    # their completeness we fetch every matching entity and sort/paginate in
+    # Python. Completeness is already derived per entity below.
+    sort_by_completeness = sort == "completeness"
+    page_clause = "" if sort_by_completeness else f"LIMIT {limit}\n        OFFSET {offset}"
 
     query = f"""
         {PREFIXES}
@@ -411,8 +418,7 @@ async def _by_entity_compute(
         }}
         GROUP BY ?entity
         ORDER BY ?entity
-        LIMIT {limit}
-        OFFSET {offset}
+        {page_clause}
     """
 
     count_query = f"""
@@ -424,7 +430,11 @@ async def _by_entity_compute(
     """
 
     try:
-        if include_total:
+        if sort_by_completeness:
+            # Whole result set is fetched, so the total is the row count below.
+            raw = await execute_sparql(query)
+            total_entities = None
+        elif include_total:
             raw, total_raw = await asyncio.gather(
                 execute_sparql(query),
                 execute_sparql(count_query),
@@ -456,6 +466,12 @@ async def _by_entity_compute(
             "scores":       scores,
             "completeness": completeness,
         })
+
+    if sort_by_completeness:
+        # Worst (lowest completeness) first; entity URI breaks ties stably.
+        total_entities = len(entities)
+        entities.sort(key=lambda e: (e["completeness"], e["uri"]))
+        entities = entities[offset:offset + limit]
 
     labels = await _labels_for_entities(class_uri, [e["uri"] for e in entities])
     for e in entities:
@@ -582,13 +598,14 @@ async def completeness_matrix(
     limit: int = DEFAULT_PAGE_LIMIT,
     offset: int = 0,
     include_total: bool = True,
+    sort: str = Query("entity", description="Entity ordering: 'entity' (URI) or 'completeness' (lowest first)"),
 ):
     limit, offset = _validate_pagination(limit, offset)
     class_entry = validate_class_uri(class_uri)
     prop_uris = parse_property_uris(properties)
     facets = parse_facets(filter_facets)
     entity_result, property_result = await asyncio.gather(
-        _by_entity_compute(class_uri, class_entry, prop_uris, facets, limit, offset, include_total),
+        _by_entity_compute(class_uri, class_entry, prop_uris, facets, limit, offset, include_total, sort),
         _by_property_compute(class_uri, class_entry, prop_uris, facets),
     )
 

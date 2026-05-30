@@ -394,7 +394,7 @@ export const completenessApi = {
   mappingCoverage: () => get<MappingCoverage>('/completeness/mapping-coverage'),
   mappingItems: (params: { kind: MappingItemKind; status: MappingItemStatus; q?: string; limit?: number; offset?: number; include_total?: boolean }) =>
     get<MappingItemsResponse>('/completeness/mapping-items', params),
-  matrix: (params: { class_uri: string; properties: string; filter_facets?: string; limit?: number; offset?: number }) =>
+  matrix: (params: { class_uri: string; properties: string; filter_facets?: string; limit?: number; offset?: number; sort?: 'entity' | 'completeness' }) =>
     get<CompletenessMatrix>('/completeness/matrix', params),
   classSummary: () => get<ClassSummary>('/completeness/class-summary'),
   populationSummary: () => get<PopulationSummary>('/completeness/population-summary'),

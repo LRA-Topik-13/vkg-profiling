@@ -154,6 +154,7 @@ export default function PropertyCompleteness() {
         filter_facets: facets.length > 0 ? facets.map((f) => `${f.propUri}::${f.valueUri}`).join(',') : undefined,
         limit: newPageSize,
         offset: newOffset,
+        sort: 'completeness',
       });
       setData(r);
       setOffset(newOffset);
@@ -464,28 +465,11 @@ function ResultsView({
             </Bar>
           </BarChart>
         </ResponsiveContainer>
-
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.summary.by_property.map((p) => (
-            <div
-              key={p.property}
-              className="p-3 border flex items-center justify-between"
-              style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)' }}
-            >
-              <div className="text-sm" style={{ color: 'var(--text)' }}>
-                {labelOf(p.property)}
-                <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  filled {p.filled} · missing {p.missing}
-                </div>
-              </div>
-              <StatusBadge percent={p.completeness} />
-            </div>
-          ))}
-        </div>
       </Section>
 
       <Section
-        title="Entity × Property Matrix"
+        title="Completeness per Entity"
+        subtitle="Each row is an entity; ✓ marks a filled property. Ordered by lowest completeness first."
       >
         <PaginatedTable
           colSpan={data.properties.length + 2}

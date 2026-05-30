@@ -20,7 +20,7 @@ const DIMENSIONS = [
     title: 'Accuracy',
     icon: Target,
     path: '/accuracy',
-    tabs: ['Outlier Profiling', 'Value Conflict', 'Property Misuse'],
+    tabs: ['Outlier Profiling', 'Property Value Conflict', 'Property Misuse'],
   },
   {
     id: 'completeness',

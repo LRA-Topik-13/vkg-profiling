@@ -18,7 +18,7 @@ const dimensionConfig = {
     title: 'Accuracy',
     description: 'Find potential semantic accuracy issues in VKG data',
     color: 'var(--accent)',
-    tabs: ['Outlier Profiling', 'Value Conflict', 'Property Misuse'],
+    tabs: ['Outlier Profiling', 'Property Value Conflict', 'Property Misuse'],
   },
   completeness: {
     title: 'Completeness',

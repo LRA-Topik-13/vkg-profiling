@@ -514,7 +514,7 @@ function OutlierSummary({
 }) {
   const cleanScore = result.total ? ((result.total - result.outlier_count) / result.total) * 100 : null;
   const isRelationship = result.type === 'relationship_count';
-  const scoreTitle = isRelationship ? 'Relationship Count Score' : 'Property-Presence Anomaly Score';
+  const scoreTitle = isRelationship ? 'Relationship Count Score' : 'Property Presence Pattern Score';
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
       <MetricCard value={formatCount(result.total)} label="Total Entities" sub={classLabel} />
@@ -661,7 +661,7 @@ export default function AccuracyOutlierProfiling() {
               Counts how many values each entity has for one object property, such as Teaches or Attends. Entities outside the normal count range are flagged.
             </li>
             <li>
-              <span className="font-medium" style={{ color: 'var(--text)' }}>Property-Presence Anomaly:</span>{' '}
+              <span className="font-medium" style={{ color: 'var(--text)' }}>Property Presence Pattern:</span>{' '}
               Uses a simple majority rule. Properties used by more than half of the selected entities are treated as usually present, while properties used by less than half are treated as usually absent. Entities that do not follow that present or absent pattern are flagged.
             </li>
           </ul>
@@ -674,7 +674,7 @@ export default function AccuracyOutlierProfiling() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {[
                 { value: 'relationship_count', label: 'Relationship Count', hint: 'Counts values for one object property.' },
-                { value: 'property_presence_anomaly', label: 'Property-Presence Anomaly', hint: 'Checks property presence across mapped properties.' },
+                { value: 'property_presence_anomaly', label: 'Property Presence Pattern', hint: 'Checks present and absent property patterns.' },
               ].map((option) => (
                 <button
                   key={option.value}

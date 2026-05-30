@@ -494,6 +494,51 @@ export default function IntrasourceConciseness() {
           </select>
         </Field>
 
+        {/* Identity properties */}
+        <div className="mt-6">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm" style={{ color: 'var(--text)' }}>Identity Properties (data properties only)</div>
+            {dataProps.length > 0 && (
+              <button
+                onClick={toggleAll}
+                className="text-xs underline"
+                style={{ color: 'var(--navy)' }}
+              >
+                {selectedProps.length === dataProps.length ? 'Deselect all' : 'Select all'}
+              </button>
+            )}
+          </div>
+          {!selectedClassUri ? (
+            <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Pick a class first.</div>
+          ) : metaLoading ? (
+            <LoadingState message="Loading properties..." />
+          ) : dataProps.length === 0 ? (
+            <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>No data properties found for this class.</div>
+          ) : (
+            <div className="always-scrollbar grid grid-cols-2 md:grid-cols-3 gap-2 max-h-36 overflow-y-scroll pr-2">
+              {dataProps.map((p) => {
+                const active = selectedProps.includes(p.uri);
+                return (
+                  <label
+                    key={p.uri}
+                    className="flex items-center gap-2 px-3 py-2 border cursor-pointer"
+                    style={{
+                      backgroundColor: active ? 'var(--accent-soft)' : 'var(--card)',
+                      borderColor: 'var(--border)',
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                  >
+                    <input type="checkbox" checked={active} onChange={() => toggleProp(p.uri)} style={{ accentColor: 'var(--accent)' }} />
+                    <span className="truncate" style={{ color: 'var(--text)' }} title={p.label || p.localName}>
+                      {p.label || p.localName}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* Facet filter */}
         <div className="mt-4">
           <Field label="Add facet filter (optional)">
@@ -593,51 +638,6 @@ export default function IntrasourceConciseness() {
               ))}
             </select>
           </Field>
-        </div>
-
-        {/* Identity properties */}
-        <div className="mt-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm" style={{ color: 'var(--text)' }}>Identity Properties (data properties only)</div>
-            {dataProps.length > 0 && (
-              <button
-                onClick={toggleAll}
-                className="text-xs underline"
-                style={{ color: 'var(--navy)' }}
-              >
-                {selectedProps.length === dataProps.length ? 'Deselect all' : 'Select all'}
-              </button>
-            )}
-          </div>
-          {!selectedClassUri ? (
-            <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Pick a class first.</div>
-          ) : metaLoading ? (
-            <LoadingState message="Loading properties..." />
-          ) : dataProps.length === 0 ? (
-            <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>No data properties found for this class.</div>
-          ) : (
-            <div className="always-scrollbar grid grid-cols-2 md:grid-cols-3 gap-2 max-h-36 overflow-y-scroll pr-2">
-              {dataProps.map((p) => {
-                const active = selectedProps.includes(p.uri);
-                return (
-                  <label
-                    key={p.uri}
-                    className="flex items-center gap-2 px-3 py-2 border cursor-pointer"
-                    style={{
-                      backgroundColor: active ? 'var(--accent-soft)' : 'var(--card)',
-                      borderColor: 'var(--border)',
-                      borderRadius: 'var(--radius-md)',
-                    }}
-                  >
-                    <input type="checkbox" checked={active} onChange={() => toggleProp(p.uri)} style={{ accentColor: 'var(--accent)' }} />
-                    <span className="truncate" style={{ color: 'var(--text)' }} title={p.label || p.localName}>
-                      {p.label || p.localName}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          )}
         </div>
 
         <button

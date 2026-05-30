@@ -20,7 +20,6 @@ export default function LandingPage() {
       description: 'Measure the correctness and precision of your data',
       icon: Target,
       path: '/accuracy',
-      tabs: ['Outlier Profiling', 'Value Conflict', 'Property Misuse'],
     },
     {
       id: 'completeness',
@@ -28,7 +27,6 @@ export default function LandingPage() {
       description: 'Assess the presence of all required data elements',
       icon: CheckCircle,
       path: '/completeness',
-      tabs: ['Schema Completeness', 'Property Completeness', 'Interlinking Completeness', 'Population Completeness'],
     },
     {
       id: 'conciseness',
@@ -36,7 +34,6 @@ export default function LandingPage() {
       description: 'Evaluate the efficiency and brevity of data representation',
       icon: FileText,
       path: '/conciseness',
-      tabs: ['Intrasource', 'Cross-source'],
     },
   ];
 
@@ -89,14 +86,6 @@ export default function LandingPage() {
                 <p className="mb-4" style={{ color: 'var(--muted-foreground)' }}>
                   {dimension.description}
                 </p>
-                <ul className="space-y-1">
-                  {dimension.tabs.map((tab) => (
-                    <li key={tab} className="flex items-center gap-2 text-sm" style={{ color: 'var(--muted-foreground)' }}>
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: 'var(--accent)' }} />
-                      {tab}
-                    </li>
-                  ))}
-                </ul>
               </Link>
             );
           })}

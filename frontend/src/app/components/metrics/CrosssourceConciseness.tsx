@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { Search, Plus, X, FileText } from 'lucide-react';
+import { Search, X, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Headline, Section, LoadingState, ErrorState, PaginatedTable } from './_shared';
 import { makePropertyLabelLookup, labelFromLookup } from './accuracyShared';
@@ -355,29 +355,30 @@ export default function CrosssourceConciseness() {
     }
   }, [selectedClass, selectedProps, selectedSources, facetString]);
 
-  const canAddFacet = Boolean(draftPropUri && draftValueUri && !draftLoading);
   const noExactFacetValues = Boolean(draftPropUri && !draftLoading && !draftError && draftValues.length === 0);
 
-  function addFacet() {
-    if (!canAddFacet) return;
+  function addFacet(valueUri: string) {
+    if (!draftPropUri || !valueUri) return;
     const propEntry = allProperties.find((p) => p.uri === draftPropUri);
     if (!propEntry) return;
-    const actualValueUri = draftValueUri === FACET_ANY_VALUE ? null : draftValueUri;
+    const actualValueUri = valueUri === FACET_ANY_VALUE ? null : valueUri;
     const duplicate = facets.some(
       (f) => f.propUri === draftPropUri && f.valueUri === actualValueUri,
     );
-    if (duplicate) return;
-    setFacets((prev) => [
-      ...prev,
-      {
-        propUri: draftPropUri,
-        propLabel: propEntry.label || propEntry.localName,
-        valueUri: actualValueUri,
-        valueLabel: actualValueUri ? shortUri(actualValueUri) : '(exists)',
-      },
-    ]);
+    if (!duplicate) {
+      setFacets((prev) => [
+        ...prev,
+        {
+          propUri: draftPropUri,
+          propLabel: propEntry.label || propEntry.localName,
+          valueUri: actualValueUri,
+          valueLabel: actualValueUri ? shortUri(actualValueUri) : '(exists)',
+        },
+      ]);
+      setCrossResult(null);
+    }
+    setDraftPropUri('');
     setDraftValueUri('');
-    setCrossResult(null);
   }
 
   function removeFacet(index: number) {
@@ -496,7 +497,7 @@ export default function CrosssourceConciseness() {
               <select
                 disabled={!draftPropUri || draftLoading}
                 value={draftValueUri}
-                onChange={(e) => setDraftValueUri(e.target.value)}
+                onChange={(e) => { if (e.target.value) addFacet(e.target.value); }}
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
@@ -506,21 +507,6 @@ export default function CrosssourceConciseness() {
                   <option key={v} value={v}>{shortUri(v)}</option>
                 ))}
               </select>
-              <button
-                onClick={addFacet}
-                disabled={!canAddFacet}
-                className="inline-flex items-center gap-1 px-3 py-2 shrink-0"
-                style={{
-                  backgroundColor: canAddFacet ? 'var(--accent)' : 'var(--muted)',
-                  color: canAddFacet ? 'var(--text-on-accent)' : 'var(--muted-foreground)',
-                  borderRadius: 'var(--radius-md)',
-                  cursor: canAddFacet ? 'pointer' : 'not-allowed',
-                }}
-                title="Add facet"
-              >
-                <Plus className="w-4 h-4" />
-                Add
-              </button>
             </div>
             {draftError && (
               <div className="mt-1 text-xs" style={{ color: 'var(--accent)' }}>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Plus, X, AlertTriangle, Check, FileText } from 'lucide-react';
+import { Search, X, AlertTriangle, Check, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import {
   completenessApi,
@@ -121,21 +121,22 @@ export default function PropertyCompleteness() {
     setSelectedPropUris((prev) => (prev.includes(uri) ? prev.filter((p) => p !== uri) : [...prev, uri]));
   }
 
-  function addFacet() {
-    if (!draft.propUri || !draft.valueUri) return;
+  function addFacet(valueUri: string) {
+    if (!draft.propUri || !valueUri) return;
     const propEntry = props.find((p) => p.uri === draft.propUri);
     if (!propEntry) return;
-    const duplicate = facets.some((f) => f.propUri === draft.propUri && f.valueUri === draft.valueUri);
-    if (duplicate) return;
-    setFacets((prev) => [
-      ...prev,
-      {
-        propUri: draft.propUri,
-        propLabel: propEntry.label || propEntry.localName,
-        valueUri: draft.valueUri,
-      },
-    ]);
-    setDraft((d) => ({ ...d, valueUri: '' }));
+    const duplicate = facets.some((f) => f.propUri === draft.propUri && f.valueUri === valueUri);
+    if (!duplicate) {
+      setFacets((prev) => [
+        ...prev,
+        {
+          propUri: draft.propUri,
+          propLabel: propEntry.label || propEntry.localName,
+          valueUri,
+        },
+      ]);
+    }
+    setDraft((d) => ({ ...d, propUri: '', valueUri: '' }));
   }
 
   function removeFacet(index: number) {
@@ -212,7 +213,7 @@ export default function PropertyCompleteness() {
               <select
                 disabled={!draft.propUri || draft.loading}
                 value={draft.valueUri}
-                onChange={(e) => setDraft((d) => ({ ...d, valueUri: e.target.value }))}
+                onChange={(e) => { if (e.target.value) addFacet(e.target.value); }}
                 className="flex-1 px-3 py-2 border disabled:opacity-50"
                 style={{ backgroundColor: 'var(--input-background)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}
               >
@@ -221,21 +222,6 @@ export default function PropertyCompleteness() {
                   <option key={v} value={v}>{shortenUri(v)}</option>
                 ))}
               </select>
-              <button
-                onClick={addFacet}
-                disabled={!draft.propUri || !draft.valueUri}
-                className="inline-flex items-center gap-1 px-3 py-2 shrink-0"
-                style={{
-                  backgroundColor: draft.propUri && draft.valueUri ? 'var(--accent)' : 'var(--muted)',
-                  color: draft.propUri && draft.valueUri ? 'var(--text-on-accent)' : 'var(--muted-foreground)',
-                  borderRadius: 'var(--radius-md)',
-                  cursor: draft.propUri && draft.valueUri ? 'pointer' : 'not-allowed',
-                }}
-                title="Add facet"
-              >
-                <Plus className="w-4 h-4" />
-                Add
-              </button>
             </div>
             {draft.error && (
               <div className="mt-1 text-xs" style={{ color: 'var(--accent)' }}>
@@ -425,12 +411,18 @@ function ResultsView({
     data.property_info.find((p) => p.uri === uri)?.localName ||
     shortenUri(uri);
 
-  const barData = data.summary.by_property.map((p) => ({
-    name: labelOf(p.property),
-    completeness: p.completeness,
-    filled: p.filled,
-    missing: p.missing,
-  }));
+  const barData = [...data.summary.by_property]
+    .sort((a, b) => {
+      const diff = a.completeness - b.completeness;
+      if (diff !== 0) return diff;
+      return labelOf(a.property).localeCompare(labelOf(b.property));
+    })
+    .map((p) => ({
+      name: labelOf(p.property),
+      completeness: p.completeness,
+      filled: p.filled,
+      missing: p.missing,
+    }));
 
   return (
     <>

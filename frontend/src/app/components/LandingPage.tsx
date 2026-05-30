@@ -17,7 +17,7 @@ export default function LandingPage() {
     {
       id: 'accuracy',
       title: 'Accuracy',
-      description: 'Measure the correctness and precision of your data',
+      description: 'Find potential semantic accuracy issues in VKG data',
       icon: Target,
       path: '/accuracy',
     },

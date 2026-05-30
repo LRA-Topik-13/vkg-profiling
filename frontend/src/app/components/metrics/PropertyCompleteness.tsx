@@ -10,7 +10,7 @@ import {
   ClassSummary,
   statusColor,
 } from '../../lib/api';
-import { Headline, Section, LoadingState, ErrorState, StatusBadge, PaginatedTable, SearchInput, EmptyState, prettyId } from './_shared';
+import { Headline, Section, LoadingState, ErrorState, StatusBadge, StatusLegend, PaginatedTable, SearchInput, EmptyState, prettyId } from './_shared';
 
 const PAGE = 10;
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
@@ -205,6 +205,70 @@ export default function PropertyCompleteness() {
           </select>
         </Field>
 
+        <div className="mt-6">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm" style={{ color: 'var(--text)' }}>Properties to evaluate</div>
+            {props.length > 0 && (
+              <button
+                onClick={() => setSelectedPropUris(selectedPropUris.length === props.length ? [] : props.map((p) => p.uri))}
+                className="text-xs underline"
+                style={{ color: 'var(--navy)' }}
+              >
+                {selectedPropUris.length === props.length ? 'Deselect all' : 'Select all'}
+              </button>
+            )}
+          </div>
+          {props.length === 0 ? (
+            <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Pick a class first.</div>
+          ) : (
+            <div className="always-scrollbar grid grid-cols-2 md:grid-cols-3 gap-2 max-h-36 overflow-y-scroll pr-2">
+              {props.map((p) => {
+                const active = selectedPropUris.includes(p.uri);
+                return (
+                  <label
+                    key={p.uri}
+                    className="flex items-center gap-2 px-3 py-2 border cursor-pointer"
+                    style={{
+                      backgroundColor: active ? 'var(--accent-soft)' : 'var(--card)',
+                      borderColor: 'var(--border)',
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                  >
+                    <input type="checkbox" checked={active} onChange={() => togglePropUri(p.uri)} style={{ accentColor: 'var(--accent)' }} />
+                    <span className="truncate" style={{ color: 'var(--text)' }} title={p.label || p.localName}>
+                      {p.label || p.localName}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {overlappingProps.length > 0 && (
+          <div
+            className="mt-4 flex items-start gap-2 px-3 py-2 text-sm border"
+            style={{
+              backgroundColor: '#FEF7E6',
+              color: '#8A5A00',
+              borderColor: 'rgba(224,139,26,0.4)',
+              borderRadius: 'var(--radius-md)',
+            }}
+          >
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <div>
+              <div>
+                {overlappingProps.length === 1 ? 'Property' : 'Properties'}{' '}
+                <strong>{overlappingProps.join(', ')}</strong>{' '}
+                {overlappingProps.length === 1 ? 'is' : 'are'} used as both a facet predicate and an evaluated property.
+              </div>
+              <div className="text-xs mt-1" style={{ color: '#8A5A00' }}>
+                Its completeness will be 100% by construction (facet forces the predicate to exist).
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mt-4">
           <Field label="Add facet filter (optional)">
             <p className="mb-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>
@@ -285,70 +349,6 @@ export default function PropertyCompleteness() {
                   </button>
                 </span>
               ))}
-            </div>
-          </div>
-        )}
-
-        <div className="mt-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm" style={{ color: 'var(--text)' }}>Properties to evaluate</div>
-            {props.length > 0 && (
-              <button
-                onClick={() => setSelectedPropUris(selectedPropUris.length === props.length ? [] : props.map((p) => p.uri))}
-                className="text-xs underline"
-                style={{ color: 'var(--navy)' }}
-              >
-                {selectedPropUris.length === props.length ? 'Deselect all' : 'Select all'}
-              </button>
-            )}
-          </div>
-          {props.length === 0 ? (
-            <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Pick a class first.</div>
-          ) : (
-            <div className="always-scrollbar grid grid-cols-2 md:grid-cols-3 gap-2 max-h-36 overflow-y-scroll pr-2">
-              {props.map((p) => {
-                const active = selectedPropUris.includes(p.uri);
-                return (
-                  <label
-                    key={p.uri}
-                    className="flex items-center gap-2 px-3 py-2 border cursor-pointer"
-                    style={{
-                      backgroundColor: active ? 'var(--accent-soft)' : 'var(--card)',
-                      borderColor: 'var(--border)',
-                      borderRadius: 'var(--radius-md)',
-                    }}
-                  >
-                    <input type="checkbox" checked={active} onChange={() => togglePropUri(p.uri)} style={{ accentColor: 'var(--accent)' }} />
-                    <span className="truncate" style={{ color: 'var(--text)' }} title={p.label || p.localName}>
-                      {p.label || p.localName}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {overlappingProps.length > 0 && (
-          <div
-            className="mt-4 flex items-start gap-2 px-3 py-2 text-sm border"
-            style={{
-              backgroundColor: '#FEF7E6',
-              color: '#8A5A00',
-              borderColor: 'rgba(224,139,26,0.4)',
-              borderRadius: 'var(--radius-md)',
-            }}
-          >
-            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-            <div>
-              <div>
-                {overlappingProps.length === 1 ? 'Property' : 'Properties'}{' '}
-                <strong>{overlappingProps.join(', ')}</strong>{' '}
-                {overlappingProps.length === 1 ? 'is' : 'are'} used as both a facet predicate and an evaluated property.
-              </div>
-              <div className="text-xs mt-1" style={{ color: '#8A5A00' }}>
-                Its completeness will be 100% by construction (facet forces the predicate to exist).
-              </div>
             </div>
           </div>
         )}
@@ -454,6 +454,7 @@ function ResultsView({
       <Section
         title="Completeness per Property"
       >
+        <StatusLegend className="justify-end mb-2" />
         <ResponsiveContainer width="100%" height={Math.max(220, barData.length * 48)}>
           <BarChart data={barData} layout="vertical" margin={{ left: 24, right: 24 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
@@ -608,6 +609,7 @@ function ClassCompletenessOverview({ onBarClick }: { onBarClick: (classUri: stri
 
   return (
     <Section title="Property Completeness of All Classes" subtitle="Click a bar to select that class below, then Analyze." collapsible>
+      <StatusLegend className="justify-end mb-2" />
       <div className="always-scrollbar max-h-[340px] overflow-y-auto">
         <ResponsiveContainer width="100%" height={Math.max(200, ranked.length * 36)}>
           <BarChart data={ranked} layout="vertical" margin={{ left: 24, right: 24 }}>

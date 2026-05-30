@@ -461,9 +461,16 @@ export default function AccuracyValueConflict() {
   return (
     <div className="space-y-6">
       <Section title="How It Works">
-        <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
-          This check uses a functional dependency rule, where selected identity properties should determine one target property. For example, Start Time + End Time -&gt; Day means that two comparable Time Slot entities with the same start and end time should also have the same day. If the target values are different, the pair is flagged as a conflict.
-        </p>
+        <div className="space-y-2 text-sm" style={{ color: 'var(--muted-foreground)' }}>
+          <p>
+            This check uses a <span className="font-medium" style={{ color: 'var(--text)' }}>functional dependency</span> rule:
+            selected <span className="font-medium" style={{ color: 'var(--text)' }}>identity properties</span> should determine one <span className="font-medium" style={{ color: 'var(--text)' }}>target property</span>.
+          </p>
+          <p>
+            Example: <span className="font-medium" style={{ color: 'var(--text)' }}>First Name + Last Name -&gt; Email</span>.
+            If two comparable Person entities have the same first and last name but different email values, the pair is flagged as a conflict.
+          </p>
+        </div>
       </Section>
 
       <Section title="Value Conflict of a Class">
@@ -525,6 +532,13 @@ export default function AccuracyValueConflict() {
             )}
           </div>
 
+          {selectedClass && targetProp && identityLabels.length > 0 && (
+            <div className="px-4 py-3 text-sm border" style={{ backgroundColor: 'var(--muted)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}>
+              <div className="font-mono text-base mb-1" style={{ color: 'var(--navy)' }}>{ruleText}</div>
+              <div>Rule: <span className="font-medium">{identityLabels.join(' + ')}</span> determines <span className="font-medium">{labelForProperty(targetProp)}</span> for <span className="font-medium">{labelForClass(selectedClass)}</span>.</div>
+            </div>
+          )}
+
           <Field label="Add facet filter (optional)">
             <p className="mb-2 text-xs" style={{ color: 'var(--muted-foreground)' }}>
               Facet filters limit which entities are checked before the score is calculated.
@@ -580,13 +594,6 @@ export default function AccuracyValueConflict() {
               ))}
             </div>
           </Field>
-
-          {selectedClass && targetProp && identityLabels.length > 0 && (
-            <div className="px-4 py-3 text-sm border" style={{ backgroundColor: 'var(--muted)', borderColor: 'var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)' }}>
-              <div className="font-mono text-base mb-1" style={{ color: 'var(--navy)' }}>{ruleText}</div>
-              <div>Rule: <span className="font-medium">{identityLabels.join(' + ')}</span> determines <span className="font-medium">{labelForProperty(targetProp)}</span> for <span className="font-medium">{labelForClass(selectedClass)}</span>.</div>
-            </div>
-          )}
 
           <button onClick={analyze} disabled={!canAnalyze || summaryLoading} className="px-6 py-2.5 inline-flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" style={{ backgroundColor: 'var(--accent)', color: 'var(--text-on-accent)', borderRadius: 'var(--radius-md)' }}>
             <Search className="w-4 h-4" />

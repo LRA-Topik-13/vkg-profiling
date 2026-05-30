@@ -16,7 +16,7 @@ interface DimensionPageProps {
 const dimensionConfig = {
   accuracy: {
     title: 'Accuracy',
-    description: 'Measure the correctness and precision of your data',
+    description: 'Find potential semantic accuracy issues in VKG data',
     color: 'var(--accent)',
     tabs: ['Outlier Profiling', 'Value Conflict', 'Property Misuse'],
   },

@@ -1431,7 +1431,19 @@ async def class_summary():
         props = KNOWN_PROPERTIES.get(cls_uri, [])
         total = totals[cls_uri]
 
-        if total == 0 or not props:
+        if not props:
+            results.append({
+                "uri": cls_uri,
+                "class": cls_name,
+                "label": cls.get("label"),
+                "total_entities": total,
+                "properties_count": 0,
+                "completeness": 100.0,
+                "by_property": [],
+            })
+            continue
+
+        if total == 0:
             results.append({
                 "uri": cls_uri,
                 "class": cls_name,

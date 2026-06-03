@@ -1,0 +1,327 @@
+[PrefixDeclaration]
+:		http://example.org/voc#
+ex:		http://example.org/
+owl:		http://www.w3.org/2002/07/owl#
+rdf:		http://www.w3.org/1999/02/22-rdf-syntax-ns#
+xml:		http://www.w3.org/XML/1998/namespace
+xsd:		http://www.w3.org/2001/XMLSchema#
+foaf:		http://xmlns.com/foaf/0.1/
+schema:		http://schema.org/
+obda:		https://w3id.org/obda/vocabulary#
+rdfs:		http://www.w3.org/2000/01/rdf-schema#
+
+[MappingDeclaration] @collection [[
+
+
+
+mappingId	compsci-student
+target		ex:voc#compsci/student/{s_id} a ex:voc#Student ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string ; schema:birthDate {birth_date}^^xsd:date ; schema:email {email}^^xsd:string .
+source		SELECT * FROM compsci.student
+
+
+mappingId	compsci-academic
+target		ex:voc#compsci/academic/{a_id} a ex:voc#FacultyMember ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string ; schema:birthDate {birth_date}^^xsd:date ; schema:email {email}^^xsd:string .
+source		SELECT * FROM compsci.academic
+
+
+mappingId	compsci-teacher
+target		ex:voc#compsci/academic/{a_id} a ex:voc#Teacher .
+source		SELECT * FROM compsci.academic
+			WHERE position IN (1,2,3,8)
+
+
+mappingId	compsci-professor
+target		ex:voc#compsci/academic/{a_id} a ex:voc#Professor .
+source		SELECT * FROM compsci.academic
+			WHERE position IN (1,2,3)
+
+
+mappingId	compsci-researcher
+target		ex:voc#compsci/academic/{a_id} a ex:voc#Researcher .
+source		SELECT * FROM compsci.academic
+			WHERE position IN (1,2,3,9)
+
+
+mappingId	compsci-fullProfessor
+target		ex:voc#compsci/academic/{a_id} a ex:voc#FullProfessor .
+source		SELECT * FROM compsci.academic
+			WHERE position = 1
+
+
+mappingId	compsci-AssociateProfessor
+target		ex:voc#compsci/academic/{a_id} a ex:voc#AssociateProfessor .
+source		SELECT * FROM compsci.academic
+			WHERE position = 2
+
+
+mappingId	compsci-AssistantProfessor
+target		ex:voc#compsci/academic/{a_id} a ex:voc#AssistantProfessor .
+source		SELECT * FROM compsci.academic
+			WHERE position = 3
+
+
+mappingId	compsci-externalTeacher
+target		ex:voc#compsci/academic/{a_id} a ex:voc#ExternalTeacher .
+source		SELECT * FROM compsci.academic
+			WHERE position = 8
+
+
+mappingId	compsci-PostDoc
+target		ex:voc#compsci/academic/{a_id} a ex:voc#PostDoc .
+source		SELECT * FROM compsci.academic
+			WHERE position = 9
+
+
+mappingId	compsci-course
+target		ex:voc#compsci/course/{c_id} a ex:voc#Course ; ex:voc#title {title}^^xsd:string ; ex:voc#isGivenAt ex:voc#compsci/university .
+source		SELECT * FROM compsci.course
+
+
+mappingId	compsci-educationalInstitution
+target		ex:voc#compsci/university a ex:voc#EducationalInstitution .
+source		SELECT 1 AS dummy
+
+
+mappingId	compsci-teaching
+target		ex:voc#compsci/academic/{a_id} ex:voc#teaches ex:voc#compsci/course/{c_id} .
+source		SELECT * FROM compsci.teaching
+
+
+mappingId	compsci-isTaughtBy
+target		ex:voc#compsci/course/{c_id} ex:voc#isTaughtBy ex:voc#compsci/academic/{a_id} .
+source		SELECT * FROM compsci.teaching
+
+
+mappingId	compsci-registration
+target		ex:voc#compsci/student/{s_id} ex:voc#attends ex:voc#compsci/course/{c_id} .
+source		SELECT *
+			FROM compsci.course_registration
+
+
+
+mappingId	mathsci-person
+target		ex:voc#mathsci/person/{pid} a foaf:Person ; foaf:firstName {fname}^^xsd:string ; foaf:lastName {lname}^^xsd:string ; schema:birthDate {birth_date}^^xsd:date ; schema:email {email}^^xsd:string .
+source		SELECT * FROM mathsci.person
+
+
+mappingId	mathsci-undergraduate
+target		ex:voc#mathsci/person/{pid} a ex:voc#UndergraduateStudent .
+source		SELECT * FROM mathsci.person
+			WHERE status = 1
+
+
+mappingId	mathsci-graduate
+target		ex:voc#mathsci/person/{pid} a ex:voc#GraduateStudent .
+source		SELECT * FROM mathsci.person
+			WHERE status = 2
+
+
+mappingId	mathsci-phdStudent
+target		ex:voc#mathsci/person/{pid} a ex:voc#PhDStudent .
+source		SELECT * FROM mathsci.person
+			WHERE status = 4
+
+
+mappingId	mathsci-facultyMember
+target		ex:voc#mathsci/person/{pid} a ex:voc#FacultyMember .
+source		SELECT * FROM mathsci.person
+			WHERE status IN (7,8,9)
+
+
+mappingId	mathsci-teacher
+target		ex:voc#mathsci/person/{pid} a ex:voc#Teacher .
+source		SELECT * FROM mathsci.person
+			WHERE status IN (7,8,9)
+
+
+mappingId	mathsci-professor
+target		ex:voc#mathsci/person/{pid} a ex:voc#Professor .
+source		SELECT * FROM mathsci.person
+			WHERE status IN (7,8,9)
+
+
+mappingId	mathsci-researcher
+target		ex:voc#mathsci/person/{pid} a ex:voc#Researcher .
+source		SELECT * FROM mathsci.person
+			WHERE status IN (7,8,9,3)
+
+
+mappingId	mathsci-fullProfessor
+target		ex:voc#mathsci/person/{pid} a ex:voc#FullProfessor .
+source		SELECT * FROM mathsci.person
+			WHERE status = 7
+
+
+mappingId	mathsci-associate-prof
+target		ex:voc#mathsci/person/{pid} a ex:voc#AssociateProfessor .
+source		SELECT * FROM mathsci.person
+			WHERE status = 8
+
+
+mappingId	mathsci-assistantProfessor
+target		ex:voc#mathsci/person/{pid} a ex:voc#AssistantProfessor .
+source		SELECT * FROM mathsci.person
+			WHERE status = 9
+
+
+mappingId	mathsci-postDoc
+target		ex:voc#mathsci/person/{pid} a ex:voc#PostDoc .
+source		SELECT * FROM mathsci.person
+			WHERE status = 3
+
+
+mappingId	mathsci-course
+target		ex:voc#mathsci/course/{cid} a ex:voc#Course ; ex:voc#title {topic}^^xsd:string ; ex:voc#isGivenAt ex:voc#mathsci/university .
+source		SELECT * FROM mathsci.course
+
+
+mappingId	mathsci-educationalInstitution
+target		ex:voc#mathsci/university a ex:voc#EducationalInstitution .
+source		SELECT 1 AS dummy
+
+
+mappingId	mathsci-lecturer
+target		ex:voc#mathsci/person/{lecturer} a ex:voc#Lecturer ; ex:voc#givesLecture ex:voc#mathsci/course/{cid} .
+source		SELECT * FROM mathsci.course
+
+
+mappingId	mathsci-lab-teacher
+target		ex:voc#mathsci/person/{lab_teacher} a ex:voc#LabTeacher ; ex:voc#givesLab ex:voc#mathsci/course/{cid} .
+source		SELECT * FROM mathsci.course
+
+
+mappingId	mathsci-isTaughtBy-lecturer
+target		ex:voc#mathsci/course/{cid} ex:voc#isTaughtBy ex:voc#mathsci/person/{lecturer} .
+source		SELECT * FROM mathsci.course
+
+
+mappingId	mathsci-isTaughtBy-lab
+target		ex:voc#mathsci/course/{cid} ex:voc#isTaughtBy ex:voc#mathsci/person/{lab_teacher} .
+source		SELECT * FROM mathsci.course
+
+
+mappingId	mathsci-registration
+target		ex:voc#mathsci/person/{pid} ex:voc#attends ex:voc#mathsci/course/{cid} .
+source		SELECT *
+			FROM mathsci.registration
+
+
+mappingId	mathsci-isSupervisedBy
+target		ex:voc#mathsci/person/{pid_student} ex:voc#isSupervisedBy ex:voc#mathsci/person/{pid_supervisor} .
+source		SELECT * FROM mathsci.supervision
+
+
+
+mappingId	academics-teacher
+target		ex:voc#academics/teacher/{t_id} a ex:voc#FacultyMember ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string ; schema:birthDate {birth_date}^^xsd:date ; schema:email {email}^^xsd:string .
+source		SELECT * FROM academics.teacher
+
+
+mappingId	academics-teacherClass
+target		ex:voc#academics/teacher/{t_id} a ex:voc#Teacher .
+source		SELECT * FROM academics.teacher
+			WHERE position IN (1,2,3,8)
+
+
+mappingId	academics-professor
+target		ex:voc#academics/teacher/{t_id} a ex:voc#Professor .
+source		SELECT * FROM academics.teacher
+			WHERE position IN (1,2,3)
+
+
+mappingId	academics-researcher
+target		ex:voc#academics/teacher/{t_id} a ex:voc#Researcher .
+source		SELECT * FROM academics.teacher
+			WHERE position IN (1,2,3,9)
+
+
+mappingId	academics-fullProfessor
+target		ex:voc#academics/teacher/{t_id} a ex:voc#FullProfessor .
+source		SELECT * FROM academics.teacher
+			WHERE position = 1
+
+
+mappingId	academics-AssociateProfessor
+target		ex:voc#academics/teacher/{t_id} a ex:voc#AssociateProfessor .
+source		SELECT * FROM academics.teacher
+			WHERE position = 2
+
+
+mappingId	academics-AssistantProfessor
+target		ex:voc#academics/teacher/{t_id} a ex:voc#AssistantProfessor .
+source		SELECT * FROM academics.teacher
+			WHERE position = 3
+
+
+mappingId	academics-externalTeacher
+target		ex:voc#academics/teacher/{t_id} a ex:voc#ExternalTeacher .
+source		SELECT * FROM academics.teacher
+			WHERE position = 8
+
+
+mappingId	academics-PostDoc
+target		ex:voc#academics/teacher/{t_id} a ex:voc#PostDoc .
+source		SELECT * FROM academics.teacher
+			WHERE position = 9
+
+
+mappingId	academics-course
+target		ex:voc#academics/course/{c_id} a ex:voc#Course ; ex:voc#title {title}^^xsd:string ; ex:voc#isGivenAt ex:voc#academics/university .
+source		SELECT * FROM academics.course
+
+
+mappingId	academics-educationalInstitution
+target		ex:voc#academics/university a ex:voc#EducationalInstitution .
+source		SELECT 1 AS dummy
+
+
+mappingId	academics-teaching
+target		ex:voc#academics/teacher/{t_id} ex:voc#teaches ex:voc#academics/course/{c_id} .
+source		SELECT * FROM academics.teaching
+
+
+mappingId	academics-isTaughtBy
+target		ex:voc#academics/course/{c_id} ex:voc#isTaughtBy ex:voc#academics/teacher/{t_id} .
+source		SELECT * FROM academics.teaching
+
+
+mappingId	academics-place
+target		ex:voc#academics/place/{place_id} a ex:voc#Place ; ex:voc#building {building}^^xsd:string ; ex:voc#roomCode {room_code}^^xsd:string .
+source		SELECT * FROM academics.place
+
+
+mappingId	academics-timeslot
+target		ex:voc#academics/timeslot/{ts_id} a ex:voc#TimeSlot ; ex:voc#day {day}^^xsd:string ; ex:voc#startTime {start_time}^^xsd:time ; ex:voc#endTime {end_time}^^xsd:time .
+source		SELECT * FROM academics.time_slot
+
+
+mappingId	academics-schedule-place
+target		ex:voc#academics/course/{c_id} a ex:voc#ScheduledCourse ; ex:voc#isScheduledAt ex:voc#academics/place/{place_id} .
+source		SELECT c_id, place_id FROM academics.schedule
+
+
+mappingId	academics-schedule-time
+target		ex:voc#academics/course/{c_id} ex:voc#isScheduledOn ex:voc#academics/timeslot/{ts_id} .
+source		SELECT c_id, ts_id FROM academics.schedule
+
+
+mappingId	academics-schedule-class
+target		ex:voc#academics/schedule/{c_id}/{place_id}/{ts_id} a ex:voc#Schedule .
+source		SELECT c_id, place_id, ts_id FROM academics.schedule
+
+
+mappingId	academics-schedule-forCourse
+target		ex:voc#academics/schedule/{c_id}/{place_id}/{ts_id} ex:voc#forCourse ex:voc#academics/course/{c_id} .
+source		SELECT c_id, place_id, ts_id FROM academics.schedule
+
+
+mappingId	academics-schedule-atPlace
+target		ex:voc#academics/schedule/{c_id}/{place_id}/{ts_id} ex:voc#atPlace ex:voc#academics/place/{place_id} .
+source		SELECT c_id, place_id, ts_id FROM academics.schedule
+
+
+mappingId	academics-schedule-atTime
+target		ex:voc#academics/schedule/{c_id}/{place_id}/{ts_id} ex:voc#atTime ex:voc#academics/timeslot/{ts_id} .
+source		SELECT c_id, place_id, ts_id FROM academics.schedule
+
+]]

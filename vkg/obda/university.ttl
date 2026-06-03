@@ -19,7 +19,7 @@
 ###  http://example.org/voc#attends
 :attends rdf:type owl:ObjectProperty ;
          rdfs:label "Attends" ;
-         rdfs:domain foaf:Person ;
+         rdfs:domain :Student ;
          rdfs:range :Course .
 
 
@@ -44,7 +44,8 @@
 
 ###  http://example.org/voc#isSupervisedBy
 :isSupervisedBy rdf:type owl:ObjectProperty ;
-                rdfs:label "Is Supervised By" .
+                rdfs:label "Is Supervised By" ;
+                rdfs:domain :GraduateStudent .
 
 
 ###  http://example.org/voc#isTaughtBy

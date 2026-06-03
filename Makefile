@@ -10,9 +10,11 @@ clean:
         logs logs-healthy logs-shared logs-all \
         ps \
         shell-api shell-mysql shell-pgsql shell-mssql \
-        clean clean-healthy clean-all
+        clean clean-healthy clean-all \
+        up-clean-all down-clean-all restart-clean-all build-clean-all logs-clean-all ps-clean
 
 COMPOSE           := docker compose
+COMPOSE_CLEAN     := docker compose -p vkg-clean -f docker-compose.clean.yml
 PROFILE_HEALTHY   := --profile healthy
 PROFILE_SHARED    := --profile shared
 PROFILE_FRONTEND  := --profile frontend
@@ -90,3 +92,25 @@ ps: ## List running containers across all profiles
 
 shell-mssql: ## Open MSSQL shell (healthy dataset)
 	$(COMPOSE) $(PROFILE_HEALTHY) exec mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U academics -P academicspwd
+
+# ── Clean (0-defect benchmark) stack ───────────────────────────────────────────
+# Parallel stack (project: vkg-clean) wired to datasets/clean via the *-clean
+# services + university.clean.obda. Reuses host ports 8000/5173 so the dashboard
+# URL is unchanged; DBs/ontop use the *_CLEAN_PORT values from .env.
+
+up-clean-all: ## Start the full clean stack (db + teiid + ontop + be + fe)
+	$(COMPOSE_CLEAN) up -d --build
+
+down-clean-all: ## Stop and remove the clean stack (incl. volumes)
+	$(COMPOSE_CLEAN) down -v
+
+restart-clean-all: down-clean-all up-clean-all ## Restart the full clean stack
+
+build-clean-all: ## Build the clean stack images
+	$(COMPOSE_CLEAN) build
+
+logs-clean-all: ## Tail logs for the clean stack
+	$(COMPOSE_CLEAN) logs -f
+
+ps-clean: ## List running containers in the clean stack
+	$(COMPOSE_CLEAN) ps

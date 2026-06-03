@@ -26,14 +26,12 @@
 ###  http://example.org/voc#givesLab
 :givesLab rdf:type owl:ObjectProperty ;
           rdfs:label "Gives Lab" ;
-          rdfs:domain :LabTeacher ;
           rdfs:subPropertyOf :teaches .
 
 
 ###  http://example.org/voc#givesLecture
 :givesLecture rdf:type owl:ObjectProperty ;
               rdfs:label "Gives Lecture" ;
-              rdfs:domain :Lecturer ;
               rdfs:subPropertyOf :teaches .
 
 
@@ -180,12 +178,6 @@ foaf:lastName rdf:type owl:DatatypeProperty ;
                          foaf:Person .
 
 
-###  http://example.org/voc#ScheduledCourse
-:ScheduledCourse rdf:type owl:Class ;
-                 rdfs:label "Scheduled Course" ;
-                 rdfs:subClassOf :Course .
-
-
 ###  http://example.org/voc#EducationalInstitution
 :EducationalInstitution rdf:type owl:Class ;
                         rdfs:label "Educational Institution" ;
@@ -208,18 +200,6 @@ foaf:lastName rdf:type owl:DatatypeProperty ;
 :FullProfessor rdf:type owl:Class ;
                rdfs:label "Full Professor" ;
                rdfs:subClassOf :Professor .
-
-
-###  http://example.org/voc#LabTeacher
-:LabTeacher rdf:type owl:Class ;
-            rdfs:label "Lab Teacher" ;
-            rdfs:subClassOf :Teacher .
-
-
-###  http://example.org/voc#Lecturer
-:Lecturer rdf:type owl:Class ;
-          rdfs:label "Lecturer" ;
-          rdfs:subClassOf :Teacher .
 
 
 ###  http://example.org/voc#GraduateStudent
@@ -289,13 +269,13 @@ foaf:lastName rdf:type owl:DatatypeProperty ;
 ###  http://example.org/voc#isScheduledAt
 :isScheduledAt rdf:type owl:ObjectProperty ;
                rdfs:label "Is Scheduled At" ;
-               rdfs:domain :ScheduledCourse ;
+               rdfs:domain :Course ;
                rdfs:range :Place .
 
 ###  http://example.org/voc#isScheduledOn
 :isScheduledOn rdf:type owl:ObjectProperty ;
                rdfs:label "Is Scheduled On" ;
-               rdfs:domain :ScheduledCourse ;
+               rdfs:domain :Course ;
                rdfs:range :TimeSlot .
 ###  http://xmlns.com/foaf/0.1/Person
 foaf:Person rdf:type owl:Class ;

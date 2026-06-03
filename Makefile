@@ -93,24 +93,19 @@ ps: ## List running containers across all profiles
 shell-mssql: ## Open MSSQL shell (healthy dataset)
 	$(COMPOSE) $(PROFILE_HEALTHY) exec mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U academics -P academicspwd
 
-# ── Clean (0-defect benchmark) stack ───────────────────────────────────────────
-# Parallel stack (project: vkg-clean) wired to datasets/clean via the *-clean
-# services + university.clean.obda. Reuses host ports 8000/5173 so the dashboard
-# URL is unchanged; DBs/ontop use the *_CLEAN_PORT values from .env.
-
-up-clean-all: ## Start the full clean stack (db + teiid + ontop + be + fe)
+up-clean-all:
 	$(COMPOSE_CLEAN) up -d --build
 
-down-clean-all: ## Stop and remove the clean stack (incl. volumes)
+down-clean-all:
 	$(COMPOSE_CLEAN) down -v
 
-restart-clean-all: down-clean-all up-clean-all ## Restart the full clean stack
+restart-clean-all: down-clean-all up-clean-all
 
-build-clean-all: ## Build the clean stack images
+build-clean-all:
 	$(COMPOSE_CLEAN) build
 
-logs-clean-all: ## Tail logs for the clean stack
+logs-clean-all:
 	$(COMPOSE_CLEAN) logs -f
 
-ps-clean: ## List running containers in the clean stack
+ps-clean:
 	$(COMPOSE_CLEAN) ps

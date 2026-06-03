@@ -181,12 +181,12 @@ source		SELECT 1 AS dummy
 
 
 mappingId	mathsci-lecturer
-target		ex:voc#mathsci/person/{lecturer} ex:voc#givesLecture ex:voc#mathsci/course/{cid} .
+target		ex:voc#mathsci/person/{lecturer} a ex:voc#Lecturer ; ex:voc#givesLecture ex:voc#mathsci/course/{cid} .
 source		SELECT * FROM mathsci.course
 
 
 mappingId	mathsci-lab-teacher
-target		ex:voc#mathsci/person/{lab_teacher} ex:voc#givesLab ex:voc#mathsci/course/{cid} .
+target		ex:voc#mathsci/person/{lab_teacher} a ex:voc#LabTeacher ; ex:voc#givesLab ex:voc#mathsci/course/{cid} .
 source		SELECT * FROM mathsci.course
 
 
@@ -296,7 +296,7 @@ source		SELECT * FROM academics.time_slot
 
 
 mappingId	academics-schedule-place
-target		ex:voc#academics/course/{c_id} ex:voc#isScheduledAt ex:voc#academics/place/{place_id} .
+target		ex:voc#academics/course/{c_id} a ex:voc#ScheduledCourse ; ex:voc#isScheduledAt ex:voc#academics/place/{place_id} .
 source		SELECT c_id, place_id FROM academics.schedule
 
 

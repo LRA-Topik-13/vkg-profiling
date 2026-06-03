@@ -12,378 +12,313 @@ rdfs:		http://www.w3.org/2000/01/rdf-schema#
 
 [MappingDeclaration] @collection [[
 
-# ══════════════════════════════════════════════════════════════════════
-# SOURCE: compsci  (MySQL)
-# ══════════════════════════════════════════════════════════════════════
 
-# ── foaf:Person + :Student ────────────────────────────────────────────
 
 mappingId	compsci-student
 target		ex:voc#compsci/student/{s_id} a ex:voc#Student ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string ; schema:birthDate {birth_date}^^xsd:date ; schema:email {email}^^xsd:string .
 source		SELECT * FROM compsci.student
 
-# ── :FacultyMember (base class, data properties) ──────────────────────
 
 mappingId	compsci-academic
 target		ex:voc#compsci/academic/{a_id} a ex:voc#FacultyMember ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string ; schema:birthDate {birth_date}^^xsd:date ; schema:email {email}^^xsd:string .
 source		SELECT * FROM compsci.academic
 
-# ── :Teacher (all academics who have a teaching role: pos 1,2,3,8) ───
 
 mappingId	compsci-teacher
 target		ex:voc#compsci/academic/{a_id} a ex:voc#Teacher .
 source		SELECT * FROM compsci.academic
 			WHERE position IN (1,2,3,8)
 
-# ── :Professor (FullProf/AssocProf/AssistProf: pos 1,2,3) ─────────────
 
 mappingId	compsci-professor
 target		ex:voc#compsci/academic/{a_id} a ex:voc#Professor .
 source		SELECT * FROM compsci.academic
 			WHERE position IN (1,2,3)
 
-# ── :Researcher (Professor subclasses + PostDoc: pos 1,2,3,9) ─────────
 
 mappingId	compsci-researcher
 target		ex:voc#compsci/academic/{a_id} a ex:voc#Researcher .
 source		SELECT * FROM compsci.academic
 			WHERE position IN (1,2,3,9)
 
-# ── :FullProfessor ────────────────────────────────────────────────────
 
 mappingId	compsci-fullProfessor
 target		ex:voc#compsci/academic/{a_id} a ex:voc#FullProfessor .
 source		SELECT * FROM compsci.academic
 			WHERE position = 1
 
-# ── :AssociateProfessor ───────────────────────────────────────────────
 
 mappingId	compsci-AssociateProfessor
 target		ex:voc#compsci/academic/{a_id} a ex:voc#AssociateProfessor .
 source		SELECT * FROM compsci.academic
 			WHERE position = 2
 
-# ── :AssistantProfessor ───────────────────────────────────────────────
 
 mappingId	compsci-AssistantProfessor
 target		ex:voc#compsci/academic/{a_id} a ex:voc#AssistantProfessor .
 source		SELECT * FROM compsci.academic
 			WHERE position = 3
 
-# ── :ExternalTeacher ──────────────────────────────────────────────────
 
 mappingId	compsci-externalTeacher
 target		ex:voc#compsci/academic/{a_id} a ex:voc#ExternalTeacher .
 source		SELECT * FROM compsci.academic
 			WHERE position = 8
 
-# ── :PostDoc ──────────────────────────────────────────────────────────
 
 mappingId	compsci-PostDoc
 target		ex:voc#compsci/academic/{a_id} a ex:voc#PostDoc .
 source		SELECT * FROM compsci.academic
 			WHERE position = 9
 
-# ── :Course ───────────────────────────────────────────────────────────
 
 mappingId	compsci-course
 target		ex:voc#compsci/course/{c_id} a ex:voc#Course ; ex:voc#title {title}^^xsd:string ; ex:voc#isGivenAt ex:voc#compsci/university .
 source		SELECT * FROM compsci.course
 
-# ── :EducationalInstitution (compsci university node) ─────────────────
 
 mappingId	compsci-educationalInstitution
 target		ex:voc#compsci/university a ex:voc#EducationalInstitution .
 source		SELECT 1 AS dummy
 
-# ── :teaches (academic → course) ─────────────────────────────────────
 
 mappingId	compsci-teaching
 target		ex:voc#compsci/academic/{a_id} ex:voc#teaches ex:voc#compsci/course/{c_id} .
 source		SELECT * FROM compsci.teaching
 
-# ── :isTaughtBy (course → academic, inverse of :teaches) ─────────────
 
 mappingId	compsci-isTaughtBy
 target		ex:voc#compsci/course/{c_id} ex:voc#isTaughtBy ex:voc#compsci/academic/{a_id} .
 source		SELECT * FROM compsci.teaching
 
-# ── :attends (student → course) ──────────────────────────────────────
 
 mappingId	compsci-registration
 target		ex:voc#compsci/student/{s_id} ex:voc#attends ex:voc#compsci/course/{c_id} .
 source		SELECT *
 			FROM compsci.course_registration
 
-# ══════════════════════════════════════════════════════════════════════
-# SOURCE: mathsci  (PostgreSQL)
-# ══════════════════════════════════════════════════════════════════════
 
-# ── foaf:Person (all persons, data properties) ────────────────────────
 
 mappingId	mathsci-person
 target		ex:voc#mathsci/person/{pid} a foaf:Person ; foaf:firstName {fname}^^xsd:string ; foaf:lastName {lname}^^xsd:string ; schema:birthDate {birth_date}^^xsd:date ; schema:email {email}^^xsd:string .
 source		SELECT * FROM mathsci.person
 
-# ── :UndergraduateStudent (status = 1) ───────────────────────────────
 
 mappingId	mathsci-undergraduate
 target		ex:voc#mathsci/person/{pid} a ex:voc#UndergraduateStudent .
 source		SELECT * FROM mathsci.person
 			WHERE status = 1
 
-# ── :GraduateStudent (status = 2) ────────────────────────────────────
 
 mappingId	mathsci-graduate
 target		ex:voc#mathsci/person/{pid} a ex:voc#GraduateStudent .
 source		SELECT * FROM mathsci.person
 			WHERE status = 2
 
-# ── :PhDStudent (status = 4) ─────────────────────────────────────────
 
 mappingId	mathsci-phdStudent
 target		ex:voc#mathsci/person/{pid} a ex:voc#PhDStudent .
 source		SELECT * FROM mathsci.person
 			WHERE status = 4
 
-# ── :FacultyMember (all faculty: status 7,8,9) ───────────────────────
 
 mappingId	mathsci-facultyMember
 target		ex:voc#mathsci/person/{pid} a ex:voc#FacultyMember .
 source		SELECT * FROM mathsci.person
 			WHERE status IN (7,8,9)
 
-# ── :Teacher (all faculty with teaching role: status 7,8,9) ──────────
 
 mappingId	mathsci-teacher
 target		ex:voc#mathsci/person/{pid} a ex:voc#Teacher .
 source		SELECT * FROM mathsci.person
 			WHERE status IN (7,8,9)
 
-# ── :Professor (status 7,8,9 — all are Professor subclasses) ─────────
 
 mappingId	mathsci-professor
 target		ex:voc#mathsci/person/{pid} a ex:voc#Professor .
 source		SELECT * FROM mathsci.person
 			WHERE status IN (7,8,9)
 
-# ── :Researcher (Professor + PostDoc: status 7,8,9,3) ────────────────
 
 mappingId	mathsci-researcher
 target		ex:voc#mathsci/person/{pid} a ex:voc#Researcher .
 source		SELECT * FROM mathsci.person
 			WHERE status IN (7,8,9,3)
 
-# ── :FullProfessor (status = 7) ───────────────────────────────────────
 
 mappingId	mathsci-fullProfessor
 target		ex:voc#mathsci/person/{pid} a ex:voc#FullProfessor .
 source		SELECT * FROM mathsci.person
 			WHERE status = 7
 
-# ── :AssociateProfessor (status = 8) ──────────────────────────────────
 
 mappingId	mathsci-associate-prof
 target		ex:voc#mathsci/person/{pid} a ex:voc#AssociateProfessor .
 source		SELECT * FROM mathsci.person
 			WHERE status = 8
 
-# ── :AssistantProfessor (status = 9) ──────────────────────────────────
 
 mappingId	mathsci-assistantProfessor
 target		ex:voc#mathsci/person/{pid} a ex:voc#AssistantProfessor .
 source		SELECT * FROM mathsci.person
 			WHERE status = 9
 
-# ── :PostDoc (status = 3) ─────────────────────────────────────────────
 
 mappingId	mathsci-postDoc
 target		ex:voc#mathsci/person/{pid} a ex:voc#PostDoc .
 source		SELECT * FROM mathsci.person
 			WHERE status = 3
 
-# ── :Course ───────────────────────────────────────────────────────────
 
 mappingId	mathsci-course
 target		ex:voc#mathsci/course/{cid} a ex:voc#Course ; ex:voc#title {topic}^^xsd:string ; ex:voc#isGivenAt ex:voc#mathsci/university .
 source		SELECT * FROM mathsci.course
 
-# ── :EducationalInstitution (mathsci university node) ─────────────────
 
 mappingId	mathsci-educationalInstitution
 target		ex:voc#mathsci/university a ex:voc#EducationalInstitution .
 source		SELECT 1 AS dummy
 
-# ── :givesLecture (lecturer → course, subPropertyOf :teaches) ─────────
 
 mappingId	mathsci-lecturer
-target		ex:voc#mathsci/person/{lecturer} a ex:voc#Lecturer ; ex:voc#givesLecture ex:voc#mathsci/course/{cid} .
+target		ex:voc#mathsci/person/{lecturer} ex:voc#givesLecture ex:voc#mathsci/course/{cid} .
 source		SELECT * FROM mathsci.course
 
-# ── :givesLab (lab_teacher → course, subPropertyOf :teaches) ──────────
 
 mappingId	mathsci-lab-teacher
-target		ex:voc#mathsci/person/{lab_teacher} a ex:voc#LabTeacher ; ex:voc#givesLab ex:voc#mathsci/course/{cid} .
+target		ex:voc#mathsci/person/{lab_teacher} ex:voc#givesLab ex:voc#mathsci/course/{cid} .
 source		SELECT * FROM mathsci.course
 
-# ── :isTaughtBy via givesLecture (course → lecturer, inverse) ─────────
 
 mappingId	mathsci-isTaughtBy-lecturer
 target		ex:voc#mathsci/course/{cid} ex:voc#isTaughtBy ex:voc#mathsci/person/{lecturer} .
 source		SELECT * FROM mathsci.course
 
-# ── :isTaughtBy via givesLab (course → lab_teacher, inverse) ──────────
 
 mappingId	mathsci-isTaughtBy-lab
 target		ex:voc#mathsci/course/{cid} ex:voc#isTaughtBy ex:voc#mathsci/person/{lab_teacher} .
 source		SELECT * FROM mathsci.course
 
-# ── :attends (student → course via registration) ──────────────────────
 
 mappingId	mathsci-registration
 target		ex:voc#mathsci/person/{pid} ex:voc#attends ex:voc#mathsci/course/{cid} .
 source		SELECT *
 			FROM mathsci.registration
 
-# ── :isSupervisedBy (GraduateStudent/PhDStudent → Professor) ──────────
 
 mappingId	mathsci-isSupervisedBy
 target		ex:voc#mathsci/person/{pid_student} ex:voc#isSupervisedBy ex:voc#mathsci/person/{pid_supervisor} .
 source		SELECT * FROM mathsci.supervision
 
-# ══════════════════════════════════════════════════════════════════════
-# SOURCE: academics  (Microsoft SQL Server)
-# ══════════════════════════════════════════════════════════════════════
 
-# ── :FacultyMember (base class, data properties) ──────────────────────
 
 mappingId	academics-teacher
 target		ex:voc#academics/teacher/{t_id} a ex:voc#FacultyMember ; foaf:firstName {first_name}^^xsd:string ; foaf:lastName {last_name}^^xsd:string ; schema:birthDate {birth_date}^^xsd:date ; schema:email {email}^^xsd:string .
 source		SELECT * FROM academics.teacher
 
-# ── :Teacher (pos 1,2,3,8) ────────────────────────────────────────────
 
 mappingId	academics-teacherClass
 target		ex:voc#academics/teacher/{t_id} a ex:voc#Teacher .
 source		SELECT * FROM academics.teacher
 			WHERE position IN (1,2,3,8)
 
-# ── :Professor (pos 1,2,3) ────────────────────────────────────────────
 
 mappingId	academics-professor
 target		ex:voc#academics/teacher/{t_id} a ex:voc#Professor .
 source		SELECT * FROM academics.teacher
 			WHERE position IN (1,2,3)
 
-# ── :Researcher (pos 1,2,3,9) ─────────────────────────────────────────
 
 mappingId	academics-researcher
 target		ex:voc#academics/teacher/{t_id} a ex:voc#Researcher .
 source		SELECT * FROM academics.teacher
 			WHERE position IN (1,2,3,9)
 
-# ── :FullProfessor ────────────────────────────────────────────────────
 
 mappingId	academics-fullProfessor
 target		ex:voc#academics/teacher/{t_id} a ex:voc#FullProfessor .
 source		SELECT * FROM academics.teacher
 			WHERE position = 1
 
-# ── :AssociateProfessor ───────────────────────────────────────────────
 
 mappingId	academics-AssociateProfessor
 target		ex:voc#academics/teacher/{t_id} a ex:voc#AssociateProfessor .
 source		SELECT * FROM academics.teacher
 			WHERE position = 2
 
-# ── :AssistantProfessor ───────────────────────────────────────────────
 
 mappingId	academics-AssistantProfessor
 target		ex:voc#academics/teacher/{t_id} a ex:voc#AssistantProfessor .
 source		SELECT * FROM academics.teacher
 			WHERE position = 3
 
-# ── :ExternalTeacher ──────────────────────────────────────────────────
 
 mappingId	academics-externalTeacher
 target		ex:voc#academics/teacher/{t_id} a ex:voc#ExternalTeacher .
 source		SELECT * FROM academics.teacher
 			WHERE position = 8
 
-# ── :PostDoc ──────────────────────────────────────────────────────────
 
 mappingId	academics-PostDoc
 target		ex:voc#academics/teacher/{t_id} a ex:voc#PostDoc .
 source		SELECT * FROM academics.teacher
 			WHERE position = 9
 
-# ── :Course ───────────────────────────────────────────────────────────
 
 mappingId	academics-course
 target		ex:voc#academics/course/{c_id} a ex:voc#Course ; ex:voc#title {title}^^xsd:string ; ex:voc#isGivenAt ex:voc#academics/university .
 source		SELECT * FROM academics.course
 
-# ── :EducationalInstitution (academics university node) ───────────────
 
 mappingId	academics-educationalInstitution
 target		ex:voc#academics/university a ex:voc#EducationalInstitution .
 source		SELECT 1 AS dummy
 
-# ── :teaches (teacher → course) ──────────────────────────────────────
 
 mappingId	academics-teaching
 target		ex:voc#academics/teacher/{t_id} ex:voc#teaches ex:voc#academics/course/{c_id} .
 source		SELECT * FROM academics.teaching
 
-# ── :isTaughtBy (course → teacher, inverse of :teaches) ──────────────
 
 mappingId	academics-isTaughtBy
 target		ex:voc#academics/course/{c_id} ex:voc#isTaughtBy ex:voc#academics/teacher/{t_id} .
 source		SELECT * FROM academics.teaching
 
-# ── :Place ────────────────────────────────────────────────────────────
 
 mappingId	academics-place
 target		ex:voc#academics/place/{place_id} a ex:voc#Place ; ex:voc#building {building}^^xsd:string ; ex:voc#roomCode {room_code}^^xsd:string .
 source		SELECT * FROM academics.place
 
-# ── :TimeSlot ─────────────────────────────────────────────────────────
 
 mappingId	academics-timeslot
 target		ex:voc#academics/timeslot/{ts_id} a ex:voc#TimeSlot ; ex:voc#day {day}^^xsd:string ; ex:voc#startTime {start_time}^^xsd:time ; ex:voc#endTime {end_time}^^xsd:time .
 source		SELECT * FROM academics.time_slot
 
-# ── :isScheduledAt (course → place) ──────────────────────────────────
 
 mappingId	academics-schedule-place
-target		ex:voc#academics/course/{c_id} a ex:voc#ScheduledCourse ; ex:voc#isScheduledAt ex:voc#academics/place/{place_id} .
+target		ex:voc#academics/course/{c_id} ex:voc#isScheduledAt ex:voc#academics/place/{place_id} .
 source		SELECT c_id, place_id FROM academics.schedule
 
-# ── :isScheduledOn (course → timeslot) ───────────────────────────────
 
 mappingId	academics-schedule-time
 target		ex:voc#academics/course/{c_id} ex:voc#isScheduledOn ex:voc#academics/timeslot/{ts_id} .
 source		SELECT c_id, ts_id FROM academics.schedule
 
-# ── :Schedule class (composite IRI from schedule PK) ─────────────────
 
 mappingId	academics-schedule-class
 target		ex:voc#academics/schedule/{c_id}/{place_id}/{ts_id} a ex:voc#Schedule .
 source		SELECT c_id, place_id, ts_id FROM academics.schedule
 
-# ── :forCourse (Schedule → Course) ───────────────────────────────────
 
 mappingId	academics-schedule-forCourse
 target		ex:voc#academics/schedule/{c_id}/{place_id}/{ts_id} ex:voc#forCourse ex:voc#academics/course/{c_id} .
 source		SELECT c_id, place_id, ts_id FROM academics.schedule
 
-# ── :atPlace (Schedule → Place) ──────────────────────────────────────
 
 mappingId	academics-schedule-atPlace
 target		ex:voc#academics/schedule/{c_id}/{place_id}/{ts_id} ex:voc#atPlace ex:voc#academics/place/{place_id} .
 source		SELECT c_id, place_id, ts_id FROM academics.schedule
 
-# ── :atTime (Schedule → TimeSlot) ────────────────────────────────────
 
 mappingId	academics-schedule-atTime
 target		ex:voc#academics/schedule/{c_id}/{place_id}/{ts_id} ex:voc#atTime ex:voc#academics/timeslot/{ts_id} .

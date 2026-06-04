@@ -1,6 +1,6 @@
 import pytest
 
-from tests.conciseness.conftest import ENTITY_CONFIG, SOURCE_ACADEMICS, inject_defects
+from tests.conciseness.intra_source.conftest import ENTITY_CONFIG, SOURCE_ACADEMICS, inject_defects
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
@@ -65,4 +65,3 @@ def test_intra_source_duplicates(entity, pct, db_conn, client):
     all_uris = [uri for item in items for uri in item["uris"]]
     assert len(all_uris) == len(set(all_uris)), \
         f"{entity} {pct}%: same URI appears in multiple groups"
-

@@ -1,6 +1,6 @@
 import pytest
 
-from tests.conciseness.conftest import ENTITY_CONFIG, SOURCE_ACADEMICS, inject_defects
+from tests.conciseness.intra_source.conftest import ENTITY_CONFIG, SOURCE_ACADEMICS, inject_defects
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────

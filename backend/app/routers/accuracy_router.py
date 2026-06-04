@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Query, HTTPException
 from typing import Optional
 import asyncio
+import re
 import statistics
 
+from app.config import OBDA_FILE
 from app.dependencies import (
     execute_sparql, PREFIXES, local_name, bindings, count_binding,
     sparql_502, source_membership_filter, different_source_filter, find_source,
@@ -56,6 +58,109 @@ def _resolve_any_mapped_prop_uri(prop_uri: str) -> dict:
             if p["uri"] == prop_uri:
                 return p
     raise HTTPException(status_code=404, detail=f"Property URI '{prop_uri}' not found")
+
+
+def _sa4_expand_template(term: str, prefixes: dict[str, str]) -> str | None:
+    """Expand an OBDA URI template token while preserving column placeholders."""
+    term = term.strip()
+    if term.startswith("<") and term.endswith(">"):
+        return term[1:-1]
+    if ":" not in term:
+        return None
+    idx = term.index(":")
+    prefix, local = term[: idx + 1], term[idx + 1 :]
+    if prefix not in prefixes:
+        return None
+    return prefixes[prefix] + local
+
+
+def _sa4_template_uri(template: str, columns: list[str], values: tuple) -> str:
+    """Render an OBDA subject URI template from a Teiid source row."""
+    uri = template
+    for column, value in zip(columns, values):
+        uri = uri.replace("{" + column + "}", str(value))
+    return uri
+
+
+def _sa4_explicit_type_mappings() -> list[dict]:
+    """Parse OBDA class mappings used to recover non-domain-inferred classes."""
+    from app.population import _iter_mapping_blocks, _load_prefixes, _parse_source_sql
+
+    with open(OBDA_FILE, encoding="utf-8") as f:
+        content = f.read()
+    prefixes = _load_prefixes(content)
+
+    mappings = []
+    for target, source in _iter_mapping_blocks(content):
+        parts = [p.strip() for p in target.rstrip(".").split(";")]
+        first_tokens = parts[0].split()
+        if len(first_tokens) < 3:
+            continue
+
+        subject_template = _sa4_expand_template(first_tokens[0], prefixes)
+        if subject_template is None:
+            continue
+        columns = re.findall(r"\{([^}]+)\}", subject_template)
+        if not columns:
+            continue
+
+        type_uris = []
+        pairs = [(first_tokens[1], first_tokens[2])] + [
+            (tokens[0], tokens[1])
+            for tokens in (part.split() for part in parts[1:])
+            if len(tokens) >= 2
+        ]
+        for pred_tok, obj_tok in pairs:
+            if pred_tok != "a":
+                continue
+            class_uri = _sa4_expand_template(obj_tok, prefixes)
+            if class_uri:
+                type_uris.append(class_uri)
+        if not type_uris:
+            continue
+
+        table, where = _parse_source_sql(source)
+        if not table:
+            continue
+        mappings.append({
+            "template": subject_template,
+            "columns": columns,
+            "classes": tuple(type_uris),
+            "table": table,
+            "where": where,
+        })
+    return mappings
+
+
+async def _sa4_fetch_explicit_entity_classes(known_class_uris: set[str]) -> dict[str, set[str]]:
+    """Fetch class assignments produced by OBDA type mappings via Teiid SQL."""
+    from app.teiid_client import TeiidUnavailable, execute_teiid
+
+    entity_classes: dict[str, set[str]] = {}
+    mappings = _sa4_explicit_type_mappings()
+
+    async def fetch_mapping(mapping: dict) -> tuple[dict, list[tuple]]:
+        select_cols = ", ".join(mapping["columns"])
+        sql = f"SELECT {select_cols} FROM {mapping['table']}"
+        if mapping["where"]:
+            sql += f" WHERE {mapping['where']}"
+        return mapping, await execute_teiid(sql)
+
+    try:
+        results = await asyncio.gather(*(fetch_mapping(mapping) for mapping in mappings))
+    except TeiidUnavailable as e:
+        raise HTTPException(status_code=502, detail=f"Teiid source query error: {str(e)}")
+
+    for mapping, rows in results:
+        type_uris = [uri for uri in mapping["classes"] if uri in known_class_uris]
+        if not type_uris:
+            continue
+        for row in rows:
+            values = row if isinstance(row, tuple) else (row,)
+            entity_uri = _sa4_template_uri(mapping["template"], mapping["columns"], values)
+            entity_classes.setdefault(entity_uri, set()).update(type_uris)
+
+    return entity_classes
 
 
 def _parse_facets(
@@ -950,18 +1055,17 @@ async def accuracy_property_misuse_by_property(
       • Classes where the property IS expected (per ontology domain constraints):
         always included, even when count = 0.
       • Incompatible classes where subjects have the property without any
-        expected-domain type.
+        expected-domain class assigned by the OBDA class mappings.
 
-    A property use is considered valid if the subject has at least one observed
-    class compatible with the expected domain. This avoids false positives from
-    superclass / multi-typing artifacts, such as a valid Student also appearing
-    as Person.
+    A property use is considered valid if the subject has at least one assigned
+    VKG class compatible with the expected domain. Class assignments are read
+    from OBDA class mappings, not from SPARQL type inference, because domain
+    inference from the checked property would otherwise hide property misuse.
     """
     from app.routers.metadata_router import KNOWN_CLASSES, KNOWN_PROPERTIES
 
     prop_entry = _resolve_any_mapped_prop_uri(property_uri)
     known_class_by_uri = {cls["uri"]: cls for cls in KNOWN_CLASSES}
-    known_class_values = " ".join(f"<{cls['uri']}>" for cls in KNOWN_CLASSES)
     expected_for: set[str] = {
         cls_uri
         for cls_uri, props in KNOWN_PROPERTIES.items()
@@ -979,30 +1083,25 @@ async def accuracy_property_misuse_by_property(
                 ?entity <{property_uri}> ?value .
             }}
         """
-        type_query = f"""
-            {PREFIXES}
-            SELECT DISTINCT ?entity ?class WHERE {{
-                ?entity <{property_uri}> ?value .
-                ?entity a ?class .
-                VALUES ?class {{ {known_class_values} }}
-            }}
-        """
-        entity_raw, type_raw = await asyncio.gather(
+        entity_raw, explicit_classes_by_entity = await asyncio.gather(
             execute_sparql(entity_query),
-            execute_sparql(type_query),
+            _sa4_fetch_explicit_entity_classes(set(known_class_by_uri)),
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise sparql_502(e)
 
-    all_entities = sorted({b["entity"]["value"] for b in _bindings(entity_raw)})
+    all_entities = sorted({b["entity"]["value"] for b in bindings(entity_raw)})
     entity_classes: dict[str, set[str]] = {uri: set() for uri in all_entities}
     class_entities: dict[str, set[str]] = {cls["uri"]: set() for cls in KNOWN_CLASSES}
 
-    for binding in _bindings(type_raw):
-        entity_uri = binding["entity"]["value"]
-        class_uri = binding["class"]["value"]
-        entity_classes.setdefault(entity_uri, set()).add(class_uri)
-        class_entities.setdefault(class_uri, set()).add(entity_uri)
+    for entity_uri in all_entities:
+        for class_uri in explicit_classes_by_entity.get(entity_uri, set()):
+            if class_uri not in known_class_by_uri:
+                continue
+            entity_classes.setdefault(entity_uri, set()).add(class_uri)
+            class_entities.setdefault(class_uri, set()).add(entity_uri)
 
     valid_entities = {
         entity_uri
@@ -1013,7 +1112,7 @@ async def accuracy_property_misuse_by_property(
 
     class_results = []
     for cls_uri in sorted(expected_for):
-        cls = known_class_by_uri.get(cls_uri, {"uri": cls_uri, "localName": _local_name(cls_uri)})
+        cls = known_class_by_uri.get(cls_uri, {"uri": cls_uri, "localName": local_name(cls_uri)})
         class_results.append({
             "uri":                cls_uri,
             "class":              cls["localName"],
@@ -1035,7 +1134,7 @@ async def accuracy_property_misuse_by_property(
                 misuse_class_entities.setdefault(cls_uri, set()).add(entity_uri)
 
     for cls_uri, entities in misuse_class_entities.items():
-        cls = known_class_by_uri.get(cls_uri, {"uri": cls_uri, "localName": _local_name(cls_uri)})
+        cls = known_class_by_uri.get(cls_uri, {"uri": cls_uri, "localName": local_name(cls_uri)})
         sorted_entities = sorted(entities)
         class_results.append({
             "uri":                cls_uri,

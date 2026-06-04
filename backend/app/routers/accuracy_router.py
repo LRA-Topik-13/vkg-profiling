@@ -946,18 +946,22 @@ async def accuracy_property_misuse_by_property(
     """
     SA4: Property Misuse Detection, per-property view.
 
-    For a given property, iterates over every known class and reports:
+    For a given property, reports:
       • Classes where the property IS expected (per ontology domain constraints):
         always included, even when count = 0.
-      • Classes where the property is NOT expected:
-        only included when count > 0 (these are the misuse findings).
+      • Incompatible classes where subjects have the property without any
+        expected-domain type.
 
-    Avoids the Ontop TBox-inference artifact of the per-class view and directly
-    answers "where is this property being misused?".
+    A property use is considered valid if the subject has at least one observed
+    class compatible with the expected domain. This avoids false positives from
+    superclass / multi-typing artifacts, such as a valid Student also appearing
+    as Person.
     """
     from app.routers.metadata_router import KNOWN_CLASSES, KNOWN_PROPERTIES
 
     prop_entry = _resolve_any_mapped_prop_uri(property_uri)
+    known_class_by_uri = {cls["uri"]: cls for cls in KNOWN_CLASSES}
+    known_class_values = " ".join(f"<{cls['uri']}>" for cls in KNOWN_CLASSES)
     expected_for: set[str] = {
         cls_uri
         for cls_uri, props in KNOWN_PROPERTIES.items()
@@ -968,42 +972,95 @@ async def accuracy_property_misuse_by_property(
     prop_local = prop_entry["localName"]
     ENTITY_LIMIT = 10
 
-    async def evaluate_class(cls: dict) -> dict | None:
-        """Evaluate one class for expected or misused uses of the selected property."""
-        cls_name = cls["localName"]
-        cls_uri = cls["uri"]
-        is_expected = cls_uri in expected_for
-
-        count = await _count_distinct_property_entities(cls_uri, property_uri)
-        if not is_expected and count == 0:
-            return None
-
-        entity_uris: list[str] = []
-        entities_truncated = False
-        if not is_expected:
-            entity_uris, entities_truncated = await _fetch_property_entity_uris(
-                cls_uri, property_uri, ENTITY_LIMIT
-            )
-
-        return {
-            "uri":                cls_uri,
-            "class":              cls_name,
-            "expected":           is_expected,
-            "count":              count,
-            "entity_uris":        entity_uris,
-            "entities_truncated": entities_truncated,
-        }
-
     try:
-        evaluated = await asyncio.gather(*(evaluate_class(cls) for cls in KNOWN_CLASSES))
+        entity_query = f"""
+            {PREFIXES}
+            SELECT DISTINCT ?entity WHERE {{
+                ?entity <{property_uri}> ?value .
+            }}
+        """
+        type_query = f"""
+            {PREFIXES}
+            SELECT DISTINCT ?entity ?class WHERE {{
+                ?entity <{property_uri}> ?value .
+                ?entity a ?class .
+                VALUES ?class {{ {known_class_values} }}
+            }}
+        """
+        entity_raw, type_raw = await asyncio.gather(
+            execute_sparql(entity_query),
+            execute_sparql(type_query),
+        )
     except Exception as e:
         raise sparql_502(e)
 
-    class_results = [r for r in evaluated if r is not None]
+    all_entities = sorted({b["entity"]["value"] for b in _bindings(entity_raw)})
+    entity_classes: dict[str, set[str]] = {uri: set() for uri in all_entities}
+    class_entities: dict[str, set[str]] = {cls["uri"]: set() for cls in KNOWN_CLASSES}
+
+    for binding in _bindings(type_raw):
+        entity_uri = binding["entity"]["value"]
+        class_uri = binding["class"]["value"]
+        entity_classes.setdefault(entity_uri, set()).add(class_uri)
+        class_entities.setdefault(class_uri, set()).add(entity_uri)
+
+    valid_entities = {
+        entity_uri
+        for entity_uri, classes in entity_classes.items()
+        if classes.intersection(expected_for)
+    }
+    misuse_entities = set(all_entities) - valid_entities
+
+    class_results = []
+    for cls_uri in sorted(expected_for):
+        cls = known_class_by_uri.get(cls_uri, {"uri": cls_uri, "localName": _local_name(cls_uri)})
+        class_results.append({
+            "uri":                cls_uri,
+            "class":              cls["localName"],
+            "expected":           True,
+            "count":              len(class_entities.get(cls_uri, set())),
+            "entity_uris":        [],
+            "entities_truncated": False,
+        })
+
+    misuse_class_entities: dict[str, set[str]] = {}
+    untyped_misuse_entities: set[str] = set()
+    for entity_uri in misuse_entities:
+        classes = entity_classes.get(entity_uri, set())
+        if not classes:
+            untyped_misuse_entities.add(entity_uri)
+            continue
+        for cls_uri in classes:
+            if cls_uri not in expected_for:
+                misuse_class_entities.setdefault(cls_uri, set()).add(entity_uri)
+
+    for cls_uri, entities in misuse_class_entities.items():
+        cls = known_class_by_uri.get(cls_uri, {"uri": cls_uri, "localName": _local_name(cls_uri)})
+        sorted_entities = sorted(entities)
+        class_results.append({
+            "uri":                cls_uri,
+            "class":              cls["localName"],
+            "expected":           False,
+            "count":              len(sorted_entities),
+            "entity_uris":        sorted_entities[:ENTITY_LIMIT],
+            "entities_truncated": len(sorted_entities) > ENTITY_LIMIT,
+        })
+
+    if untyped_misuse_entities:
+        sorted_entities = sorted(untyped_misuse_entities)
+        class_results.append({
+            "uri":                "urn:untyped",
+            "class":              "Untyped",
+            "expected":           False,
+            "count":              len(sorted_entities),
+            "entity_uris":        sorted_entities[:ENTITY_LIMIT],
+            "entities_truncated": len(sorted_entities) > ENTITY_LIMIT,
+        })
+
     class_results.sort(key=lambda r: (0 if not r["expected"] else 1, -r["count"], r["class"]))
-    total_expected_count = sum(r["count"] for r in class_results if r["expected"])
-    total_misuse_count = sum(r["count"] for r in class_results if not r["expected"])
-    total_property_uses = total_expected_count + total_misuse_count
+    total_expected_count = len(valid_entities)
+    total_misuse_count = len(misuse_entities)
+    total_property_uses = len(all_entities)
     sa4_score = (
         round(total_expected_count / total_property_uses * 100, 2)
         if total_property_uses

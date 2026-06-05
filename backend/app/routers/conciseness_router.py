@@ -1,4 +1,5 @@
 import asyncio
+from collections import defaultdict
 from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 from app.dependencies import execute_sparql
@@ -664,102 +665,74 @@ async def cross_source_duplicates(
     _validate_class_uri(class_uri)
     prop_uris   = _parse_identity_props(identity_props, class_uri)
 
-    # Use a join-based approach: ?e and ?other share identity variables,
-    # so SPARQL enforces value equality. The different-source filter ensures
-    # cross-source matches. GROUP BY on identity vars + GROUP_CONCAT on ?e
-    # collects all matching entities (symmetric join captures both sides).
+    # Ontop does not support FILTER EXISTS, and the flat join with shared
+    # identity variables triggers Teiid's dependent NL-join for larger datasets,
+    # which generates an unsupported multi-column IN with Array bind params.
+    # Workaround: fetch all entities + their identity values with a simple
+    # single-entity scan (no join at all), then detect cross-source groups in
+    # Python by checking whether each group spans more than one source prefix.
     e_block, id_vars = _build_identity_block("?e", prop_uris, "v")
-    other_block = "\n".join(
-        f"    ?other <{prop_uris[i]}> ?{id_vars[i]} ."
-        for i in range(len(prop_uris))
-    )
-    select_vars = " ".join(f"?{v}" for v in id_vars)
     prop_names  = [_prop_local_name(uri) for uri in prop_uris]
 
-    facets        = _parse_facets(filter_facets, class_uri)
-    facet_e       = _build_facet_clauses("?e", facets)
-    facet_other   = _build_facet_clauses("?other", facets)
-    membership_e  = _source_membership_filter("?e", source_list)
-    membership_o  = _source_membership_filter("?other", source_list)
-    diff_filter   = _different_source_filter_vars("?e", "?other", source_list)
+    facets      = _parse_facets(filter_facets, class_uri)
+    facet_e     = _build_facet_clauses("?e", facets)
+    membership  = _source_membership_filter("?e", source_list)
 
-    body = f"""\
-            ?e a <{class_uri}> .
-            ?other a <{class_uri}> .
-            {membership_e}
-            {membership_o}
-            {diff_filter}
-            FILTER(?e != ?other)
-{facet_e}
-{facet_other}
-{e_block}
-{other_block}"""
-
-    data_q = f"""
+    scan_q = f"""
         {PREFIXES}
-        SELECT {select_vars} (COUNT(DISTINCT ?e) AS ?cnt)
-               (GROUP_CONCAT(STR(?e); separator="{GROUP_CONCAT_SEP}") AS ?entities)
+        SELECT ?e {" ".join(f"?{v}" for v in id_vars)}
         WHERE {{
-{body}
+            ?e a <{class_uri}> .
+            {membership}
+{facet_e}
+{e_block}
         }}
-        GROUP BY {select_vars}
-        ORDER BY DESC(?cnt) {select_vars}
-        LIMIT {limit}
-        OFFSET {offset}
-    """
-
-    count_q = f"""
-        {PREFIXES}
-        SELECT (COUNT(*) AS ?total) WHERE {{
-            SELECT {select_vars}
-            WHERE {{
-{body}
-            }}
-            GROUP BY {select_vars}
-        }}
+        ORDER BY {" ".join(f"?{v}" for v in id_vars)} ?e
     """
 
     try:
-        if include_total:
-            data_raw, count_raw = await asyncio.gather(
-                execute_sparql(data_q),
-                execute_sparql(count_q),
-            )
-            total = _count_binding(count_raw, "total")
-        else:
-            data_raw = await execute_sparql(data_q)
-            total = None
+        raw = await execute_sparql(scan_q)
     except Exception as ex:
         raise HTTPException(status_code=502, detail=f"SPARQL error: {ex}")
 
-    items = []
-    for row in data_raw.get("results", {}).get("bindings", []):
-        identity_values = {
-            prop_names[i]: row[id_vars[i]]["value"]
-            for i in range(len(id_vars))
-            if id_vars[i] in row
-        }
-        cnt = int(row["cnt"]["value"])
-        entities_str = row.get("entities", {}).get("value", "")
-        uris = list(dict.fromkeys(u for u in entities_str.split(GROUP_CONCAT_SEP) if u)) if entities_str else []
-        entities = sorted(
-            [{"source": _find_source(uri, source_list), "uri": uri} for uri in uris],
-            key=lambda e: (e["source"], e["uri"]),
-        )
-        items.append({
-            "identity_values": identity_values,
-            "entities":        entities,
-            "count":           cnt,
-        })
+    # Group by identity-value tuple; keep only groups that span ≥2 sources.
+    groups: dict[tuple, list[str]] = defaultdict(list)
+    for row in raw.get("results", {}).get("bindings", []):
+        key = tuple(row[v]["value"] if v in row else "" for v in id_vars)
+        uri = row["e"]["value"]
+        groups[key].append(uri)
+
+    cross_source_groups = []
+    for key, uris in groups.items():
+        sources_seen = {_find_source(u, source_list) for u in uris}
+        if len(sources_seen) >= 2:
+            identity_values = {prop_names[i]: key[i] for i in range(len(id_vars))}
+            entities = sorted(
+                [{"source": _find_source(u, source_list), "uri": u} for u in uris],
+                key=lambda e: (e["source"], e["uri"]),
+            )
+            cross_source_groups.append({
+                "identity_values": identity_values,
+                "entities":        entities,
+                "count":           len(uris),
+            })
+
+    # Sort: most entities first, then by identity values lexically.
+    cross_source_groups.sort(
+        key=lambda g: (-g["count"], *g["identity_values"].values())
+    )
+
+    total = len(cross_source_groups) if include_total else None
+    page  = cross_source_groups[offset: offset + limit]
 
     return {
         "pagination": {
             "limit":  limit,
             "offset": offset,
-            "count":  len(items),
+            "count":  len(page),
             "total":  total,
         },
-        "items": items,
+        "items": page,
     }
 
 

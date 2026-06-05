@@ -1,12 +1,9 @@
 import pytest
 
-from tests.accuracy.conftest import (
-    CLASS_FULL_PROFESSOR,
-    DEFECT_PCTS,
-    PROP_TEACHES,
+from tests.accuracy.conftest import CLASS_FULL_PROFESSOR, DEFECT_PCTS, PROP_TEACHES, defect_count
+from tests.accuracy.relationship_count.conftest import (
     academics_full_professor_ids,
     add_extra_teaches_relationships,
-    defect_count,
 )
 
 
@@ -38,4 +35,3 @@ def test_relationship_count_full_professor_teaches(pct, mssql_conn, client):
         assert uri in entities
         assert entities[uri]["count"] == 4
         assert entities[uri]["is_outlier"] is True
-

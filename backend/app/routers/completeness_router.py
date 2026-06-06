@@ -4,43 +4,12 @@ import asyncio
 import re
 from fastapi import APIRouter, Query, HTTPException
 from typing import Optional
-from app.dependencies import execute_sparql
+from app.dependencies import execute_sparql, PREFIXES, local_name, count_binding, sparql_502
+from app.routers.validation import (
+    MAX_PAGE_LIMIT, DEFAULT_PAGE_LIMIT, validate_pagination, validate_http_uri, get_class,
+)
 
 router = APIRouter(prefix="/completeness", tags=["completeness"])
-
-PREFIXES = """
-    PREFIX : <http://example.org/voc#>
-    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-"""
-
-MAX_PAGE_LIMIT = 500
-DEFAULT_PAGE_LIMIT = 100
-_HTTP_URI_RE = re.compile(r"^https?://[^\s<>{}|^`\"]+$")
-
-
-def _validate_http_uri(uri: str, label: str = "URI") -> str:
-    if not _HTTP_URI_RE.match(uri):
-        raise HTTPException(status_code=400, detail=f"Invalid {label}: '{uri}'")
-    return uri
-
-
-def _validate_pagination(limit: int, offset: int) -> tuple[int, int]:
-    if limit < 1 or limit > MAX_PAGE_LIMIT:
-        raise HTTPException(status_code=400, detail=f"limit must be between 1 and {MAX_PAGE_LIMIT}")
-    if offset < 0:
-        raise HTTPException(status_code=400, detail="offset must be greater than or equal to 0")
-    return limit, offset
-
-
-def _count_binding(raw: dict, var_name: str, default: int = 0) -> int:
-    bindings = raw.get("results", {}).get("bindings", [])
-    if not bindings:
-        return default
-    value = bindings[0].get(var_name, {}).get("value")
-    return int(value) if value is not None else default
 
 
 def _all_known_property_uris() -> set[str]:
@@ -138,7 +107,7 @@ async def _labels_for_entities(class_uri: str, entity_uris: list[str]) -> dict[s
     if not predicates:
         return {}
 
-    values = " ".join(f"<{_validate_http_uri(uri, 'entity URI')}>" for uri in entity_uris)
+    values = " ".join(f"<{validate_http_uri(uri, 'entity URI')}>" for uri in entity_uris)
     optionals = "\n".join(
         f"OPTIONAL {{ ?e <{p}> ?v{i} }}"
         for i, p in enumerate(predicates)
@@ -207,10 +176,6 @@ def _interlinking_metadata() -> tuple[list[dict], list[str], dict[str, dict], di
         for c in KNOWN_CLASSES
     }
     return obj_props, obj_prop_uris, prop_meta, cls_lookup
-
-
-def _ln(uri: str) -> str:
-    return uri.split("#")[-1] if "#" in uri else uri.split("/")[-1]
 
 
 def _object_prop_values(obj_prop_uris: list[str]) -> str:
@@ -291,13 +256,8 @@ def _get_property_labels(class_uri: str) -> dict[str, str | None]:
 
 
 def validate_class_uri(class_uri: str) -> dict:
-    from app.routers.metadata_router import KNOWN_CLASSES_BY_URI
-
-    _validate_http_uri(class_uri, "class URI")
-    entry = KNOWN_CLASSES_BY_URI.get(class_uri)
-    if entry is None:
-        raise HTTPException(status_code=404, detail=f"Class '{class_uri}' not found")
-    return entry
+    validate_http_uri(class_uri, "class URI")
+    return get_class(class_uri, code=404)
 
 
 def parse_property_uris(properties: str) -> list[str]:
@@ -306,7 +266,7 @@ def parse_property_uris(properties: str) -> list[str]:
         raise HTTPException(status_code=400, detail="At least one property required")
     known = _all_known_property_uris()
     for uri in uris:
-        _validate_http_uri(uri, "property URI")
+        validate_http_uri(uri, "property URI")
         if uri not in known:
             raise HTTPException(status_code=404, detail=f"Property '{uri}' not found")
     return uris
@@ -355,9 +315,9 @@ def parse_facets(filter_facets: Optional[str]) -> list[tuple[str, Optional[str]]
             # this object property at all, regardless of which object it points to.
             pred = token.strip()
             obj = None
-        _validate_http_uri(pred, "facet predicate URI")
+        validate_http_uri(pred, "facet predicate URI")
         if obj is not None:
-            _validate_http_uri(obj, "facet object URI")
+            validate_http_uri(obj, "facet object URI")
         prop_type = _property_type(pred)
         if prop_type is None:
             raise HTTPException(status_code=404, detail=f"Facet property '{pred}' not found")
@@ -463,12 +423,12 @@ async def _by_entity_compute(
                 execute_sparql(query),
                 execute_sparql(count_query),
             )
-            total_entities = _count_binding(total_raw, "total")
+            total_entities = count_binding(total_raw, "total")
         else:
             raw = await execute_sparql(query)
             total_entities = None
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+        raise sparql_502(e)
 
     bindings = raw.get("results", {}).get("bindings", [])
     total_props = len(prop_uris)
@@ -556,7 +516,7 @@ async def _by_property_compute(
             execute_sparql(count_query),
             execute_sparql(filled_query),
         )
-        total_entities = _count_binding(total_raw, "total")
+        total_entities = count_binding(total_raw, "total")
         filled_by_uri = {uri: 0 for uri in prop_uris}
         filled_bindings = filled_raw.get("results", {}).get("bindings", [])
         if len(prop_uris) == 1 and filled_bindings and "prop" not in filled_bindings[0]:
@@ -586,7 +546,7 @@ async def _by_property_compute(
             prop_results.append(entry)
 
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+        raise sparql_502(e)
 
     return {
         "uri":            class_uri,
@@ -605,7 +565,7 @@ async def completeness_by_entity(
     offset: int = 0,
     include_total: bool = True,
 ):
-    limit, offset = _validate_pagination(limit, offset)
+    limit, offset = validate_pagination(limit, offset)
     class_entry = validate_class_uri(class_uri)
     prop_uris = parse_property_uris(properties)
     facets = parse_facets(filter_facets)
@@ -635,7 +595,7 @@ async def completeness_matrix(
     sort: str = Query("entity", description="Entity ordering: 'entity' (URI) or 'completeness' (lowest first)"),
     q: str = Query("", description="Filter entities whose label or URI contains this text"),
 ):
-    limit, offset = _validate_pagination(limit, offset)
+    limit, offset = validate_pagination(limit, offset)
     class_entry = validate_class_uri(class_uri)
     prop_uris = parse_property_uris(properties)
     facets = parse_facets(filter_facets)
@@ -699,7 +659,7 @@ async def entity_count(
             for cls in target_classes
         ]
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+        raise sparql_502(e)
 
     total = sum(r["count"] for r in results)
     return {"classes": results, "total": total}
@@ -757,7 +717,7 @@ async def interlinking_completeness():
             total_res = await execute_sparql(total_q)
             linked_res = out_detail_res = in_detail_res = {"results": {"bindings": []}}
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+        raise sparql_502(e)
 
     totals = {cls["uri"]: 0 for cls in KNOWN_CLASSES}
     linked_counts = {cls["uri"]: 0 for cls in KNOWN_CLASSES}
@@ -785,9 +745,9 @@ async def interlinking_completeness():
         target_uri = meta.get("range")
         link_details[cls_uri].append({
             "direction": "outgoing",
-            "property": meta.get("localName") or _ln(p_uri),
+            "property": meta.get("localName") or local_name(p_uri),
             "propertyLabel": meta.get("label"),
-            "targetClass": cls_lookup.get(target_uri) or (_ln(target_uri) if target_uri else None),
+            "targetClass": cls_lookup.get(target_uri) or (local_name(target_uri) if target_uri else None),
             "count": count,
         })
 
@@ -802,9 +762,9 @@ async def interlinking_completeness():
         source_uri = meta.get("domain")
         link_details[cls_uri].append({
             "direction": "incoming",
-            "property": meta.get("localName") or _ln(p_uri),
+            "property": meta.get("localName") or local_name(p_uri),
             "propertyLabel": meta.get("label"),
-            "sourceClass": cls_lookup.get(source_uri) or (_ln(source_uri) if source_uri else None),
+            "sourceClass": cls_lookup.get(source_uri) or (local_name(source_uri) if source_uri else None),
             "count": count,
         })
 
@@ -850,7 +810,7 @@ async def interlinking_entities(
     include_total: bool = True,
     q: str = Query("", description="Filter entities whose label or URI contains this text"),
 ):
-    limit, offset = _validate_pagination(limit, offset)
+    limit, offset = validate_pagination(limit, offset)
     if status not in {"linked", "not_linked"}:
         raise HTTPException(status_code=400, detail="status must be 'linked' or 'not_linked'")
 
@@ -901,7 +861,7 @@ async def interlinking_entities(
                 execute_sparql(page_q),
                 execute_sparql(count_q),
             )
-            total = _count_binding(total_raw, "total")
+            total = count_binding(total_raw, "total")
         else:
             page_raw = await execute_sparql(page_q)
             total = None
@@ -925,7 +885,7 @@ async def interlinking_entities(
             total = len(entity_uris)
             entity_uris = entity_uris[offset:offset + limit]
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+        raise sparql_502(e)
 
     return {
         "uri": class_uri,
@@ -949,7 +909,7 @@ async def interlinking_entity(
     entity_uri: str = Query(..., description="Full entity URI"),
     class_uri: str = Query(..., description="Full class URI of the entity"),
 ):
-    _validate_http_uri(entity_uri, "entity URI")
+    validate_http_uri(entity_uri, "entity URI")
     class_entry = validate_class_uri(class_uri)
     _, obj_prop_uris, prop_meta, cls_lookup = _interlinking_metadata()
 
@@ -1041,7 +1001,7 @@ async def interlinking_entity(
             _labels_for_entities(class_uri, [entity_uri]),
         )
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+        raise sparql_502(e)
 
     SAMPLE_PER_GROUP = 12
 
@@ -1068,7 +1028,7 @@ async def interlinking_entity(
         entry = column.get(cls_uri)
         if entry is None:
             entry = {
-                "class": {"uri": cls_uri, "label": cls_lookup.get(cls_uri) or _ln(cls_uri)},
+                "class": {"uri": cls_uri, "label": cls_lookup.get(cls_uri) or local_name(cls_uri)},
                 "count": 0,
                 "properties": [],
             }
@@ -1077,7 +1037,7 @@ async def interlinking_entity(
         meta = prop_meta.get(p_uri, {})
         entry["properties"].append({
             "uri": p_uri,
-            "localName": meta.get("localName") or _ln(p_uri),
+            "localName": meta.get("localName") or local_name(p_uri),
             "label": meta.get("label"),
             "count": count,
         })
@@ -1139,7 +1099,7 @@ async def distinct_properties(
             for cls in target_classes
         ]
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+        raise sparql_502(e)
 
     total = sum(r["distinct_properties"] for r in results)
     return {"classes": results, "total_distinct": total}
@@ -1255,7 +1215,7 @@ async def undefined_objects(
                 })
             results.append(entry)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+        raise sparql_502(e)
 
     total_objects = sum(r["total_objects"] for r in results)
     total_undefined = sum(r["undefined_objects"] for r in results)
@@ -1320,7 +1280,7 @@ def mapping_items(
     The schema item lists scale with the ontology, not the instance data, but a
     generic dataset can still carry thousands of classes/properties — so this is
     served in pages instead of inlined into /mapping-coverage."""
-    limit, offset = _validate_pagination(limit, offset)
+    limit, offset = validate_pagination(limit, offset)
     if kind not in {"class", "property"}:
         raise HTTPException(status_code=400, detail="kind must be 'class' or 'property'")
     if status not in {"mapped", "unmapped"}:
@@ -1407,7 +1367,7 @@ async def class_summary():
             total_raw = await execute_sparql(total_q)
             filled_raw = {"results": {"bindings": []}}
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+        raise sparql_502(e)
 
     totals = {cls["uri"]: 0 for cls in KNOWN_CLASSES}
     total_bindings = total_raw.get("results", {}).get("bindings", [])
@@ -1522,7 +1482,7 @@ async def population_summary():
     try:
         rep_raw = await execute_sparql(represented_q)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+        raise sparql_502(e)
 
     represented: dict[str, int] = {uri: 0 for uri in class_uris}
     rep_bindings = rep_raw.get("results", {}).get("bindings", [])
@@ -1619,7 +1579,7 @@ async def population_entities(
     q: str = Query("", description="Filter entities whose label or URI contains this text"),
 ):
     class_entry = validate_class_uri(class_uri)
-    limit, offset = _validate_pagination(limit, offset)
+    limit, offset = validate_pagination(limit, offset)
     q_norm = (q or "").strip().lower()
 
     try:
@@ -1651,11 +1611,11 @@ async def population_entities(
                 execute_sparql(count_q),
                 execute_sparql(page_q),
             )
-            total = _count_binding(count_raw, "n")
+            total = count_binding(count_raw, "n")
             uris = [b["e"]["value"] for b in page_raw.get("results", {}).get("bindings", [])]
             labels = await _labels_for_entities(class_uri, uris)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(e)}")
+        raise sparql_502(e)
 
     def _source_of(uri: str) -> str | None:
         m = re.search(r"voc#([^/]+)/", uri)

@@ -2,31 +2,20 @@ import asyncio
 from collections import defaultdict
 from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
-from app.dependencies import execute_sparql
-from app.routers.metadata_router import KNOWN_SOURCES, KNOWN_PROPERTIES, KNOWN_CLASSES, KNOWN_CLASSES_BY_URI
+from app.dependencies import (
+    execute_sparql, PREFIXES, local_name, count_binding,
+    source_membership_filter, different_source_filter, find_source,
+)
+from app.routers.metadata_router import KNOWN_SOURCES, KNOWN_PROPERTIES, KNOWN_CLASSES
+from app.routers.validation import validate_pagination, get_class
 
 router = APIRouter(prefix="/conciseness", tags=["conciseness"])
 
-PREFIXES = """
-    PREFIX : <http://example.org/voc#>
-    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-"""
-
-MAX_PAGE_LIMIT = 500
 DEFAULT_DUPLICATES_LIMIT = 10
 GROUP_CONCAT_SEP = "|||"
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-
-def _prop_local_name(uri: str) -> str:
-    """Extract the local name from a property URI (e.g. '.../firstName' → 'firstName')."""
-    return uri.split("#")[-1] if "#" in uri else uri.split("/")[-1]
-
 
 def _build_identity_block(
     subject_var: str,
@@ -46,38 +35,6 @@ def _build_identity_block(
         var_names.append(var)
         patterns.append(f"    {subject_var} <{uri}> ?{var} .")
     return "\n".join(patterns), var_names
-
-
-def _source_membership_filter(var: str, sources: list[str]) -> str:
-    """FILTER ensuring var belongs to one of the given sources."""
-    clauses = " || ".join(f'STRSTARTS(STR({var}), "{s}")' for s in sources)
-    return f"FILTER({clauses})"
-
-
-def _different_source_filter(sources: list[str]) -> str:
-    """FILTER ensuring ?e1 and ?e2 are from different sources."""
-    same = " || ".join(
-        f'(STRSTARTS(STR(?e1), "{s}") && STRSTARTS(STR(?e2), "{s}"))'
-        for s in sources
-    )
-    return f"FILTER(!({same}))"
-
-
-def _different_source_filter_vars(var1: str, var2: str, sources: list[str]) -> str:
-    """FILTER ensuring two arbitrary variables are from different sources."""
-    same = " || ".join(
-        f'(STRSTARTS(STR({var1}), "{s}") && STRSTARTS(STR({var2}), "{s}"))'
-        for s in sources
-    )
-    return f"FILTER(!({same}))"
-
-
-def _find_source(uri: str, sources: list[str]) -> str:
-    """Determine which source prefix a URI belongs to."""
-    for s in sources:
-        if uri.startswith(s):
-            return s
-    return "unknown"
 
 
 def _parse_sources(sources_param: str | None) -> list[str]:
@@ -130,15 +87,6 @@ def _parse_sources(sources_param: str | None) -> list[str]:
             )
 
     return source_list
-
-
-def _validate_class_uri(class_uri: str) -> None:
-    """Validate class_uri exists in known classes."""
-    if class_uri not in KNOWN_CLASSES_BY_URI:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Class '{class_uri}' is not a known mapped class.",
-        )
 
 
 def _parse_facets(filter_facets: Optional[str], class_uri: str) -> list[tuple[str, str | None]]:
@@ -204,21 +152,6 @@ def _build_facet_clauses(subject_var: str, facets: list[tuple[str, str | None]])
     return "\n".join(lines)
 
 
-def _validate_pagination(limit: int, offset: int) -> tuple[int, int]:
-    if limit < 1 or limit > MAX_PAGE_LIMIT:
-        raise HTTPException(status_code=400, detail=f"limit must be between 1 and {MAX_PAGE_LIMIT}")
-    if offset < 0:
-        raise HTTPException(status_code=400, detail="offset must be greater than or equal to 0")
-    return limit, offset
-
-
-def _count_binding(raw: dict, var_name: str, default: int = 0) -> int:
-    bindings = raw.get("results", {}).get("bindings", [])
-    if not bindings:
-        return default
-    return int(bindings[0].get(var_name, {}).get("value", str(default)))
-
-
 def _parse_identity_props(identity_props: str, class_uri: str) -> list[str]:
     prop_uris = [p.strip() for p in identity_props.split(",") if p.strip()]
     if not prop_uris:
@@ -261,7 +194,7 @@ async def conciseness_intra_source(
 
     Use /conciseness/intra-source/duplicates for paginated duplicate groups.
     """
-    _validate_class_uri(class_uri)
+    get_class(class_uri, code=400)
     prop_uris = _parse_identity_props(identity_props, class_uri)
 
     id_block, id_vars = _build_identity_block("?e", prop_uris, "k")
@@ -300,7 +233,7 @@ async def conciseness_intra_source(
     except Exception as ex:
         raise HTTPException(status_code=502, detail=f"SPARQL error: {ex}")
 
-    total_representations = _count_binding(total_raw, "n")
+    total_representations = count_binding(total_raw, "n")
     group_bindings = group_raw.get("results", {}).get("bindings", [])
 
     # CN2-F1: unique_instances / total
@@ -344,15 +277,15 @@ async def intra_source_duplicates(
     Each row = one identity-value combination that appears on more than one URI
     within the source. Ordered by duplicate count DESC, then identity values.
     """
-    limit, offset = _validate_pagination(limit, offset)
-    _validate_class_uri(class_uri)
+    limit, offset = validate_pagination(limit, offset)
+    get_class(class_uri, code=400)
     prop_uris = _parse_identity_props(identity_props, class_uri)
 
     id_block, id_vars = _build_identity_block("?e", prop_uris, "k")
     select_keys       = " ".join(f"?{v}" for v in id_vars)
     facets            = _parse_facets(filter_facets, class_uri)
     facet_clause      = _build_facet_clauses("?e", facets)
-    var_to_prop       = {id_vars[i]: _prop_local_name(prop_uris[i]) for i in range(len(prop_uris))}
+    var_to_prop       = {id_vars[i]: local_name(prop_uris[i]) for i in range(len(prop_uris))}
 
     body = f"""\
             ?e a <{class_uri}> .
@@ -392,7 +325,7 @@ async def intra_source_duplicates(
                 execute_sparql(data_q),
                 execute_sparql(count_q),
             )
-            total = _count_binding(count_raw, "total")
+            total = count_binding(count_raw, "total")
         else:
             data_raw = await execute_sparql(data_q)
             total = None
@@ -512,7 +445,7 @@ async def intra_source_class_summary(
         total_raw = next(result_iter)
         group_raw = next(result_iter)
 
-        total_representations = _count_binding(total_raw, "n")
+        total_representations = count_binding(total_raw, "n")
         group_bindings        = group_raw.get("results", {}).get("bindings", [])
 
         extras           = sum(int(r["cnt"]["value"]) - 1 for r in group_bindings)
@@ -559,7 +492,7 @@ async def conciseness_cross_source(
     Use /conciseness/cross-source/duplicates for paginated ambiguous groups.
     """
     source_list = _parse_sources(sources)
-    _validate_class_uri(class_uri)
+    get_class(class_uri, code=400)
 
     prop_uris = _parse_identity_props(identity_props, class_uri)
 
@@ -583,10 +516,10 @@ async def conciseness_cross_source(
     facet_e2 = _build_facet_clauses("?e2", facets)
 
     # Source filters
-    membership_e1 = _source_membership_filter("?e1", source_list)
-    membership_e2 = _source_membership_filter("?e2", source_list)
-    diff_filter   = _different_source_filter(source_list)
-    membership_all = _source_membership_filter("?e", source_list)
+    membership_e1 = source_membership_filter("?e1", source_list)
+    membership_e2 = source_membership_filter("?e2", source_list)
+    diff_filter   = different_source_filter(source_list)
+    membership_all = source_membership_filter("?e", source_list)
 
     # Denominator: all entities across selected sources
     total_q = f"""
@@ -626,8 +559,8 @@ async def conciseness_cross_source(
     except Exception as ex:
         raise HTTPException(status_code=502, detail=f"SPARQL error: {ex}")
 
-    total_n = _count_binding(total_raw, "n")
-    ambiguous_n = _count_binding(count_raw, "n")
+    total_n = count_binding(total_raw, "n")
+    ambiguous_n = count_binding(count_raw, "n")
     cn3 = round((1 - ambiguous_n / total_n) * 100, 2) if total_n else 100.0
 
     return {
@@ -660,9 +593,9 @@ async def cross_source_duplicates(
     Each row = one identity-value combination shared by entities in different
     sources. Ordered by entity count DESC, then identity values.
     """
-    limit, offset = _validate_pagination(limit, offset)
+    limit, offset = validate_pagination(limit, offset)
     source_list = _parse_sources(sources)
-    _validate_class_uri(class_uri)
+    get_class(class_uri, code=400)
     prop_uris   = _parse_identity_props(identity_props, class_uri)
 
     # Ontop does not support FILTER EXISTS, and the flat join with shared
@@ -672,11 +605,11 @@ async def cross_source_duplicates(
     # single-entity scan (no join at all), then detect cross-source groups in
     # Python by checking whether each group spans more than one source prefix.
     e_block, id_vars = _build_identity_block("?e", prop_uris, "v")
-    prop_names  = [_prop_local_name(uri) for uri in prop_uris]
+    prop_names  = [local_name(uri) for uri in prop_uris]
 
     facets      = _parse_facets(filter_facets, class_uri)
     facet_e     = _build_facet_clauses("?e", facets)
-    membership  = _source_membership_filter("?e", source_list)
+    membership  = source_membership_filter("?e", source_list)
 
     scan_q = f"""
         {PREFIXES}
@@ -704,11 +637,11 @@ async def cross_source_duplicates(
 
     cross_source_groups = []
     for key, uris in groups.items():
-        sources_seen = {_find_source(u, source_list) for u in uris}
+        sources_seen = {find_source(u, source_list) for u in uris}
         if len(sources_seen) >= 2:
             identity_values = {prop_names[i]: key[i] for i in range(len(id_vars))}
             entities = sorted(
-                [{"source": _find_source(u, source_list), "uri": u} for u in uris],
+                [{"source": find_source(u, source_list), "uri": u} for u in uris],
                 key=lambda e: (e["source"], e["uri"]),
             )
             cross_source_groups.append({
@@ -752,7 +685,7 @@ async def cross_source_class_summary():
             detail="At least 2 registered data sources are required for cross-source analysis.",
         )
 
-    diff_filter_e1e2 = _different_source_filter(source_list)
+    diff_filter_e1e2 = different_source_filter(source_list)
     tasks      = []
     class_data = []
 
@@ -778,9 +711,9 @@ async def cross_source_class_summary():
         e2_block  = "\n".join(e2_patterns)
         eq_block  = "\n".join(eq_filters)
 
-        membership_e1  = _source_membership_filter("?e1", source_list)
-        membership_e2  = _source_membership_filter("?e2", source_list)
-        membership_all = _source_membership_filter("?e",  source_list)
+        membership_e1  = source_membership_filter("?e1", source_list)
+        membership_e2  = source_membership_filter("?e2", source_list)
+        membership_all = source_membership_filter("?e",  source_list)
 
         total_q = f"""
             {PREFIXES}
@@ -835,8 +768,8 @@ async def cross_source_class_summary():
         total_raw = next(result_iter)
         count_raw = next(result_iter)
 
-        total_n     = _count_binding(total_raw, "n")
-        ambiguous_n = _count_binding(count_raw, "n")
+        total_n     = count_binding(total_raw, "n")
+        ambiguous_n = count_binding(count_raw, "n")
         cn3         = round((1 - ambiguous_n / total_n) * 100, 2) if total_n else 100.0
 
         entries.append({

@@ -18,7 +18,7 @@ export default function SchemaCompleteness() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    completenessApi.mappingCoverage().then(setData).catch((e) => setError(String(e)));
+    completenessApi.schema().then(setData).catch((e) => setError(String(e)));
   }, []);
 
   if (error) return <ErrorState message={error} />;
@@ -136,7 +136,7 @@ function PaginatedInventory({ kind, status, title }: { kind: MappingItemKind; st
     let cancelled = false;
     setLoading(true);
     completenessApi
-      .mappingItems({ kind, status, q: debouncedQuery || undefined, limit: pageSize, offset })
+      .schemaItems({ kind, status, q: debouncedQuery || undefined, limit: pageSize, offset })
       .then((r) => {
         if (cancelled) return;
         setData(r);

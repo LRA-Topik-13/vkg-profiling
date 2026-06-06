@@ -17,7 +17,7 @@ export default function PopulationCompleteness() {
   const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    completenessApi.populationSummary().then(setData).catch((e) => setError(String(e)));
+    completenessApi.population().then(setData).catch((e) => setError(String(e)));
   }, []);
 
   function pickFromChart(uri: string) {

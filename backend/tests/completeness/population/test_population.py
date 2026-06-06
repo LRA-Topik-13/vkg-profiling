@@ -10,7 +10,7 @@ from tests.completeness.population.conftest import (
 def test_population_summary(target, pct, conns, client, population_baseline, detection):
     n, N = inject_population_defects(conns, target, pct)
 
-    resp = client.get("/completeness/population-summary")
+    resp = client.get("/completeness/population")
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data["source_reachable"], f"Teiid unreachable: {data.get('source_error')}"

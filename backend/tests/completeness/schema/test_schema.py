@@ -9,7 +9,7 @@ def test_mapping_coverage(kind, pct, baseline, defected_backend, detection):
     dropped = pick_dropped(kind, pct, baseline)
     client = defected_backend(kind, dropped)
 
-    resp = client.get("/completeness/mapping-coverage")
+    resp = client.get("/completeness/schema")
     assert resp.status_code == 200, resp.text
     data = resp.json()
 

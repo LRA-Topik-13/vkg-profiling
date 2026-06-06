@@ -5,6 +5,7 @@ import {
   completenessApi,
   Interlinking,
   InterlinkingClass,
+  InterlinkingClassDetail,
   InterlinkingEntities,
   InterlinkingEntityDetail,
   InterlinkingEntityGroup,
@@ -256,8 +257,24 @@ function StackedLinkChart({
 }
 
 function ClassDetail({ entry, onClose }: { entry: InterlinkingClass; onClose: () => void }) {
-  const outgoing = entry.links.filter((l) => l.direction === 'outgoing');
-  const incoming = entry.links.filter((l) => l.direction === 'incoming');
+  const [detail, setDetail] = useState<InterlinkingClassDetail | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDetail(null);
+    setDetailError(null);
+    completenessApi
+      .interlinkingClass({ class_uri: entry.uri })
+      .then((r) => !cancelled && setDetail(r))
+      .catch((e) => !cancelled && setDetailError(String(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [entry.uri]);
+
+  const outgoing = detail ? detail.links.filter((l) => l.direction === 'outgoing') : [];
+  const incoming = detail ? detail.links.filter((l) => l.direction === 'incoming') : [];
 
   return (
     <Section
@@ -275,10 +292,16 @@ function ClassDetail({ entry, onClose }: { entry: InterlinkingClass; onClose: ()
         <Stat label="Total Entities" value={entry.total_entities} color="var(--navy)" />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <LinkList title="Outgoing properties" links={outgoing} />
-        <LinkList title="Incoming properties" links={incoming} />
-      </div>
+      {detailError ? (
+        <div className="mb-6"><ErrorState message={detailError} /></div>
+      ) : !detail ? (
+        <div className="mb-6"><LoadingState /></div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <LinkList title="Outgoing properties" links={outgoing} />
+          <LinkList title="Incoming properties" links={incoming} />
+        </div>
+      )}
 
       <EntityDrilldown classUri={entry.uri} />
     </Section>
@@ -437,7 +460,7 @@ function EntityDetailCard({
     setData(null);
     setError(null);
     completenessApi
-      .interlinkingEntity({ class_uri: classUri, entity_uri: entityUri })
+      .interlinkingEntityDetail({ class_uri: classUri, entity_uri: entityUri })
       .then((r) => !cancelled && setData(r))
       .catch((e) => !cancelled && setError(String(e)));
     return () => {

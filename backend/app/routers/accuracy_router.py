@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Query, HTTPException
 from typing import Optional
 import asyncio
+import re
 import statistics
 
+from app.config import OBDA_FILE
 from app.dependencies import (
     execute_sparql, PREFIXES, local_name, bindings, count_binding,
     sparql_502, source_membership_filter, different_source_filter, find_source,
@@ -56,6 +58,109 @@ def _resolve_any_mapped_prop_uri(prop_uri: str) -> dict:
             if p["uri"] == prop_uri:
                 return p
     raise HTTPException(status_code=404, detail=f"Property URI '{prop_uri}' not found")
+
+
+def _sa4_expand_template(term: str, prefixes: dict[str, str]) -> str | None:
+    """Expand an OBDA URI template token while preserving column placeholders."""
+    term = term.strip()
+    if term.startswith("<") and term.endswith(">"):
+        return term[1:-1]
+    if ":" not in term:
+        return None
+    idx = term.index(":")
+    prefix, local = term[: idx + 1], term[idx + 1 :]
+    if prefix not in prefixes:
+        return None
+    return prefixes[prefix] + local
+
+
+def _sa4_template_uri(template: str, columns: list[str], values: tuple) -> str:
+    """Render an OBDA subject URI template from a Teiid source row."""
+    uri = template
+    for column, value in zip(columns, values):
+        uri = uri.replace("{" + column + "}", str(value))
+    return uri
+
+
+def _sa4_explicit_type_mappings() -> list[dict]:
+    """Parse OBDA class mappings used to recover non-domain-inferred classes."""
+    from app.population import _iter_mapping_blocks, _load_prefixes, _parse_source_sql
+
+    with open(OBDA_FILE, encoding="utf-8") as f:
+        content = f.read()
+    prefixes = _load_prefixes(content)
+
+    mappings = []
+    for target, source in _iter_mapping_blocks(content):
+        parts = [p.strip() for p in target.rstrip(".").split(";")]
+        first_tokens = parts[0].split()
+        if len(first_tokens) < 3:
+            continue
+
+        subject_template = _sa4_expand_template(first_tokens[0], prefixes)
+        if subject_template is None:
+            continue
+        columns = re.findall(r"\{([^}]+)\}", subject_template)
+        if not columns:
+            continue
+
+        type_uris = []
+        pairs = [(first_tokens[1], first_tokens[2])] + [
+            (tokens[0], tokens[1])
+            for tokens in (part.split() for part in parts[1:])
+            if len(tokens) >= 2
+        ]
+        for pred_tok, obj_tok in pairs:
+            if pred_tok != "a":
+                continue
+            class_uri = _sa4_expand_template(obj_tok, prefixes)
+            if class_uri:
+                type_uris.append(class_uri)
+        if not type_uris:
+            continue
+
+        table, where = _parse_source_sql(source)
+        if not table:
+            continue
+        mappings.append({
+            "template": subject_template,
+            "columns": columns,
+            "classes": tuple(type_uris),
+            "table": table,
+            "where": where,
+        })
+    return mappings
+
+
+async def _sa4_fetch_explicit_entity_classes(known_class_uris: set[str]) -> dict[str, set[str]]:
+    """Fetch class assignments produced by OBDA type mappings via Teiid SQL."""
+    from app.teiid_client import TeiidUnavailable, execute_teiid
+
+    entity_classes: dict[str, set[str]] = {}
+    mappings = _sa4_explicit_type_mappings()
+
+    async def fetch_mapping(mapping: dict) -> tuple[dict, list[tuple]]:
+        select_cols = ", ".join(mapping["columns"])
+        sql = f"SELECT {select_cols} FROM {mapping['table']}"
+        if mapping["where"]:
+            sql += f" WHERE {mapping['where']}"
+        return mapping, await execute_teiid(sql)
+
+    try:
+        results = await asyncio.gather(*(fetch_mapping(mapping) for mapping in mappings))
+    except TeiidUnavailable as e:
+        raise HTTPException(status_code=502, detail=f"Teiid source query error: {str(e)}")
+
+    for mapping, rows in results:
+        type_uris = [uri for uri in mapping["classes"] if uri in known_class_uris]
+        if not type_uris:
+            continue
+        for row in rows:
+            values = row if isinstance(row, tuple) else (row,)
+            entity_uri = _sa4_template_uri(mapping["template"], mapping["columns"], values)
+            entity_classes.setdefault(entity_uri, set()).update(type_uris)
+
+    return entity_classes
 
 
 def _parse_facets(
@@ -946,18 +1051,21 @@ async def accuracy_property_misuse_by_property(
     """
     SA4: Property Misuse Detection, per-property view.
 
-    For a given property, iterates over every known class and reports:
+    For a given property, reports:
       • Classes where the property IS expected (per ontology domain constraints):
         always included, even when count = 0.
-      • Classes where the property is NOT expected:
-        only included when count > 0 (these are the misuse findings).
+      • Incompatible classes where subjects have the property without any
+        expected-domain class assigned by the OBDA class mappings.
 
-    Avoids the Ontop TBox-inference artifact of the per-class view and directly
-    answers "where is this property being misused?".
+    A property use is considered valid if the subject has at least one assigned
+    VKG class compatible with the expected domain. Class assignments are read
+    from OBDA class mappings, not from SPARQL type inference, because domain
+    inference from the checked property would otherwise hide property misuse.
     """
     from app.routers.metadata_router import KNOWN_CLASSES, KNOWN_PROPERTIES
 
     prop_entry = _resolve_any_mapped_prop_uri(property_uri)
+    known_class_by_uri = {cls["uri"]: cls for cls in KNOWN_CLASSES}
     expected_for: set[str] = {
         cls_uri
         for cls_uri, props in KNOWN_PROPERTIES.items()
@@ -968,42 +1076,90 @@ async def accuracy_property_misuse_by_property(
     prop_local = prop_entry["localName"]
     ENTITY_LIMIT = 10
 
-    async def evaluate_class(cls: dict) -> dict | None:
-        """Evaluate one class for expected or misused uses of the selected property."""
-        cls_name = cls["localName"]
-        cls_uri = cls["uri"]
-        is_expected = cls_uri in expected_for
-
-        count = await _count_distinct_property_entities(cls_uri, property_uri)
-        if not is_expected and count == 0:
-            return None
-
-        entity_uris: list[str] = []
-        entities_truncated = False
-        if not is_expected:
-            entity_uris, entities_truncated = await _fetch_property_entity_uris(
-                cls_uri, property_uri, ENTITY_LIMIT
-            )
-
-        return {
-            "uri":                cls_uri,
-            "class":              cls_name,
-            "expected":           is_expected,
-            "count":              count,
-            "entity_uris":        entity_uris,
-            "entities_truncated": entities_truncated,
-        }
-
     try:
-        evaluated = await asyncio.gather(*(evaluate_class(cls) for cls in KNOWN_CLASSES))
+        entity_query = f"""
+            {PREFIXES}
+            SELECT DISTINCT ?entity WHERE {{
+                ?entity <{property_uri}> ?value .
+            }}
+        """
+        entity_raw, explicit_classes_by_entity = await asyncio.gather(
+            execute_sparql(entity_query),
+            _sa4_fetch_explicit_entity_classes(set(known_class_by_uri)),
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise sparql_502(e)
 
-    class_results = [r for r in evaluated if r is not None]
+    all_entities = sorted({b["entity"]["value"] for b in bindings(entity_raw)})
+    entity_classes: dict[str, set[str]] = {uri: set() for uri in all_entities}
+    class_entities: dict[str, set[str]] = {cls["uri"]: set() for cls in KNOWN_CLASSES}
+
+    for entity_uri in all_entities:
+        for class_uri in explicit_classes_by_entity.get(entity_uri, set()):
+            if class_uri not in known_class_by_uri:
+                continue
+            entity_classes.setdefault(entity_uri, set()).add(class_uri)
+            class_entities.setdefault(class_uri, set()).add(entity_uri)
+
+    valid_entities = {
+        entity_uri
+        for entity_uri, classes in entity_classes.items()
+        if classes.intersection(expected_for)
+    }
+    misuse_entities = set(all_entities) - valid_entities
+
+    class_results = []
+    for cls_uri in sorted(expected_for):
+        cls = known_class_by_uri.get(cls_uri, {"uri": cls_uri, "localName": local_name(cls_uri)})
+        class_results.append({
+            "uri":                cls_uri,
+            "class":              cls["localName"],
+            "expected":           True,
+            "count":              len(class_entities.get(cls_uri, set())),
+            "entity_uris":        [],
+            "entities_truncated": False,
+        })
+
+    misuse_class_entities: dict[str, set[str]] = {}
+    untyped_misuse_entities: set[str] = set()
+    for entity_uri in misuse_entities:
+        classes = entity_classes.get(entity_uri, set())
+        if not classes:
+            untyped_misuse_entities.add(entity_uri)
+            continue
+        for cls_uri in classes:
+            if cls_uri not in expected_for:
+                misuse_class_entities.setdefault(cls_uri, set()).add(entity_uri)
+
+    for cls_uri, entities in misuse_class_entities.items():
+        cls = known_class_by_uri.get(cls_uri, {"uri": cls_uri, "localName": local_name(cls_uri)})
+        sorted_entities = sorted(entities)
+        class_results.append({
+            "uri":                cls_uri,
+            "class":              cls["localName"],
+            "expected":           False,
+            "count":              len(sorted_entities),
+            "entity_uris":        sorted_entities[:ENTITY_LIMIT],
+            "entities_truncated": len(sorted_entities) > ENTITY_LIMIT,
+        })
+
+    if untyped_misuse_entities:
+        sorted_entities = sorted(untyped_misuse_entities)
+        class_results.append({
+            "uri":                "urn:untyped",
+            "class":              "Untyped",
+            "expected":           False,
+            "count":              len(sorted_entities),
+            "entity_uris":        sorted_entities[:ENTITY_LIMIT],
+            "entities_truncated": len(sorted_entities) > ENTITY_LIMIT,
+        })
+
     class_results.sort(key=lambda r: (0 if not r["expected"] else 1, -r["count"], r["class"]))
-    total_expected_count = sum(r["count"] for r in class_results if r["expected"])
-    total_misuse_count = sum(r["count"] for r in class_results if not r["expected"])
-    total_property_uses = total_expected_count + total_misuse_count
+    total_expected_count = len(valid_entities)
+    total_misuse_count = len(misuse_entities)
+    total_property_uses = len(all_entities)
     sa4_score = (
         round(total_expected_count / total_property_uses * 100, 2)
         if total_property_uses

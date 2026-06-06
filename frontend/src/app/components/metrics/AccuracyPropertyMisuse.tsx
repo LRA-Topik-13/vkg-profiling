@@ -83,7 +83,7 @@ export default function AccuracyPropertyMisuse() {
     <div className="space-y-6">
       <Section title="How It Works">
         <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
-          This check compares observed property usage with the subject classes defined by the property's ontology domain. A misuse is reported when the property appears on a class outside those expected classes.
+          This check compares observed property usage with the subject classes defined by the property's ontology domain. Misuse means the property is used by an entity whose assigned VKG classes are not allowed by the ontology domain.
         </p>
       </Section>
 
@@ -133,7 +133,7 @@ export default function AccuracyPropertyMisuse() {
 
           <Section
             title="Class Breakdown"
-            subtitle="Misuse means the property appears on a class outside the expected classes from the ontology domain."
+            subtitle="Misuse means the property is used by an entity whose assigned VKG classes are not allowed by the ontology domain."
             right={
               <button
                 onClick={() => setShowAllClasses((value) => !value)}

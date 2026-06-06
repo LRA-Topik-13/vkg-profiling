@@ -16,14 +16,14 @@ def test_by_property(class_uri, prop_uri, pct, conns, client, detection):
     n, base_n, _ = inject_property_defects(conns, class_uri, prop_uri, pct)
 
     resp = client.get(
-        "/completeness/by-property",
+        "/completeness/property/class-matrix",
         params={"class_uri": class_uri, "properties": prop_uri},
     )
     assert resp.status_code == 200, resp.text
-    data = resp.json()
+    summary = resp.json()["summary"]
 
-    total = data["total_entities"]
-    by_uri = {p["property"]: p for p in data["properties"]}
+    total = summary["total_entities"]
+    by_uri = {p["property"]: p for p in summary["by_property"]}
     assert prop_uri in by_uri, f"{prop_uri} missing from response"
     entry = by_uri[prop_uri]
 

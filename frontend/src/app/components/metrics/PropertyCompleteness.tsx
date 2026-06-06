@@ -153,7 +153,7 @@ export default function PropertyCompleteness() {
     setLoading(true);
     setError(null);
     try {
-      const r = await completenessApi.matrix({
+      const r = await completenessApi.propertyClassMatrix({
         class_uri: selectedClassUri,
         properties: selectedPropUris.join(','),
         filter_facets: facetsToParam(facets),
@@ -538,7 +538,7 @@ function ClassCompletenessOverview({ onBarClick }: { onBarClick: (classUri: stri
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    completenessApi.classSummary()
+    completenessApi.property()
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));

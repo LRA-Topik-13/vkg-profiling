@@ -128,7 +128,7 @@ def reset_to_clean(conns, shadow_tables):
 @pytest.fixture(scope="session")
 def population_baseline(shadow_tables):
     with TestClient(app) as c:
-        data = c.get("/completeness/population-summary").json()
+        data = c.get("/completeness/population").json()
     assert data["source_reachable"], f"Teiid unreachable: {data.get('source_error')}"
     base = {}
     for row in data["classes"]:

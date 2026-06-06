@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query, HTTPException
 from typing import Optional
 from app.dependencies import execute_sparql, PREFIXES, local_name, count_binding, sparql_502
 from app.routers.validation import (
-    MAX_PAGE_LIMIT, DEFAULT_PAGE_LIMIT, validate_pagination, validate_http_uri, get_class,
+    DEFAULT_PAGE_LIMIT, validate_pagination, validate_http_uri, get_class,
 )
 
 router = APIRouter(prefix="/completeness", tags=["completeness"])
@@ -556,36 +556,8 @@ async def _by_property_compute(
     }
 
 
-@router.get("/by-entity")
-async def completeness_by_entity(
-    class_uri: str = Query(..., description="Full class URI, e.g. http://example.org/voc#FullProfessor"),
-    properties: str = Query(..., description="Comma-separated property URIs, e.g. http://xmlns.com/foaf/0.1/firstName,http://example.org/voc#teaches"),
-    filter_facets: Optional[str] = Query(None, description="Comma-separated facet filters as predicateUri::objectUri pairs"),
-    limit: int = DEFAULT_PAGE_LIMIT,
-    offset: int = 0,
-    include_total: bool = True,
-):
-    limit, offset = validate_pagination(limit, offset)
-    class_entry = validate_class_uri(class_uri)
-    prop_uris = parse_property_uris(properties)
-    facets = parse_facets(filter_facets)
-    return await _by_entity_compute(class_uri, class_entry, prop_uris, facets, limit, offset, include_total)
-
-
-@router.get("/by-property")
-async def completeness_by_property(
-    class_uri: str = Query(..., description="Full class URI"),
-    properties: str = Query(..., description="Comma-separated property URIs"),
-    filter_facets: Optional[str] = Query(None, description="Comma-separated facet filters as predicateUri::objectUri pairs"),
-):
-    class_entry = validate_class_uri(class_uri)
-    prop_uris = parse_property_uris(properties)
-    facets = parse_facets(filter_facets)
-    return await _by_property_compute(class_uri, class_entry, prop_uris, facets)
-
-
-@router.get("/matrix")
-async def completeness_matrix(
+@router.get("/property/class-matrix")
+async def property_class_matrix(
     class_uri: str = Query(..., description="Full class URI"),
     properties: str = Query(..., description="Comma-separated property URIs"),
     filter_facets: Optional[str] = Query(None, description="Comma-separated facet filters as predicateUri::objectUri pairs"),
@@ -627,51 +599,12 @@ async def completeness_matrix(
     }
 
 
-@router.get("/entity-count")
-async def entity_count(
-    class_uri: Optional[str] = Query(None, description="Full class URI. If given, return only this class. Otherwise all mapped classes."),
-):
-    from app.routers.metadata_router import KNOWN_CLASSES
-    target_classes = [c for c in KNOWN_CLASSES if not class_uri or c["uri"] == class_uri]
-    if not target_classes:
-        raise HTTPException(status_code=404, detail=f"Class '{class_uri}' not found")
-
-    try:
-        q = f"""
-            {PREFIXES}
-            SELECT ?class (COUNT(DISTINCT ?entity) AS ?count) WHERE {{
-                {_class_union(target_classes, "?entity a <{class_uri}> .")}
-            }}
-            GROUP BY ?class
-        """
-        raw = await execute_sparql(q)
-        counts = {cls["uri"]: 0 for cls in target_classes}
-        bindings = raw.get("results", {}).get("bindings", [])
-        if len(target_classes) == 1 and bindings and "class" not in bindings[0]:
-            counts[target_classes[0]["uri"]] = int(bindings[0]["count"]["value"])
-        else:
-            for row in bindings:
-                cls_uri = row.get("class", {}).get("value")
-                if cls_uri in counts:
-                    counts[cls_uri] = int(row["count"]["value"])
-        results = [
-            {"uri": cls["uri"], "class": cls["localName"], "count": counts[cls["uri"]]}
-            for cls in target_classes
-        ]
-    except Exception as e:
-        raise sparql_502(e)
-
-    total = sum(r["count"] for r in results)
-    return {"classes": results, "total": total}
-
-
 @router.get("/interlinking")
-async def interlinking_completeness():
+async def completeness_interlinking():
     from app.routers.metadata_router import KNOWN_CLASSES
 
-    _, obj_prop_uris, prop_meta, cls_lookup = _interlinking_metadata()
+    _, obj_prop_uris, _, _ = _interlinking_metadata()
     linked_body = _linked_body(obj_prop_uris)
-    values = _object_prop_values(obj_prop_uris)
 
     total_q = f"""
         {PREFIXES}
@@ -690,32 +623,13 @@ async def interlinking_completeness():
                 }}
                 GROUP BY ?class
             """
-
-            outgoing_q = f"""
-                {PREFIXES}
-                SELECT ?class ?p (COUNT(DISTINCT ?e) AS ?n) WHERE {{
-                    {_class_union(KNOWN_CLASSES, "?e a <{class_uri}> . " + values + " ?e ?p ?other . FILTER(isIRI(?other)) FILTER(?p != rdf:type)")}
-                }}
-                GROUP BY ?class ?p
-            """
-
-            incoming_q = f"""
-                {PREFIXES}
-                SELECT ?class ?p (COUNT(DISTINCT ?e) AS ?n) WHERE {{
-                    {_class_union(KNOWN_CLASSES, "?e a <{class_uri}> . " + values + " ?other ?p ?e . FILTER(?p != rdf:type)")}
-                }}
-                GROUP BY ?class ?p
-            """
-
-            total_res, linked_res, out_detail_res, in_detail_res = await asyncio.gather(
+            total_res, linked_res = await asyncio.gather(
                 execute_sparql(total_q),
                 execute_sparql(linked_q),
-                execute_sparql(outgoing_q),
-                execute_sparql(incoming_q),
             )
         else:
             total_res = await execute_sparql(total_q)
-            linked_res = out_detail_res = in_detail_res = {"results": {"bindings": []}}
+            linked_res = {"results": {"bindings": []}}
     except Exception as e:
         raise sparql_502(e)
 
@@ -729,44 +643,6 @@ async def interlinking_completeness():
         cls_uri = row.get("class", {}).get("value")
         if cls_uri in linked_counts:
             linked_counts[cls_uri] = int(row["n"]["value"])
-
-    link_details = {cls["uri"]: [] for cls in KNOWN_CLASSES}
-    outgoing_totals = {cls["uri"]: 0 for cls in KNOWN_CLASSES}
-    incoming_totals = {cls["uri"]: 0 for cls in KNOWN_CLASSES}
-
-    for b in out_detail_res.get("results", {}).get("bindings", []):
-        cls_uri = b.get("class", {}).get("value")
-        p_uri = b.get("p", {}).get("value")
-        if cls_uri not in link_details or not p_uri:
-            continue
-        count = int(b["n"]["value"])
-        outgoing_totals[cls_uri] += count
-        meta = prop_meta.get(p_uri, {})
-        target_uri = meta.get("range")
-        link_details[cls_uri].append({
-            "direction": "outgoing",
-            "property": meta.get("localName") or local_name(p_uri),
-            "propertyLabel": meta.get("label"),
-            "targetClass": cls_lookup.get(target_uri) or (local_name(target_uri) if target_uri else None),
-            "count": count,
-        })
-
-    for b in in_detail_res.get("results", {}).get("bindings", []):
-        cls_uri = b.get("class", {}).get("value")
-        p_uri = b.get("p", {}).get("value")
-        if cls_uri not in link_details or not p_uri:
-            continue
-        count = int(b["n"]["value"])
-        incoming_totals[cls_uri] += count
-        meta = prop_meta.get(p_uri, {})
-        source_uri = meta.get("domain")
-        link_details[cls_uri].append({
-            "direction": "incoming",
-            "property": meta.get("localName") or local_name(p_uri),
-            "propertyLabel": meta.get("label"),
-            "sourceClass": cls_lookup.get(source_uri) or (local_name(source_uri) if source_uri else None),
-            "count": count,
-        })
 
     results = []
     for cls in KNOWN_CLASSES:
@@ -782,13 +658,7 @@ async def interlinking_completeness():
             "total_entities": total,
             "linked": linked_any,
             "not_linked": not_linked,
-            "outgoing": outgoing_totals[cls_uri],
-            "incoming": incoming_totals[cls_uri],
             "ratio": ratio,
-            "links": link_details[cls_uri],
-            "linked_entities": [],
-            "not_linked_entities": [],
-            "entity_drilldown": f"/completeness/interlinking/entities?class_uri={cls_uri}",
         })
 
     total_entities = sum(r["total_entities"] for r in results)
@@ -798,6 +668,80 @@ async def interlinking_completeness():
     return {
         "classes": results,
         "overall_ratio": overall_ratio,
+    }
+
+
+@router.get("/interlinking/class")
+async def interlinking_class(
+    class_uri: str = Query(..., description="Full class URI"),
+):
+    class_entry = validate_class_uri(class_uri)
+    _, obj_prop_uris, prop_meta, cls_lookup = _interlinking_metadata()
+    values = _object_prop_values(obj_prop_uris)
+
+    links: list[dict] = []
+    if obj_prop_uris:
+        outgoing_q = f"""
+            {PREFIXES}
+            SELECT ?p (COUNT(DISTINCT ?e) AS ?n) WHERE {{
+                ?e a <{class_uri}> .
+                {values}
+                ?e ?p ?other .
+                FILTER(isIRI(?other))
+                FILTER(?p != rdf:type)
+            }}
+            GROUP BY ?p
+        """
+        incoming_q = f"""
+            {PREFIXES}
+            SELECT ?p (COUNT(DISTINCT ?e) AS ?n) WHERE {{
+                ?e a <{class_uri}> .
+                {values}
+                ?other ?p ?e .
+                FILTER(?p != rdf:type)
+            }}
+            GROUP BY ?p
+        """
+        try:
+            out_res, in_res = await asyncio.gather(
+                execute_sparql(outgoing_q),
+                execute_sparql(incoming_q),
+            )
+        except Exception as e:
+            raise sparql_502(e)
+
+        for b in out_res.get("results", {}).get("bindings", []):
+            p_uri = b.get("p", {}).get("value")
+            if not p_uri:
+                continue
+            meta = prop_meta.get(p_uri, {})
+            target_uri = meta.get("range")
+            links.append({
+                "direction": "outgoing",
+                "property": meta.get("localName") or local_name(p_uri),
+                "propertyLabel": meta.get("label"),
+                "targetClass": cls_lookup.get(target_uri) or (local_name(target_uri) if target_uri else None),
+                "count": int(b["n"]["value"]),
+            })
+        for b in in_res.get("results", {}).get("bindings", []):
+            p_uri = b.get("p", {}).get("value")
+            if not p_uri:
+                continue
+            meta = prop_meta.get(p_uri, {})
+            source_uri = meta.get("domain")
+            links.append({
+                "direction": "incoming",
+                "property": meta.get("localName") or local_name(p_uri),
+                "propertyLabel": meta.get("label"),
+                "sourceClass": cls_lookup.get(source_uri) or (local_name(source_uri) if source_uri else None),
+                "count": int(b["n"]["value"]),
+            })
+
+    return {
+        "uri": class_uri,
+        "class": class_entry["localName"],
+        "label": class_entry.get("label"),
+        "links": links,
     }
 
 
@@ -904,8 +848,8 @@ async def interlinking_entities(
     }
 
 
-@router.get("/interlinking/entity")
-async def interlinking_entity(
+@router.get("/interlinking/entity-detail")
+async def interlinking_entity_detail(
     entity_uri: str = Query(..., description="Full entity URI"),
     class_uri: str = Query(..., description="Full class URI of the entity"),
 ):
@@ -1063,178 +1007,9 @@ async def interlinking_entity(
     }
 
 
-@router.get("/distinct-properties")
-async def distinct_properties(
-    class_uri: Optional[str] = Query(None, description="Full class URI. If given, count properties for this class only. Otherwise all mapped classes."),
-):
-    from app.routers.metadata_router import KNOWN_CLASSES
-    target_classes = [c for c in KNOWN_CLASSES if not class_uri or c["uri"] == class_uri]
-    if not target_classes:
-        raise HTTPException(status_code=404, detail=f"Class '{class_uri}' not found")
 
-    try:
-        q = f"""
-            {PREFIXES}
-            SELECT ?class (COUNT(DISTINCT ?p) AS ?count) WHERE {{
-                {_class_union(target_classes, "?entity a <{class_uri}> . ?entity ?p ?o .")}
-            }}
-            GROUP BY ?class
-        """
-        raw = await execute_sparql(q)
-        counts = {cls["uri"]: 0 for cls in target_classes}
-        bindings = raw.get("results", {}).get("bindings", [])
-        if len(target_classes) == 1 and bindings and "class" not in bindings[0]:
-            counts[target_classes[0]["uri"]] = int(bindings[0]["count"]["value"])
-        else:
-            for row in bindings:
-                cls_uri = row.get("class", {}).get("value")
-                if cls_uri in counts:
-                    counts[cls_uri] = int(row["count"]["value"])
-        results = [
-            {
-                "uri": cls["uri"],
-                "class": cls["localName"],
-                "distinct_properties": counts[cls["uri"]],
-            }
-            for cls in target_classes
-        ]
-    except Exception as e:
-        raise sparql_502(e)
-
-    total = sum(r["distinct_properties"] for r in results)
-    return {"classes": results, "total_distinct": total}
-
-
-@router.get("/undefined-objects")
-async def undefined_objects(
-    class_uri: str = Query(..., description="Full class URI, e.g. http://example.org/voc#Course"),
-):
-    """
-    VKG-specific completeness support metric.
-
-    For each object property expected on the selected class, count distinct
-    objects that do not have the ontology range type asserted in the VKG.
-    """
-    from app.routers.metadata_router import KNOWN_PROPERTIES
-
-    class_entry = validate_class_uri(class_uri)
-    object_props = [
-        p for p in KNOWN_PROPERTIES.get(class_uri, [])
-        if p.get("type") == "object"
-    ]
-
-    entries = []
-    ranged_props = []
-    for prop in object_props:
-        prop_uri = prop["uri"]
-        range_uri = prop.get("range")
-        entry = {
-            "property": prop["localName"],
-            "property_uri": prop_uri,
-            "range": range_uri,
-            "rangeClass": prop.get("rangeClass"),
-            "total_objects": 0,
-            "undefined_objects": 0,
-            "ratio": 0.0,
-            "status": "not_applicable" if not range_uri else "ok",
-        }
-        entries.append(entry)
-        if range_uri:
-            ranged_props.append(prop)
-
-    def _total_branch(prop: dict) -> str:
-        return (
-            "{\n"
-            f"  ?entity a <{class_uri}> .\n"
-            f"  ?entity <{prop['uri']}> ?obj .\n"
-            f"  BIND(<{prop['uri']}> AS ?prop)\n"
-            "}"
-        )
-
-    def _undefined_branch(prop: dict) -> str:
-        return (
-            "{\n"
-            f"  ?entity a <{class_uri}> .\n"
-            f"  ?entity <{prop['uri']}> ?obj .\n"
-            f"  FILTER NOT EXISTS {{ ?obj a <{prop['range']}> }}\n"
-            f"  BIND(<{prop['uri']}> AS ?prop)\n"
-            "}"
-        )
-
-    try:
-        totals = {p["uri"]: 0 for p in ranged_props}
-        undefined_counts = {p["uri"]: 0 for p in ranged_props}
-        if ranged_props:
-            total_q = f"""
-                {PREFIXES}
-                SELECT ?prop (COUNT(DISTINCT ?obj) AS ?total) WHERE {{
-                    {" UNION ".join(_total_branch(p) for p in ranged_props)}
-                }}
-                GROUP BY ?prop
-            """
-            undefined_q = f"""
-                {PREFIXES}
-                SELECT ?prop (COUNT(DISTINCT ?obj) AS ?undefined) WHERE {{
-                    {" UNION ".join(_undefined_branch(p) for p in ranged_props)}
-                }}
-                GROUP BY ?prop
-            """
-            total_raw, undefined_raw = await asyncio.gather(
-                execute_sparql(total_q),
-                execute_sparql(undefined_q),
-            )
-            total_bindings = total_raw.get("results", {}).get("bindings", [])
-            undefined_bindings = undefined_raw.get("results", {}).get("bindings", [])
-            if total_bindings and "prop" not in total_bindings[0]:
-                totals[ranged_props[0]["uri"]] = int(total_bindings[0]["total"]["value"])
-            else:
-                for row in total_bindings:
-                    prop_uri = row.get("prop", {}).get("value")
-                    if prop_uri in totals:
-                        totals[prop_uri] = int(row["total"]["value"])
-            if undefined_bindings and "prop" not in undefined_bindings[0]:
-                undefined_counts[ranged_props[0]["uri"]] = int(undefined_bindings[0]["undefined"]["value"])
-            else:
-                for row in undefined_bindings:
-                    prop_uri = row.get("prop", {}).get("value")
-                    if prop_uri in undefined_counts:
-                        undefined_counts[prop_uri] = int(row["undefined"]["value"])
-
-        results = []
-        for entry in entries:
-            prop_uri = entry["property_uri"]
-            if prop_uri in totals:
-                total = totals[prop_uri]
-                undefined = undefined_counts[prop_uri]
-                ratio = round((undefined / total) * 100, 2) if total else 0.0
-                entry.update({
-                    "total_objects": total,
-                    "undefined_objects": undefined,
-                    "ratio": ratio,
-                    "status": "warning" if undefined else "ok",
-                })
-            results.append(entry)
-    except Exception as e:
-        raise sparql_502(e)
-
-    total_objects = sum(r["total_objects"] for r in results)
-    total_undefined = sum(r["undefined_objects"] for r in results)
-    overall_ratio = round((total_undefined / total_objects) * 100, 2) if total_objects else 0.0
-
-    return {
-        "uri": class_uri,
-        "class": class_entry["localName"],
-        "properties": results,
-        "summary": {
-            "total_objects": total_objects,
-            "undefined_objects": total_undefined,
-            "overall_ratio": overall_ratio,
-        },
-    }
-
-
-@router.get("/mapping-coverage")
-def mapping_coverage():
+@router.get("/schema")
+def completeness_schema():
     from app.routers.metadata_router import ONTOLOGY_CLASSES, ONTOLOGY_PROPERTIES
 
     mapped_classes   = [c for c in ONTOLOGY_CLASSES    if c["mapped"]]
@@ -1266,8 +1041,8 @@ def mapping_coverage():
     }
 
 
-@router.get("/mapping-items")
-def mapping_items(
+@router.get("/schema/items")
+def schema_items(
     kind: str = Query(..., description="class or property"),
     status: str = Query(..., description="mapped or unmapped"),
     q: str = Query("", description="Case-insensitive filter on localName / label"),
@@ -1319,8 +1094,8 @@ def mapping_items(
     }
 
 
-@router.get("/class-summary")
-async def class_summary():
+@router.get("/property")
+async def completeness_property():
     from app.routers.metadata_router import KNOWN_CLASSES, KNOWN_PROPERTIES
 
     prop_pairs = [
@@ -1460,8 +1235,8 @@ async def class_summary():
     }
 
 
-@router.get("/population-summary")
-async def population_summary():
+@router.get("/population")
+async def completeness_population():
     from app.population import EXTERNAL_SOURCE_TABLE_LABELS, POPULATION_SPECS
     from app.routers.metadata_router import KNOWN_CLASSES_BY_URI
     from app.teiid_client import execute_teiid, TeiidUnavailable
@@ -1571,11 +1346,12 @@ async def population_summary():
     }
 
 
-@router.get("/population-entities")
+@router.get("/population/entities")
 async def population_entities(
     class_uri: str = Query(..., description="Full class URI"),
-    limit: int = Query(25, ge=1, le=MAX_PAGE_LIMIT),
-    offset: int = Query(0, ge=0),
+    limit: int = DEFAULT_PAGE_LIMIT,
+    offset: int = 0,
+    include_total: bool = True,
     q: str = Query("", description="Filter entities whose label or URI contains this text"),
 ):
     class_entry = validate_class_uri(class_uri)
@@ -1595,23 +1371,27 @@ async def population_entities(
             all_uris = [b["e"]["value"] for b in all_raw.get("results", {}).get("bindings", [])]
             labels = await _labels_for_entities(class_uri, all_uris)
             filtered = _filter_uris_by_query(all_uris, labels, q_norm)
-            total = len(filtered)
+            total = len(filtered) if include_total else None
             uris = filtered[offset:offset + limit]
         else:
-            count_q = f"""
-                {PREFIXES}
-                SELECT (COUNT(DISTINCT ?e) AS ?n) WHERE {{ ?e a <{class_uri}> . }}
-            """
             page_q = f"""
                 {PREFIXES}
                 SELECT DISTINCT ?e WHERE {{ ?e a <{class_uri}> . }}
                 ORDER BY ?e LIMIT {limit} OFFSET {offset}
             """
-            count_raw, page_raw = await asyncio.gather(
-                execute_sparql(count_q),
-                execute_sparql(page_q),
-            )
-            total = count_binding(count_raw, "n")
+            if include_total:
+                count_q = f"""
+                    {PREFIXES}
+                    SELECT (COUNT(DISTINCT ?e) AS ?n) WHERE {{ ?e a <{class_uri}> . }}
+                """
+                count_raw, page_raw = await asyncio.gather(
+                    execute_sparql(count_q),
+                    execute_sparql(page_q),
+                )
+                total = count_binding(count_raw, "n")
+            else:
+                page_raw = await execute_sparql(page_q)
+                total = None
             uris = [b["e"]["value"] for b in page_raw.get("results", {}).get("bindings", [])]
             labels = await _labels_for_entities(class_uri, uris)
     except Exception as e:

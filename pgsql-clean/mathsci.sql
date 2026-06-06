@@ -29,9 +29,9 @@ SET default_table_access_method = heap;
 
 CREATE TABLE public.course (
     cid integer NOT NULL,
-    lecturer integer NOT NULL,
-    lab_teacher integer NOT NULL,
-    topic character varying(100) NOT NULL
+    lecturer integer,
+    lab_teacher integer,
+    topic character varying(100)
 );
 
 --
@@ -47,8 +47,8 @@ CREATE TABLE public.person (
     -- status mapping:
     -- 1 = UndergraduateStudent, 2 = GraduateStudent, 4 = PhDStudent
     -- 7 = FullProfessor, 8 = AssociateProfessor, 9 = AssistantProfessor
-    birth_date date NOT NULL,
-    email character varying(100) NOT NULL
+    birth_date date NULL,
+    email character varying(100) NULL
 );
 
 --

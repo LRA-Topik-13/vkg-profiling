@@ -27,8 +27,8 @@ CREATE TABLE `academic` (
   `first_name` varchar(40) NOT NULL,
   `last_name` varchar(40) NOT NULL,
   `position` int NOT NULL,
-  `birth_date` date NOT NULL,
-  `email` varchar(100) NOT NULL,
+  `birth_date` date NULL,
+  `email` varchar(100) NULL,
   PRIMARY KEY (`a_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -82,7 +82,7 @@ DROP TABLE IF EXISTS `course`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `course` (
   `c_id` int NOT NULL,
-  `title` varchar(100) NOT NULL,
+  `title` varchar(100) NULL,
   PRIMARY KEY (`c_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -144,8 +144,8 @@ CREATE TABLE `student` (
   `s_id` int NOT NULL,
   `first_name` varchar(40) NOT NULL,
   `last_name` varchar(40) NOT NULL,
-  `birth_date` date NOT NULL,
-  `email` varchar(100) NOT NULL,
+  `birth_date` date NULL,
+  `email` varchar(100) NULL,
   PRIMARY KEY (`s_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -599,8 +599,8 @@ CREATE TABLE `legacy_student` (
   `s_id` int NOT NULL,
   `first_name` varchar(40) NOT NULL,
   `last_name` varchar(40) NOT NULL,
-  `birth_date` date NOT NULL,
-  `email` varchar(100) NOT NULL,
+  `birth_date` date NULL,
+  `email` varchar(100) NULL,
   PRIMARY KEY (`s_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 

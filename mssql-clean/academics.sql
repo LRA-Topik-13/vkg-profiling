@@ -8,7 +8,7 @@
 -- EXISTING CONCEPT (mirrors compsci.course, mathsci.course)
 CREATE TABLE course (
     c_id    INT             NOT NULL,
-    title   VARCHAR(100)    NOT NULL,
+    title   VARCHAR(100)    NULL,
     CONSTRAINT pk_course PRIMARY KEY (c_id)
 );
 
@@ -21,25 +21,25 @@ CREATE TABLE teacher (
     -- position mapping (consistent with compsci pattern from obda):
     -- 1 = FullProfessor, 2 = AssociateProfessor, 3 = AssistantProfessor
     -- 8 = ExternalTeacher, 9 = PostDoc
-    birth_date  DATE        NOT NULL,
-    email       VARCHAR(100) NOT NULL,
+    birth_date  DATE        NULL,
+    email       VARCHAR(100) NULL,
     CONSTRAINT pk_teacher PRIMARY KEY (t_id)
 );
 
 -- NEW CONCEPT — where a course is held
 CREATE TABLE place (
     place_id    INT         NOT NULL,
-    building    VARCHAR(100) NOT NULL,
-    room_code   VARCHAR(20) NOT NULL,
+    building    VARCHAR(100) NULL,
+    room_code   VARCHAR(20) NULL,
     CONSTRAINT pk_place PRIMARY KEY (place_id)
 );
 
 -- NEW CONCEPT — when a course is held
 CREATE TABLE time_slot (
     ts_id       INT         NOT NULL,
-    day         VARCHAR(10) NOT NULL,
-    start_time  TIME        NOT NULL,
-    end_time    TIME        NOT NULL,
+    day         VARCHAR(10) NULL,
+    start_time  TIME        NULL,
+    end_time    TIME        NULL,
     CONSTRAINT pk_time_slot PRIMARY KEY (ts_id)
 );
 

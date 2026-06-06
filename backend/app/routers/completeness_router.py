@@ -125,13 +125,16 @@ async def _labels_for_entities(class_uri: str, entity_uris: list[str]) -> dict[s
         return {}
 
     heuristic_uris = [p["uri"] for p in _entity_label_config(class_uri)]
+    from app.routers.metadata_router import ONTOLOGY_PROPERTIES
+    mapped_prop_uris = {p["uri"] for p in ONTOLOGY_PROPERTIES if p.get("mapped")}
+    standard_set = set(STANDARD_LABEL_PREDICATES)
     seen: set[str] = set()
     predicates: list[str] = []
     for uri in STANDARD_LABEL_PREDICATES + heuristic_uris:
-        if uri not in seen:
+        if uri not in seen and uri in mapped_prop_uris:
             seen.add(uri)
             predicates.append(uri)
-    n_standard = len(STANDARD_LABEL_PREDICATES)
+    n_standard = sum(1 for p in predicates if p in standard_set)
     if not predicates:
         return {}
 

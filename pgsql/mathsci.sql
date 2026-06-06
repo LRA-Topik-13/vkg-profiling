@@ -219,3 +219,12 @@ ALTER TABLE ONLY public.registration
 --
 -- PostgreSQL database dump complete
 --
+
+CREATE TABLE public.person_unmapped (
+    pid integer NOT NULL PRIMARY KEY,
+    fname character varying(40) NOT NULL,
+    lname character varying(40) NOT NULL,
+    status integer NOT NULL,
+    birth_date date,
+    email character varying(100)
+);

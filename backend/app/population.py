@@ -215,12 +215,22 @@ def _parse_ontology(ttl_path: str):
 # as expected population for completeness profiling.
 EXTERNAL_SOURCE_TABLES: dict[str, list[tuple[str, str, str]]] = {
     "http://example.org/voc#Student": [
-        ("compsci.legacy_student", "s_id", "http://example.org/voc#compsci/student/"),
+        ("compsci.student_unmapped", "s_id", "http://example.org/voc#compsci/student/"),
+        ("mathsci.person_unmapped", "pid", "http://example.org/voc#mathsci/person/"),
+    ],
+    "http://example.org/voc#FacultyMember": [
+        ("academics.teacher_unmapped", "t_id", "http://example.org/voc#academics/teacher/"),
+    ],
+    "http://example.org/voc#Course": [
+        ("academics.course_unmapped", "c_id", "http://example.org/voc#academics/course/"),
     ],
 }
 
 EXTERNAL_SOURCE_TABLE_LABELS: dict[str, str] = {
-    "compsci.legacy_student": "unmapped student rows",
+    "compsci.student_unmapped": "unmapped student rows",
+    "mathsci.person_unmapped": "unmapped person rows",
+    "academics.teacher_unmapped": "unmapped teacher rows",
+    "academics.course_unmapped": "unmapped course rows",
 }
 
 

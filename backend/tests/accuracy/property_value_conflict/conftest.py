@@ -1,12 +1,14 @@
 from datetime import date
 
 from tests.accuracy.conftest import (
+    CLASS_FACULTY_MEMBER,
     CLASS_PERSON,
     PROP_BIRTH_DATE,
     PROP_EMAIL,
     PROP_FIRST_NAME,
     PROP_LAST_NAME,
     SOURCE_ACADEMICS,
+    SOURCE_COMPSCI,
     SOURCE_MATHSCI,
     VOC,
 )
@@ -16,6 +18,7 @@ IDENTITY_RULE = ",".join([PROP_FIRST_NAME, PROP_LAST_NAME, PROP_BIRTH_DATE])
 
 INTRA_TOTAL_PAIRS = 20
 CROSS_TOTAL_PAIRS = 40
+MYSQL_CROSS_TOTAL_PAIRS = 14
 
 INTRA_PARAMS = {
     "class_uri": CLASS_PERSON,
@@ -29,6 +32,13 @@ CROSS_PARAMS = {
     "identity_props": IDENTITY_RULE,
     "target_prop": PROP_EMAIL,
     "sources": ",".join([SOURCE_ACADEMICS, SOURCE_MATHSCI]),
+}
+
+MYSQL_CROSS_PARAMS = {
+    "class_uri": CLASS_FACULTY_MEMBER,
+    "identity_props": IDENTITY_RULE,
+    "target_prop": PROP_EMAIL,
+    "sources": ",".join([SOURCE_COMPSCI, SOURCE_ACADEMICS]),
 }
 
 
@@ -82,6 +92,59 @@ def set_cross_source_person_pairs(
             ))
     mssql_conn.commit()
     pgsql_conn.commit()
+    return expected_pairs
+
+
+def set_cross_source_faculty_member_pairs(
+    mysql_conn,
+    mssql_conn,
+    pair_count: int,
+    conflict_count: int,
+) -> list[tuple[str, str]]:
+    """Create deterministic compsci-academics FacultyMember pairs for cross-source SA2."""
+    mysql_cursor = mysql_conn.cursor()
+    mssql_cursor = mssql_conn.cursor()
+    expected_pairs = []
+    for idx in range(1, pair_count + 1):
+        first_name = f"AccuracyMysql{idx:03d}"
+        last_name = f"Faculty{idx:03d}"
+        birth_date = date(1980, 2, idx)
+        clean_email = f"accuracy-mysql-{idx:03d}@example.edu"
+        compsci_email = clean_email
+        academics_email = (
+            f"accuracy-mysql-{idx:03d}-conflict@example.edu"
+            if idx <= conflict_count
+            else clean_email
+        )
+        mysql_cursor.execute(
+            """
+            UPDATE academic
+            SET first_name = %s,
+                last_name = %s,
+                birth_date = %s,
+                email = %s
+            WHERE a_id = %s
+            """,
+            (first_name, last_name, birth_date, compsci_email, idx),
+        )
+        mssql_cursor.execute(
+            """
+            UPDATE teacher
+            SET first_name = %s,
+                last_name = %s,
+                birth_date = %s,
+                email = %s
+            WHERE t_id = %s
+            """,
+            (first_name, last_name, birth_date, academics_email, idx),
+        )
+        if idx <= conflict_count:
+            expected_pairs.append((
+                f"{VOC}compsci/academic/{idx}",
+                f"{VOC}academics/teacher/{idx}",
+            ))
+    mysql_conn.commit()
+    mssql_conn.commit()
     return expected_pairs
 
 

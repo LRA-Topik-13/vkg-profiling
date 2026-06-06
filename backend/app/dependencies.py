@@ -2,6 +2,7 @@ import asyncio
 from typing import Optional
 
 import httpx
+from fastapi import HTTPException
 from app.config import (
     ONTOP_ENDPOINT,
     SPARQL_MAX_CONCURRENCY,
@@ -71,3 +72,52 @@ async def execute_sparql(query: str) -> dict:
                     raise
 
     raise RuntimeError("SPARQL query did not return a response")
+
+
+PREFIXES = """
+    PREFIX : <http://example.org/voc#>
+    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+    PREFIX owl: <http://www.w3.org/2002/07/owl#>
+"""
+
+
+def local_name(uri: str) -> str:
+    return uri.split("#")[-1] if "#" in uri else uri.split("/")[-1]
+
+
+def bindings(raw: dict) -> list[dict]:
+    return raw.get("results", {}).get("bindings", [])
+
+
+def count_binding(raw: dict, var_name: str, default: int = 0) -> int:
+    rows = bindings(raw)
+    if not rows:
+        return default
+    return int(rows[0].get(var_name, {}).get("value", str(default)))
+
+
+def sparql_502(exc: Exception) -> HTTPException:
+    return HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(exc)}")
+
+
+def source_membership_filter(var: str, sources: list[str]) -> str:
+    clauses = " || ".join(f'STRSTARTS(STR({var}), "{s}")' for s in sources)
+    return f"FILTER({clauses})"
+
+
+def different_source_filter(sources: list[str], var1: str = "?e1", var2: str = "?e2") -> str:
+    same = " || ".join(
+        f'(STRSTARTS(STR({var1}), "{s}") && STRSTARTS(STR({var2}), "{s}"))'
+        for s in sources
+    )
+    return f"FILTER(!({same}))"
+
+
+def find_source(uri: str, sources: list[str]) -> str:
+    for s in sources:
+        if uri.startswith(s):
+            return s
+    return "unknown"

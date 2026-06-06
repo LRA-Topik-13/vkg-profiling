@@ -3,47 +3,16 @@ from typing import Optional
 import asyncio
 import statistics
 
-from app.dependencies import execute_sparql
-
-PREFIXES = """
-    PREFIX : <http://example.org/voc#>
-    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-"""
+from app.dependencies import (
+    execute_sparql, PREFIXES, local_name, bindings, count_binding,
+    sparql_502, source_membership_filter, different_source_filter, find_source,
+)
+from app.routers.validation import get_class
 
 router = APIRouter(prefix="/accuracy", tags=["accuracy"])
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
-
-def _local_name(uri: str) -> str:
-    """Extract the local name from a URI for display and metadata matching."""
-    return uri.split("#")[-1] if "#" in uri else uri.split("/")[-1]
-
-
-def _bindings(raw: dict) -> list[dict]:
-    """Return SPARQL result bindings with a safe empty-list fallback."""
-    return raw.get("results", {}).get("bindings", [])
-
-
-def _first_int(raw: dict, var: str, default: int = 0) -> int:
-    """Read the first integer value from a SPARQL aggregate result."""
-    rows = _bindings(raw)
-    if not rows:
-        return default
-    return int(rows[0][var]["value"])
-
-
-def _validate_class_uri(class_uri: str) -> dict:
-    """Look up a class by full URI. Returns the class dict. Raises 404 if not found."""
-    from app.routers.metadata_router import KNOWN_CLASSES_BY_URI
-    entry = KNOWN_CLASSES_BY_URI.get(class_uri)
-    if entry is None:
-        raise HTTPException(status_code=404, detail=f"Class '{class_uri}' not found")
-    return entry
-
 
 def _get_class_props(class_uri: str) -> list:
     """Return the expected property list for a class. Raises 404 if not found."""
@@ -187,15 +156,6 @@ def _parse_source_list(
     return source_list
 
 
-def _source_membership_filter(var: str, sources: list[str]) -> str:
-    """Build a SPARQL filter restricting a variable to selected source URI prefixes."""
-    clauses = " || ".join(f'STRSTARTS(STR({var}), "{s}")' for s in sources)
-    return f"FILTER({clauses})"
-
-
-def _sparql_502(exc: Exception) -> HTTPException:
-    """Wrap SPARQL failures as API-facing 502 errors."""
-    return HTTPException(status_code=502, detail=f"SPARQL endpoint error: {str(exc)}")
 
 
 def _compute_tukey(values: list[float]) -> dict:
@@ -262,7 +222,7 @@ async def _count_distinct_property_entities(class_uri: str, prop_uri: str) -> in
         }}
     """
     count_res = await execute_sparql(count_q)
-    return _first_int(count_res, "count")
+    return count_binding(count_res, "count")
 
 
 async def _fetch_property_entity_uris(
@@ -280,7 +240,7 @@ async def _fetch_property_entity_uris(
         LIMIT {limit + 1}
     """
     uri_res = await execute_sparql(uri_q)
-    uris = [b["entity"]["value"] for b in _bindings(uri_res)]
+    uris = [b["entity"]["value"] for b in bindings(uri_res)]
     truncated = len(uris) > limit
     return uris[:limit], truncated
 
@@ -311,10 +271,10 @@ async def _sa1_relationship_count(
     try:
         raw = await execute_sparql(query)
     except Exception as e:
-        raise _sparql_502(e)
+        raise sparql_502(e)
 
-    bindings = _bindings(raw)
-    if not bindings:
+    rows_raw = bindings(raw)
+    if not rows_raw:
         return {
             "uri": class_uri, "class": class_name, "property": property_name, "type": "relationship_count",
             "statistics": {}, "outlier_count": 0, "total": 0, "entities": [],
@@ -322,7 +282,7 @@ async def _sa1_relationship_count(
 
     rows = [
         {"uri": b["entity"]["value"], "count": int(b["count"]["value"])}
-        for b in bindings
+        for b in rows_raw
     ]
     rows.sort(key=lambda row: row["uri"])
     stats = _compute_tukey([r["count"] for r in rows])
@@ -388,7 +348,7 @@ async def accuracy_outliers(
     entities outside Tukey's fences (Q1±1.5×IQR, lower bound floored at 0).
     Criteria: tukey_lower_bound, tukey_upper_bound.
     """
-    class_entry = _validate_class_uri(class_uri)
+    class_entry = get_class(class_uri, code=404)
     class_name = class_entry["localName"]
     if not property_uri:
         raise HTTPException(status_code=400, detail="'property_uri' is required for relationship-count outlier profiling.")
@@ -454,12 +414,12 @@ def _sa2_pair_rows(ctx: dict, value_bindings: list[dict]) -> list[dict]:
             "identity_values": {name: set() for name in ctx["identity_props"]},
             "e1": {
                 "uri": e1_uri,
-                "source": _cs_find_source(e1_uri, ctx["sources"]),
+                "source": find_source(e1_uri, ctx["sources"]),
                 "values": set(),
             },
             "e2": {
                 "uri": e2_uri,
-                "source": _cs_find_source(e2_uri, ctx["sources"]),
+                "source": find_source(e2_uri, ctx["sources"]),
                 "values": set(),
             },
         })
@@ -503,7 +463,7 @@ def _sa2_within_context(
     filter_facets: str | None,
 ) -> dict:
     """Build the context needed for an intra-source SA2 request."""
-    class_entry = _validate_class_uri(class_uri)
+    class_entry = get_class(class_uri, code=404)
     source_list = _parse_source_list(sources, min_count=1)
     rule = _sa2_identity_rule(class_uri, identity_props, target_prop)
     facets = _parse_facets(filter_facets, class_uri)
@@ -518,8 +478,8 @@ def _sa2_within_context(
 
 def _sa2_within_pair_match_body(ctx: dict, source: str) -> str:
     """Build the SPARQL body that matches comparable pairs inside one source."""
-    mem_e1 = _source_membership_filter("?e1", [source])
-    mem_e2 = _source_membership_filter("?e2", [source])
+    mem_e1 = source_membership_filter("?e1", [source])
+    mem_e2 = source_membership_filter("?e2", [source])
     facet_e1 = _build_facet_clauses("?e1", ctx["facets"])
     facet_e2 = _build_facet_clauses("?e2", ctx["facets"])
     return f"""
@@ -577,11 +537,11 @@ async def _sa2_within_summary(ctx: dict) -> dict:
             execute_sparql(grouped_conflict_q),
         )
     except Exception as e:
-        raise _sparql_502(e)
+        raise sparql_502(e)
 
     def source_counts(raw: dict) -> dict[str, int]:
         """Convert grouped SPARQL aggregate rows into a source-to-count map."""
-        return {b["source"]["value"]: int(b["n"]["value"]) for b in _bindings(raw)}
+        return {b["source"]["value"]: int(b["n"]["value"]) for b in bindings(raw)}
 
     totals_by_source = source_counts(total_by_source_raw)
     conflicts_by_source = source_counts(conflict_by_source_raw)
@@ -660,9 +620,9 @@ async def _sa2_within_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
     try:
         raw = await execute_sparql(query)
     except Exception as e:
-        raise _sparql_502(e)
+        raise sparql_502(e)
 
-    rows = _sa2_pair_rows(ctx, _bindings(raw))
+    rows = _sa2_pair_rows(ctx, bindings(raw))
     return {
         "limit": limit,
         "offset": offset,
@@ -727,31 +687,9 @@ async def accuracy_value_conflict_rows(
 
 # ── SA2-cross: Cross-Source Value Conflict ───────────────────────────────────
 
-def _cs_src_membership(var: str, sources: list[str]) -> str:
-    """Build a source-membership filter for cross-source SA2 queries."""
-    return _source_membership_filter(var, sources)
-
-
-def _cs_diff_source(sources: list[str]) -> str:
-    """Build a SPARQL filter requiring compared entities to come from different sources."""
-    same = " || ".join(
-        f'(STRSTARTS(STR(?e1), "{s}") && STRSTARTS(STR(?e2), "{s}"))'
-        for s in sources
-    )
-    return f"FILTER(!({same}))"
-
-
-def _cs_find_source(uri: str, sources: list[str]) -> str:
-    """Return the selected source prefix that contains an entity URI."""
-    for s in sources:
-        if uri.startswith(s):
-            return s
-    return "unknown"
-
-
 def _cs_source_label(source_uri: str) -> str:
     """Convert a source URI prefix into a short display label."""
-    return _local_name(source_uri.rstrip("/"))
+    return local_name(source_uri.rstrip("/"))
 
 
 def _cs_parse_sources(sources_param: str | None) -> list[str]:
@@ -768,7 +706,7 @@ def _sa2_cross_context(
 ) -> dict:
     """Build the context needed for a cross-source SA2 request."""
     source_list = _cs_parse_sources(sources)
-    class_entry = _validate_class_uri(class_uri)
+    class_entry = get_class(class_uri, code=404)
     rule = _sa2_identity_rule(class_uri, identity_props, target_prop)
     facets = _parse_facets(filter_facets, class_uri)
 
@@ -788,9 +726,9 @@ def _sa2_cross_context(
 
 def _sa2_cross_pair_match_body(ctx: dict, sources_for_match: list[str]) -> str:
     """Build the SPARQL body that matches comparable pairs between source pairs."""
-    mem_e1 = _cs_src_membership("?e1", sources_for_match)
-    mem_e2 = _cs_src_membership("?e2", sources_for_match)
-    diff = _cs_diff_source(sources_for_match)
+    mem_e1 = source_membership_filter("?e1", sources_for_match)
+    mem_e2 = source_membership_filter("?e2", sources_for_match)
+    diff = different_source_filter(sources_for_match)
     facet_e1 = _build_facet_clauses("?e1", ctx["facets"])
     facet_e2 = _build_facet_clauses("?e2", ctx["facets"])
     return f"""
@@ -850,12 +788,12 @@ async def _sa2_cross_summary(ctx: dict) -> dict:
             execute_sparql(grouped_conflict_q),
         )
     except Exception as ex:
-        raise _sparql_502(ex)
+        raise sparql_502(ex)
 
     def pair_counts(raw: dict) -> dict[tuple[str, str], int]:
         """Convert grouped SPARQL aggregate rows into a source-pair-to-count map."""
         counts: dict[tuple[str, str], int] = {}
-        for b in _bindings(raw):
+        for b in bindings(raw):
             counts[(b["source_a"]["value"], b["source_b"]["value"])] = int(b["n"]["value"])
         return counts
 
@@ -929,9 +867,9 @@ async def _sa2_cross_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
     try:
         raw = await execute_sparql(query)
     except Exception as ex:
-        raise _sparql_502(ex)
+        raise sparql_502(ex)
 
-    rows = _sa2_pair_rows(ctx, _bindings(raw))
+    rows = _sa2_pair_rows(ctx, bindings(raw))
     return {
         "limit": limit,
         "offset": offset,
@@ -1059,7 +997,7 @@ async def accuracy_property_misuse_by_property(
     try:
         evaluated = await asyncio.gather(*(evaluate_class(cls) for cls in KNOWN_CLASSES))
     except Exception as e:
-        raise _sparql_502(e)
+        raise sparql_502(e)
 
     class_results = [r for r in evaluated if r is not None]
     class_results.sort(key=lambda r: (0 if not r["expected"] else 1, -r["count"], r["class"]))

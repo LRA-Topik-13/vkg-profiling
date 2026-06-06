@@ -3,18 +3,9 @@ from __future__ import annotations
 import re
 from fastapi import APIRouter, Query, HTTPException
 from app.config import ONTOLOGY_FILE, OBDA_FILE
-from app.dependencies import execute_sparql
+from app.dependencies import execute_sparql, PREFIXES
 
 router = APIRouter(prefix="/metadata", tags=["metadata"])
-
-PREFIXES = """
-    PREFIX : <http://example.org/voc#>
-    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-    PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-"""
 
 
 def _parse_obda(obda_path: str) -> dict[str, set[str]]:

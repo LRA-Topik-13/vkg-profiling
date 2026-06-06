@@ -13,17 +13,27 @@ from app.config import (
 
 _RETRY_DELAYS = [1, 2, 4]
 _RETRYABLE_STATUS = {502, 503}
-_SPARQL_SEMAPHORE = asyncio.Semaphore(SPARQL_MAX_CONCURRENCY)
+_SPARQL_SEMAPHORE: asyncio.Semaphore | None = None
 _CLIENT: Optional[httpx.AsyncClient] = None
-_CLIENT_LOCK = asyncio.Lock()
+_CLIENT_LOCK: asyncio.Lock | None = None
+
+
+async def init_sparql_resources() -> None:
+    """Initialise event-loop-bound primitives. Called from lifespan startup."""
+    global _SPARQL_SEMAPHORE, _CLIENT_LOCK, _CLIENT
+    _SPARQL_SEMAPHORE = asyncio.Semaphore(SPARQL_MAX_CONCURRENCY)
+    _CLIENT_LOCK = asyncio.Lock()
+    _CLIENT = None  # force re-creation in the current event loop
 
 
 async def _get_sparql_client() -> httpx.AsyncClient:
-    global _CLIENT
+    global _CLIENT, _CLIENT_LOCK
 
     if _CLIENT is not None and not _CLIENT.is_closed:
         return _CLIENT
 
+    if _CLIENT_LOCK is None:
+        _CLIENT_LOCK = asyncio.Lock()
     async with _CLIENT_LOCK:
         if _CLIENT is None or _CLIENT.is_closed:
             limits = httpx.Limits(
@@ -35,14 +45,20 @@ async def _get_sparql_client() -> httpx.AsyncClient:
 
 
 async def close_sparql_client() -> None:
-    global _CLIENT
+    global _CLIENT, _SPARQL_SEMAPHORE, _CLIENT_LOCK
 
     if _CLIENT is not None and not _CLIENT.is_closed:
         await _CLIENT.aclose()
     _CLIENT = None
+    _SPARQL_SEMAPHORE = None
+    _CLIENT_LOCK = None
 
 
 async def execute_sparql(query: str) -> dict:
+    global _SPARQL_SEMAPHORE
+    if _SPARQL_SEMAPHORE is None:
+        _SPARQL_SEMAPHORE = asyncio.Semaphore(SPARQL_MAX_CONCURRENCY)
+
     headers = {
         "Accept": "application/sparql-results+json",
         "Content-Type": "application/x-www-form-urlencoded",

@@ -3,13 +3,12 @@ import pytest
 from tests.conciseness.intra_source.conftest import ENTITY_CONFIG, SOURCE_ACADEMICS, inject_defects
 
 
-# ── Tests ─────────────────────────────────────────────────────────────────────
-
 @pytest.mark.parametrize("pct", [0, 2, 5, 10, 20])
 @pytest.mark.parametrize("entity", ["TimeSlot", "Place"])
-def test_intra_source_duplicates(entity, pct, db_conn, client):
+def test_intra_source_duplicates(entity, pct, db_conn, client, detection):
     expected = inject_defects(db_conn, entity, pct)
     cfg = ENTITY_CONFIG[entity]
+    N         = expected["total_representations"]
     n_defects = len(expected["groups"])
 
     resp = client.get(
@@ -22,7 +21,7 @@ def test_intra_source_duplicates(entity, pct, db_conn, client):
     )
     assert resp.status_code == 200, resp.text
 
-    data = resp.json()
+    data       = resp.json()
     pagination = data["pagination"]
     items      = data["items"]
 
@@ -34,6 +33,7 @@ def test_intra_source_duplicates(entity, pct, db_conn, client):
 
     if n_defects == 0:
         assert items == [], f"{entity} {pct}%: expected no items for 0 defects"
+        detection(f"intra-source/dups/{entity}", pct, 0, 0, N)
         return
 
     # ── Per-group shape ───────────────────────────────────────────────────────
@@ -47,7 +47,6 @@ def test_intra_source_duplicates(entity, pct, db_conn, client):
             f"{entity} {pct}%: group {i} should have 2 URIs, got {len(item['uris'])}"
 
     # ── URI coverage ──────────────────────────────────────────────────────────
-    # Every injected (template_id, target_id) pair must appear together in one group.
     all_returned_uri_pairs = [frozenset(item["uris"]) for item in items]
     uri_tmpl = cfg["uri_template"]
 
@@ -65,3 +64,5 @@ def test_intra_source_duplicates(entity, pct, db_conn, client):
     all_uris = [uri for item in items for uri in item["uris"]]
     assert len(all_uris) == len(set(all_uris)), \
         f"{entity} {pct}%: same URI appears in multiple groups"
+
+    detection(f"intra-source/dups/{entity}", pct, n_defects, pagination["total"], N)

@@ -221,30 +221,36 @@ def inject_cross_source_defects(
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="session")
-def entity_totals():
+def entity_totals(client):
     """
     Fetches the real total_entities per entity from the API at session start
     (with 0 defects injected). Used to compute expected cn3_score dynamically
     rather than relying on hardcoded counts that depend on OBDA/subclass reasoning.
+
+    Session-scoped and takes the session-scoped client so it shares the same
+    event loop as all tests — avoiding asyncio "bound to a different event loop"
+    errors that arise when the semaphore is contended (class-summary fires >8
+    concurrent SPARQL queries, exhausting SPARQL_MAX_CONCURRENCY=8 and triggering
+    _get_loop() which permanently binds the semaphore to whichever loop first hit
+    contention).
     """
     totals = {}
-    with TestClient(app) as c:
-        for entity, cfg in ENTITY_CONFIG.items():
-            resp = c.get(
-                "/conciseness/cross-source",
-                params={
-                    "class_uri":      cfg["class_uri"],
-                    "identity_props": cfg["identity_props"],
-                    "sources":        ALL_SOURCES,
-                },
-            )
-            assert resp.status_code == 200, f"Failed to fetch baseline for {entity}: {resp.text}"
-            data = resp.json()
-            assert data["ambiguous_instances"] == 0, (
-                f"[entity_totals] Pre-existing cross-source duplicates detected for {entity}: "
-                f"{data['ambiguous_instances']} ambiguous. DB may be dirty from a previous run."
-            )
-            totals[entity] = data["total_entities"]
+    for entity, cfg in ENTITY_CONFIG.items():
+        resp = client.get(
+            "/conciseness/cross-source",
+            params={
+                "class_uri":      cfg["class_uri"],
+                "identity_props": cfg["identity_props"],
+                "sources":        ALL_SOURCES,
+            },
+        )
+        assert resp.status_code == 200, f"Failed to fetch baseline for {entity}: {resp.text}"
+        data = resp.json()
+        assert data["ambiguous_instances"] == 0, (
+            f"[entity_totals] Pre-existing cross-source duplicates detected for {entity}: "
+            f"{data['ambiguous_instances']} ambiguous. DB may be dirty from a previous run."
+        )
+        totals[entity] = data["total_entities"]
     return totals
 
 
@@ -270,7 +276,7 @@ def mssql_conn():
     conn.close()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def client():
     with TestClient(app) as c:
         yield c

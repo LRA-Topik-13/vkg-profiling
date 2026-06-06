@@ -3,13 +3,13 @@ import pytest
 from tests.conciseness.intra_source.conftest import ENTITY_CONFIG, SOURCE_ACADEMICS, inject_defects
 
 
-# ── Tests ─────────────────────────────────────────────────────────────────────
-
 @pytest.mark.parametrize("pct", [0, 2, 5, 10, 20])
 @pytest.mark.parametrize("entity", ["TimeSlot", "Place"])
-def test_intra_source_conciseness(entity, pct, db_conn, client):
+def test_intra_source_conciseness(entity, pct, db_conn, client, detection):
     expected = inject_defects(db_conn, entity, pct)
     cfg = ENTITY_CONFIG[entity]
+    N         = expected["total_representations"]
+    n_defects = len(expected["groups"])
 
     resp = client.get(
         "/conciseness/intra-source",
@@ -34,3 +34,7 @@ def test_intra_source_conciseness(entity, pct, db_conn, client):
         f"{entity} {pct}%: f2 mismatch"
     assert data["passed"]                == expected["passed"], \
         f"{entity} {pct}%: passed mismatch"
+
+    # detected duplicate groups = total_reps - unique (each size-2 group contributes 1 extra)
+    detected = data["total_representations"] - data["unique_instances"]
+    detection(f"intra-source/{entity}", pct, n_defects, detected, N)

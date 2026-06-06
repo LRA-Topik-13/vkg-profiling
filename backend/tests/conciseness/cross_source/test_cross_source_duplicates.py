@@ -6,12 +6,15 @@ from tests.conciseness.cross_source.conftest import (
     inject_cross_source_defects,
 )
 
+_ABBREV = {"FacultyMember": "Faculty", "Course": "Course"}
+
 
 @pytest.mark.parametrize("pct", [0, 2, 5, 10, 20])
 @pytest.mark.parametrize("entity", ["FacultyMember", "Course"])
-def test_cross_source_duplicates(entity, pct, mysql_conn, pgsql_conn, mssql_conn, entity_totals, client):
+def test_cross_source_duplicates(entity, pct, mysql_conn, pgsql_conn, mssql_conn, entity_totals, client, detection):
     expected  = inject_cross_source_defects(mysql_conn, pgsql_conn, mssql_conn, entity, pct)
     cfg       = ENTITY_CONFIG[entity]
+    total     = entity_totals[entity]
     n_defects = len(expected["groups"])
 
     resp = client.get(
@@ -36,6 +39,7 @@ def test_cross_source_duplicates(entity, pct, mysql_conn, pgsql_conn, mssql_conn
 
     if n_defects == 0:
         assert items == [], f"{entity} {pct}%: expected no items for 0 defects"
+        detection(f"cross-source/dups/{_ABBREV[entity]}", pct, 0, 0, total)
         return
 
     # ── Per-group shape ───────────────────────────────────────────────────────
@@ -48,13 +52,11 @@ def test_cross_source_duplicates(entity, pct, mysql_conn, pgsql_conn, mssql_conn
         assert len(item["entities"]) == 3, \
             f"{entity} {pct}%: group {i} should have 3 entity entries"
 
-        # Each group must span all 3 sources
         sources_in_group = {e["source"] for e in item["entities"]}
         assert sources_in_group == {SOURCE_COMPSCI, SOURCE_MATHSCI, SOURCE_ACADEMICS}, \
             f"{entity} {pct}%: group {i} does not span all 3 sources: {sources_in_group}"
 
     # ── URI coverage ──────────────────────────────────────────────────────────
-    # Every injected group's receiver URIs must appear in the response.
     all_response_uris = {e["uri"] for item in items for e in item["entities"]}
 
     for group in expected["groups"]:
@@ -68,3 +70,5 @@ def test_cross_source_duplicates(entity, pct, mysql_conn, pgsql_conn, mssql_conn
     all_uris = [e["uri"] for item in items for e in item["entities"]]
     assert len(all_uris) == len(set(all_uris)), \
         f"{entity} {pct}%: same URI appears in multiple groups"
+
+    detection(f"cross-source/dups/{_ABBREV[entity]}", pct, n_defects, pagination["total"], total)

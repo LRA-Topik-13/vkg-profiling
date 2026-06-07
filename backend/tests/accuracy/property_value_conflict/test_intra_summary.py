@@ -23,6 +23,6 @@ def test_intra_source_person_identity_email_summary(pct, mssql_conn, client):
     data = response.json()
     assert data["total_matched"] == INTRA_TOTAL_PAIRS
     assert data["conflicting_pairs"] == n_defects
-    assert data["sa2_score"] == round((1 - n_defects / INTRA_TOTAL_PAIRS) * 100, 2)
+    assert data["property_value_conflict_score"] == round((1 - n_defects / INTRA_TOTAL_PAIRS) * 100, 2)
     assert data["source_summary"][0]["total_matched"] == INTRA_TOTAL_PAIRS
     assert data["source_summary"][0]["conflicting_pairs"] == n_defects

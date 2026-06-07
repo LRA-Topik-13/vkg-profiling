@@ -27,7 +27,7 @@ def test_cross_source_person_identity_email_summary(pct, mssql_conn, pgsql_conn,
     data = response.json()
     assert data["total_matched"] == CROSS_TOTAL_PAIRS
     assert data["conflicting_pairs"] == n_defects
-    assert data["sa2_cross_score"] == round((1 - n_defects / CROSS_TOTAL_PAIRS) * 100, 2)
+    assert data["property_value_conflict_score"] == round((1 - n_defects / CROSS_TOTAL_PAIRS) * 100, 2)
     assert data["source_pair_summary"][0]["total_matched"] == CROSS_TOTAL_PAIRS
     assert data["source_pair_summary"][0]["conflicting_pairs"] == n_defects
 
@@ -48,6 +48,6 @@ def test_cross_source_faculty_member_mysql_identity_email_summary(pct, mysql_con
     data = response.json()
     assert data["total_matched"] == MYSQL_CROSS_TOTAL_PAIRS
     assert data["conflicting_pairs"] == n_defects
-    assert data["sa2_cross_score"] == round((1 - n_defects / MYSQL_CROSS_TOTAL_PAIRS) * 100, 2)
+    assert data["property_value_conflict_score"] == round((1 - n_defects / MYSQL_CROSS_TOTAL_PAIRS) * 100, 2)
     assert data["source_pair_summary"][0]["total_matched"] == MYSQL_CROSS_TOTAL_PAIRS
     assert data["source_pair_summary"][0]["conflicting_pairs"] == n_defects

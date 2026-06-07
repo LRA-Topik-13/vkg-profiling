@@ -112,7 +112,7 @@ export default function AccuracyPropertyMisuse() {
             <MetricCard value={formatCount(result.total_property_uses)} label="Observed Uses" sub={resultPropertyLabel} />
             <MetricCard value={formatCount(result.total_expected_count)} label="Expected Uses" sub="Expected classes" color="#1F8A4C" />
             <MetricCard value={formatCount(result.total_misuse_count)} label="Misuse Uses" sub="Outside expected classes" color={result.total_misuse_count > 0 ? '#9E2B0A' : '#1F8A4C'} />
-            <AccuracyScoreDonut title="Property Misuse Score" percentage={result.sa4_score} sub="expected / observed" />
+            <AccuracyScoreDonut title="Property Misuse Score" percentage={result.property_misuse_score} sub="expected / observed" />
           </div>
 
           <Section title="Expected Domain Classes" subtitle={`Classes expected to use ${resultPropertyLabel}, based on the ontology domain.`}>

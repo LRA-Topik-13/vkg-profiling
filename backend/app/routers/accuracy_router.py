@@ -6,7 +6,7 @@ import statistics
 
 from app.config import OBDA_FILE
 from app.dependencies import (
-    execute_sparql, PREFIXES, local_name, bindings, count_binding,
+    execute_sparql, PREFIXES, local_name, bindings,
     sparql_502, source_membership_filter, different_source_filter, find_source,
 )
 from app.routers.validation import get_class
@@ -60,7 +60,7 @@ def _resolve_any_mapped_prop_uri(prop_uri: str) -> dict:
     raise HTTPException(status_code=404, detail=f"Property URI '{prop_uri}' not found")
 
 
-def _sa4_expand_template(term: str, prefixes: dict[str, str]) -> str | None:
+def _property_misuse_expand_template(term: str, prefixes: dict[str, str]) -> str | None:
     """Expand an OBDA URI template token while preserving column placeholders."""
     term = term.strip()
     if term.startswith("<") and term.endswith(">"):
@@ -74,7 +74,7 @@ def _sa4_expand_template(term: str, prefixes: dict[str, str]) -> str | None:
     return prefixes[prefix] + local
 
 
-def _sa4_template_uri(template: str, columns: list[str], values: tuple) -> str:
+def _property_misuse_template_uri(template: str, columns: list[str], values: tuple) -> str:
     """Render an OBDA subject URI template from a Teiid source row."""
     uri = template
     for column, value in zip(columns, values):
@@ -82,7 +82,7 @@ def _sa4_template_uri(template: str, columns: list[str], values: tuple) -> str:
     return uri
 
 
-def _sa4_explicit_type_mappings() -> list[dict]:
+def _property_misuse_explicit_type_mappings() -> list[dict]:
     """Parse OBDA class mappings used to recover non-domain-inferred classes."""
     from app.population import _iter_mapping_blocks, _load_prefixes, _parse_source_sql
 
@@ -97,7 +97,7 @@ def _sa4_explicit_type_mappings() -> list[dict]:
         if len(first_tokens) < 3:
             continue
 
-        subject_template = _sa4_expand_template(first_tokens[0], prefixes)
+        subject_template = _property_misuse_expand_template(first_tokens[0], prefixes)
         if subject_template is None:
             continue
         columns = re.findall(r"\{([^}]+)\}", subject_template)
@@ -113,7 +113,7 @@ def _sa4_explicit_type_mappings() -> list[dict]:
         for pred_tok, obj_tok in pairs:
             if pred_tok != "a":
                 continue
-            class_uri = _sa4_expand_template(obj_tok, prefixes)
+            class_uri = _property_misuse_expand_template(obj_tok, prefixes)
             if class_uri:
                 type_uris.append(class_uri)
         if not type_uris:
@@ -132,12 +132,12 @@ def _sa4_explicit_type_mappings() -> list[dict]:
     return mappings
 
 
-async def _sa4_fetch_explicit_entity_classes(known_class_uris: set[str]) -> dict[str, set[str]]:
+async def _property_misuse_fetch_explicit_entity_classes(known_class_uris: set[str]) -> dict[str, set[str]]:
     """Fetch class assignments produced by OBDA type mappings via Teiid SQL."""
     from app.teiid_client import TeiidUnavailable, execute_teiid
 
     entity_classes: dict[str, set[str]] = {}
-    mappings = _sa4_explicit_type_mappings()
+    mappings = _property_misuse_explicit_type_mappings()
 
     async def fetch_mapping(mapping: dict) -> tuple[dict, list[tuple]]:
         select_cols = ", ".join(mapping["columns"])
@@ -157,7 +157,7 @@ async def _sa4_fetch_explicit_entity_classes(known_class_uris: set[str]) -> dict
             continue
         for row in rows:
             values = row if isinstance(row, tuple) else (row,)
-            entity_uri = _sa4_template_uri(mapping["template"], mapping["columns"], values)
+            entity_uri = _property_misuse_template_uri(mapping["template"], mapping["columns"], values)
             entity_classes.setdefault(entity_uri, set()).update(type_uris)
 
     return entity_classes
@@ -261,8 +261,6 @@ def _parse_source_list(
     return source_list
 
 
-
-
 def _compute_tukey(values: list[float]) -> dict:
     """
     Compute Tukey's fence bounds using the IQR method.
@@ -296,69 +294,15 @@ def _compute_tukey(values: list[float]) -> dict:
     }
 
 
-async def _two_step_count_uris(
-    class_uri: str,
-    prop_uri: str,
-    limit: int,
-) -> tuple[int, list[str], bool]:
-    """
-    COUNT DISTINCT entities of class_uri having prop_uri (authoritative step),
-    then fetch up to `limit` entity URIs.
+# ── Relationship Count Outlier Profiling ──────────────────────────────────────
 
-    Returns (count, entity_uris, entities_truncated).
-    COUNT step: no error handling, failures propagate to the caller.
-    URI step: failures also propagate so SA4 does not silently report zero.
-    """
-    count = await _count_distinct_property_entities(class_uri, prop_uri)
-    if count == 0:
-        return 0, [], False
-
-    uris, truncated = await _fetch_property_entity_uris(class_uri, prop_uri, limit)
-    return count, uris, truncated
-
-
-async def _count_distinct_property_entities(class_uri: str, prop_uri: str) -> int:
-    """COUNT DISTINCT entities of class_uri having prop_uri."""
-    count_q = f"""
-        {PREFIXES}
-        SELECT (COUNT(DISTINCT ?entity) AS ?count) WHERE {{
-            ?entity a <{class_uri}> .
-            ?entity <{prop_uri}> ?val .
-        }}
-    """
-    count_res = await execute_sparql(count_q)
-    return count_binding(count_res, "count")
-
-
-async def _fetch_property_entity_uris(
-    class_uri: str,
-    prop_uri: str,
-    limit: int,
-) -> tuple[list[str], bool]:
-    """Fetch up to limit entity URIs of class_uri having prop_uri."""
-    uri_q = f"""
-        {PREFIXES}
-        SELECT DISTINCT ?entity WHERE {{
-            ?entity a <{class_uri}> .
-            ?entity <{prop_uri}> ?val .
-        }}
-        LIMIT {limit + 1}
-    """
-    uri_res = await execute_sparql(uri_q)
-    uris = [b["entity"]["value"] for b in bindings(uri_res)]
-    truncated = len(uris) > limit
-    return uris[:limit], truncated
-
-
-# ── SA1: mode implementations ──────────────────────────────────────────────────
-
-async def _sa1_relationship_count(
+async def _relationship_count_outlier_profiling(
     class_uri: str,
     class_name: str,
     property_uri: str,
     facets: list[tuple[str, str | None]],
 ) -> dict:
-    """Run SA1 relationship-count outlier profiling with Tukey fences."""
+    """Run relationship-count outlier profiling with Tukey fences."""
     prop_entry = _resolve_prop_by_uri(class_uri, property_uri, expected_type="object")
     prop_uri = prop_entry["uri"]
     property_name = prop_entry["localName"]
@@ -382,7 +326,8 @@ async def _sa1_relationship_count(
     if not rows_raw:
         return {
             "uri": class_uri, "class": class_name, "property": property_name, "type": "relationship_count",
-            "statistics": {}, "outlier_count": 0, "total": 0, "entities": [],
+            "statistics": {}, "outlier_count": 0, "total": 0,
+            "relationship_count_score": None, "entities": [],
         }
 
     rows = [
@@ -420,19 +365,28 @@ async def _sa1_relationship_count(
             "violations": violations,
         })
 
+    outlier_count = sum(1 for e in entities if e["is_outlier"])
+    total = len(entities)
+    relationship_count_score = (
+        round((total - outlier_count) / total * 100, 2)
+        if total
+        else None
+    )
+
     return {
         "uri": class_uri,
         "class": class_name,
         "property": property_name,
         "type": "relationship_count",
         "statistics": stats,
-        "outlier_count": sum(1 for e in entities if e["is_outlier"]),
-        "total": len(entities),
+        "outlier_count": outlier_count,
+        "total": total,
+        "relationship_count_score": relationship_count_score,
         "entities": entities,
     }
 
 
-# ── SA1: Outlier Profiling ────────────────────────────────────────────────────
+# ── Outlier Profiling ─────────────────────────────────────────────────────────
 
 @router.get("/outliers")
 async def accuracy_outliers(
@@ -447,7 +401,7 @@ async def accuracy_outliers(
     ),
 ):
     """
-    SA1: Outlier Profiling.
+    Relationship Count Outlier Profiling.
 
     Counts how many values each entity has for a given object property. Flags
     entities outside Tukey's fences (Q1±1.5×IQR, lower bound floored at 0).
@@ -459,18 +413,18 @@ async def accuracy_outliers(
         raise HTTPException(status_code=400, detail="'property_uri' is required for relationship-count outlier profiling.")
     facets = _parse_facets(filter_facets, class_uri)
 
-    return await _sa1_relationship_count(class_uri, class_name, property_uri, facets)
+    return await _relationship_count_outlier_profiling(class_uri, class_name, property_uri, facets)
 
 
-# ── SA2: Value Conflict Detection ─────────────────────────────────────────────
+# ── Property Value Conflict ───────────────────────────────────────────────────
 
 
-def _sa2_identity_rule(
+def _value_conflict_identity_rule(
     class_uri: str,
     identity_props: str,
     target_prop: str,
 ) -> dict:
-    """Build and validate the shared SA2 functional-dependency rule context."""
+    """Build and validate the shared property-value-conflict rule context."""
     prop_uris = list(dict.fromkeys(p.strip() for p in identity_props.split(",") if p.strip()))
     if not prop_uris:
         raise HTTPException(status_code=400, detail="At least one identity property required.")
@@ -508,8 +462,8 @@ def _sa2_identity_rule(
     }
 
 
-def _sa2_pair_rows(ctx: dict, value_bindings: list[dict]) -> list[dict]:
-    """Convert raw SA2 SPARQL bindings into display-ready entity-pair rows."""
+def _value_conflict_pair_rows(ctx: dict, value_bindings: list[dict]) -> list[dict]:
+    """Convert raw value-conflict SPARQL bindings into display-ready entity-pair rows."""
     pairs_by_key: dict[tuple[str, str], dict] = {}
     for row in value_bindings:
         e1_uri = row["e1"]["value"]
@@ -560,17 +514,17 @@ def _sa2_pair_rows(ctx: dict, value_bindings: list[dict]) -> list[dict]:
     return pairs
 
 
-def _sa2_within_context(
+def _value_conflict_intra_context(
     class_uri: str,
     identity_props: str,
     target_prop: str,
     sources: str | None,
     filter_facets: str | None,
 ) -> dict:
-    """Build the context needed for an intra-source SA2 request."""
+    """Build the context needed for an intra-source property-value-conflict request."""
     class_entry = get_class(class_uri, code=404)
     source_list = _parse_source_list(sources, min_count=1)
-    rule = _sa2_identity_rule(class_uri, identity_props, target_prop)
+    rule = _value_conflict_identity_rule(class_uri, identity_props, target_prop)
     facets = _parse_facets(filter_facets, class_uri)
     return {
         **rule,
@@ -581,7 +535,7 @@ def _sa2_within_context(
     }
 
 
-def _sa2_within_pair_match_body(ctx: dict, source: str) -> str:
+def _value_conflict_intra_pair_match_body(ctx: dict, source: str) -> str:
     """Build the SPARQL body that matches comparable pairs inside one source."""
     mem_e1 = source_membership_filter("?e1", [source])
     mem_e2 = source_membership_filter("?e2", [source])
@@ -600,11 +554,11 @@ def _sa2_within_pair_match_body(ctx: dict, source: str) -> str:
     """
 
 
-def _sa2_within_source_count_query(ctx: dict, conflicting: bool) -> str:
-    """Build an intra-source SA2 aggregate count query."""
+def _value_conflict_intra_source_count_query(ctx: dict, conflicting: bool) -> str:
+    """Build an intra-source value-conflict aggregate count query."""
     source_blocks = []
     for source in ctx["sources"]:
-        body = _sa2_within_pair_match_body(ctx, source)
+        body = _value_conflict_intra_pair_match_body(ctx, source)
         conflict_filter = "FILTER(?v1 != ?v2)" if conflicting else ""
         source_blocks.append(f"""
             {{
@@ -631,10 +585,10 @@ def _sa2_within_source_count_query(ctx: dict, conflicting: bool) -> str:
     """
 
 
-async def _sa2_within_summary(ctx: dict) -> dict:
-    """Compute the full intra-source SA2 summary and per-source breakdown."""
-    grouped_total_q = _sa2_within_source_count_query(ctx, conflicting=False)
-    grouped_conflict_q = _sa2_within_source_count_query(ctx, conflicting=True)
+async def _value_conflict_intra_summary(ctx: dict) -> dict:
+    """Compute the full intra-source value-conflict summary and per-source breakdown."""
+    grouped_total_q = _value_conflict_intra_source_count_query(ctx, conflicting=False)
+    grouped_conflict_q = _value_conflict_intra_source_count_query(ctx, conflicting=True)
 
     try:
         total_by_source_raw, conflict_by_source_raw = await asyncio.gather(
@@ -665,11 +619,11 @@ async def _sa2_within_summary(ctx: dict) -> dict:
             "total_matched": total_source,
             "conflicting_pairs": conflict_source,
             "conflict_rate": conflict_rate_source,
-            "sa2_score": score_source,
+            "property_value_conflict_score": score_source,
         })
 
     conflict_rate = round(conflict_count / total_matched * 100, 2) if total_matched else None
-    sa2_score = round((1 - conflict_count / total_matched) * 100, 2) if total_matched else None
+    property_value_conflict_score = round((1 - conflict_count / total_matched) * 100, 2) if total_matched else None
 
     return {
         "uri": ctx["class_uri"],
@@ -683,16 +637,16 @@ async def _sa2_within_summary(ctx: dict) -> dict:
         "total_matched": total_matched,
         "conflicting_pairs": conflict_count,
         "conflict_rate": conflict_rate,
-        "sa2_score": sa2_score,
+        "property_value_conflict_score": property_value_conflict_score,
         "source_summary": source_summary,
     }
 
 
-async def _sa2_within_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
-    """Fetch one offset-paginated page of intra-source SA2 conflict evidence."""
+async def _value_conflict_intra_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
+    """Fetch one offset-paginated page of intra-source value-conflict evidence."""
     source_blocks = []
     for source in ctx["sources"]:
-        body = _sa2_within_pair_match_body(ctx, source)
+        body = _value_conflict_intra_pair_match_body(ctx, source)
         source_blocks.append(f"""
                     {{
 {body}
@@ -727,7 +681,7 @@ async def _sa2_within_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
     except Exception as e:
         raise sparql_502(e)
 
-    rows = _sa2_pair_rows(ctx, bindings(raw))
+    rows = _value_conflict_pair_rows(ctx, bindings(raw))
     return {
         "limit": limit,
         "offset": offset,
@@ -758,9 +712,9 @@ async def accuracy_value_conflict_summary(
         description="Comma-separated object-property facets. Use prop_uri or prop_uri::object_uri.",
     ),
 ):
-    """SA2 intra-source population summary. Does not return table rows."""
-    ctx = _sa2_within_context(class_uri, identity_props, target_prop, sources, filter_facets)
-    return await _sa2_within_summary(ctx)
+    """Intra-source property-value-conflict population summary. Does not return table rows."""
+    ctx = _value_conflict_intra_context(class_uri, identity_props, target_prop, sources, filter_facets)
+    return await _value_conflict_intra_summary(ctx)
 
 
 @router.get("/value-conflict/rows")
@@ -785,12 +739,12 @@ async def accuracy_value_conflict_rows(
     limit: int = Query(50, ge=1, le=500, description="Max conflict pairs returned per page."),
     offset: int = Query(0, ge=0, description="Conflict pair offset for pagination."),
 ):
-    """SA2 intra-source conflict evidence rows only."""
-    ctx = _sa2_within_context(class_uri, identity_props, target_prop, sources, filter_facets)
-    return await _sa2_within_rows_offset(ctx, limit, offset)
+    """Intra-source property-value-conflict evidence rows only."""
+    ctx = _value_conflict_intra_context(class_uri, identity_props, target_prop, sources, filter_facets)
+    return await _value_conflict_intra_rows_offset(ctx, limit, offset)
 
 
-# ── SA2-cross: Cross-Source Value Conflict ───────────────────────────────────
+# ── Cross-Source Property Value Conflict ─────────────────────────────────────
 
 def _cs_source_label(source_uri: str) -> str:
     """Convert a source URI prefix into a short display label."""
@@ -798,21 +752,21 @@ def _cs_source_label(source_uri: str) -> str:
 
 
 def _cs_parse_sources(sources_param: str | None) -> list[str]:
-    """Parse and validate source prefixes for cross-source SA2."""
+    """Parse and validate source prefixes for cross-source value-conflict checks."""
     return _parse_source_list(sources_param, min_count=2, default_first_two=True)
 
 
-def _sa2_cross_context(
+def _value_conflict_cross_context(
     class_uri: str,
     identity_props: str,
     target_prop: str,
     sources: str | None,
     filter_facets: str | None,
 ) -> dict:
-    """Build the context needed for a cross-source SA2 request."""
+    """Build the context needed for a cross-source property-value-conflict request."""
     source_list = _cs_parse_sources(sources)
     class_entry = get_class(class_uri, code=404)
-    rule = _sa2_identity_rule(class_uri, identity_props, target_prop)
+    rule = _value_conflict_identity_rule(class_uri, identity_props, target_prop)
     facets = _parse_facets(filter_facets, class_uri)
 
     return {
@@ -829,7 +783,7 @@ def _sa2_cross_context(
     }
 
 
-def _sa2_cross_pair_match_body(ctx: dict, sources_for_match: list[str]) -> str:
+def _value_conflict_cross_pair_match_body(ctx: dict, sources_for_match: list[str]) -> str:
     """Build the SPARQL body that matches comparable pairs between source pairs."""
     mem_e1 = source_membership_filter("?e1", sources_for_match)
     mem_e2 = source_membership_filter("?e2", sources_for_match)
@@ -850,11 +804,11 @@ def _sa2_cross_pair_match_body(ctx: dict, sources_for_match: list[str]) -> str:
     """
 
 
-def _sa2_cross_source_pair_count_query(ctx: dict, conflicting: bool) -> str:
-    """Build a cross-source SA2 aggregate count query per source pair."""
+def _value_conflict_cross_source_pair_count_query(ctx: dict, conflicting: bool) -> str:
+    """Build a cross-source value-conflict aggregate count query per source pair."""
     pair_blocks = []
     for left, right in ctx["source_pairs"]:
-        body = _sa2_cross_pair_match_body(ctx, [left, right])
+        body = _value_conflict_cross_pair_match_body(ctx, [left, right])
         conflict_filter = "FILTER(?v1 != ?v2)" if conflicting else ""
         pair_blocks.append(f"""
             {{
@@ -882,10 +836,10 @@ def _sa2_cross_source_pair_count_query(ctx: dict, conflicting: bool) -> str:
     """
 
 
-async def _sa2_cross_summary(ctx: dict) -> dict:
-    """Compute the full cross-source SA2 summary and per-source-pair breakdown."""
-    grouped_total_q = _sa2_cross_source_pair_count_query(ctx, conflicting=False)
-    grouped_conflict_q = _sa2_cross_source_pair_count_query(ctx, conflicting=True)
+async def _value_conflict_cross_summary(ctx: dict) -> dict:
+    """Compute the full cross-source value-conflict summary and per-source-pair breakdown."""
+    grouped_total_q = _value_conflict_cross_source_pair_count_query(ctx, conflicting=False)
+    grouped_conflict_q = _value_conflict_cross_source_pair_count_query(ctx, conflicting=True)
 
     try:
         total_by_pair_raw, conflict_by_pair_raw = await asyncio.gather(
@@ -921,11 +875,11 @@ async def _sa2_cross_summary(ctx: dict) -> dict:
             "total_matched": total_pair,
             "conflicting_pairs": conflict_pair,
             "conflict_rate": conflict_rate_pair,
-            "sa2_cross_score": score_pair,
+            "property_value_conflict_score": score_pair,
         })
 
     conflict_rate = round(conflict_count / total_matched * 100, 2) if total_matched else None
-    sa2_score = round((1 - conflict_count / total_matched) * 100, 2) if total_matched else None
+    property_value_conflict_score = round((1 - conflict_count / total_matched) * 100, 2) if total_matched else None
 
     return {
         "uri": ctx["class_uri"],
@@ -939,14 +893,14 @@ async def _sa2_cross_summary(ctx: dict) -> dict:
         "total_matched": total_matched,
         "conflicting_pairs": conflict_count,
         "conflict_rate": conflict_rate,
-        "sa2_cross_score": sa2_score,
+        "property_value_conflict_score": property_value_conflict_score,
         "source_pair_summary": source_pair_summary,
     }
 
 
-async def _sa2_cross_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
-    """Fetch one offset-paginated page of cross-source SA2 conflict evidence."""
-    pair_match_body = _sa2_cross_pair_match_body(ctx, ctx["sources"])
+async def _value_conflict_cross_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
+    """Fetch one offset-paginated page of cross-source value-conflict evidence."""
+    pair_match_body = _value_conflict_cross_pair_match_body(ctx, ctx["sources"])
     # Avoid ORDER BY on URI variables here for the same Ontop/Teiid reason as
     # the intra-source rows endpoint.
     query = f"""
@@ -974,7 +928,7 @@ async def _sa2_cross_rows_offset(ctx: dict, limit: int, offset: int) -> dict:
     except Exception as ex:
         raise sparql_502(ex)
 
-    rows = _sa2_pair_rows(ctx, bindings(raw))
+    rows = _value_conflict_pair_rows(ctx, bindings(raw))
     return {
         "limit": limit,
         "offset": offset,
@@ -1005,9 +959,9 @@ async def accuracy_value_conflict_cross_source_summary(
         description="Comma-separated object-property facets. Use prop_uri or prop_uri::object_uri.",
     ),
 ):
-    """SA2 cross-source population summary. Does not return table rows."""
-    ctx = _sa2_cross_context(class_uri, identity_props, target_prop, sources, filter_facets)
-    return await _sa2_cross_summary(ctx)
+    """Cross-source property-value-conflict population summary. Does not return table rows."""
+    ctx = _value_conflict_cross_context(class_uri, identity_props, target_prop, sources, filter_facets)
+    return await _value_conflict_cross_summary(ctx)
 
 
 @router.get("/value-conflict/cross-source/rows")
@@ -1033,13 +987,13 @@ async def accuracy_value_conflict_cross_source_rows(
     offset: int = Query(0, ge=0, description="Conflict pair offset for pagination."),
     sample_limit: Optional[int] = Query(None, ge=1, le=500, description="Deprecated alias for limit."),
 ):
-    """SA2 cross-source conflict evidence rows only."""
-    ctx = _sa2_cross_context(class_uri, identity_props, target_prop, sources, filter_facets)
+    """Cross-source property-value-conflict evidence rows only."""
+    ctx = _value_conflict_cross_context(class_uri, identity_props, target_prop, sources, filter_facets)
     effective_limit = sample_limit if sample_limit is not None else limit
-    return await _sa2_cross_rows_offset(ctx, effective_limit, offset)
+    return await _value_conflict_cross_rows_offset(ctx, effective_limit, offset)
 
 
-# ── SA4: Property Misuse Detection, per-property view ─────────────────────────
+# ── Property Misuse Detection, per-property view ──────────────────────────────
 
 @router.get("/property-misuse/by-property")
 async def accuracy_property_misuse_by_property(
@@ -1049,7 +1003,7 @@ async def accuracy_property_misuse_by_property(
     ),
 ):
     """
-    SA4: Property Misuse Detection, per-property view.
+    Property Misuse Detection, per-property view.
 
     For a given property, reports:
       • Classes where the property IS expected (per ontology domain constraints):
@@ -1085,7 +1039,7 @@ async def accuracy_property_misuse_by_property(
         """
         entity_raw, explicit_classes_by_entity = await asyncio.gather(
             execute_sparql(entity_query),
-            _sa4_fetch_explicit_entity_classes(set(known_class_by_uri)),
+            _property_misuse_fetch_explicit_entity_classes(set(known_class_by_uri)),
         )
     except HTTPException:
         raise
@@ -1160,7 +1114,7 @@ async def accuracy_property_misuse_by_property(
     total_expected_count = len(valid_entities)
     total_misuse_count = len(misuse_entities)
     total_property_uses = len(all_entities)
-    sa4_score = (
+    property_misuse_score = (
         round(total_expected_count / total_property_uses * 100, 2)
         if total_property_uses
         else 100.0
@@ -1173,6 +1127,6 @@ async def accuracy_property_misuse_by_property(
         "total_expected_count": total_expected_count,
         "total_misuse_count":   total_misuse_count,
         "total_property_uses":  total_property_uses,
-        "sa4_score":            sa4_score,
+        "property_misuse_score": property_misuse_score,
         "classes":              class_results,
     }

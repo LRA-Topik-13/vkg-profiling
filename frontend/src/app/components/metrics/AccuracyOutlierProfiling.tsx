@@ -307,12 +307,11 @@ function OutlierSummary({
   classLabel: string;
   propertyLabel: string;
 }) {
-  const cleanScore = result.total ? ((result.total - result.outlier_count) / result.total) * 100 : null;
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
       <MetricCard value={formatCount(result.total)} label="Total Entities" sub={classLabel} />
       <MetricCard value={formatCount(result.outlier_count)} label="Flagged Entities" sub="Potential outliers" color={result.outlier_count > 0 ? '#9E2B0A' : '#1F8A4C'} />
-      <AccuracyScoreDonut title="Relationship Count Score" percentage={cleanScore} sub="Entities without flags" />
+      <AccuracyScoreDonut title="Relationship Count Score" percentage={result.relationship_count_score} sub="Entities without flags" />
       <MetricCard value={propertyLabel || '-'} label="Property" sub="Object property" />
     </div>
   );

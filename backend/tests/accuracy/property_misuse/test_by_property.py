@@ -21,7 +21,7 @@ def test_property_misuse_by_property(pct, property_misuse_scenario, request, cli
     assert data["total_property_uses"] == total_property_uses
     assert data["total_misuse_count"] == n_defects
     assert data["total_expected_count"] == total_property_uses - n_defects
-    assert data["sa4_score"] == round((total_property_uses - n_defects) / total_property_uses * 100, 2)
+    assert data["property_misuse_score"] == round((total_property_uses - n_defects) / total_property_uses * 100, 2)
 
     if expected_entities:
         assert_sampled_misuse_evidence(data, expected_entities)

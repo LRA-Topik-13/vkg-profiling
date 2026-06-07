@@ -48,7 +48,7 @@ def set_cross_source_person_pairs(
     pair_count: int,
     conflict_count: int,
 ) -> list[tuple[str, str]]:
-    """Create deterministic academics-mathsci Person pairs for cross-source SA2."""
+    """Create deterministic academics-mathsci Person pairs for cross-source value-conflict checks."""
     mssql_cursor = mssql_conn.cursor()
     pg_cursor = pgsql_conn.cursor()
     expected_pairs = []
@@ -101,7 +101,7 @@ def set_cross_source_faculty_member_pairs(
     pair_count: int,
     conflict_count: int,
 ) -> list[tuple[str, str]]:
-    """Create deterministic compsci-academics FacultyMember pairs for cross-source SA2."""
+    """Create deterministic compsci-academics FacultyMember pairs for cross-source value-conflict checks."""
     mysql_cursor = mysql_conn.cursor()
     mssql_cursor = mssql_conn.cursor()
     expected_pairs = []
@@ -153,7 +153,7 @@ def set_intra_source_person_pairs(
     pair_count: int,
     conflict_count: int,
 ) -> list[tuple[str, str]]:
-    """Create deterministic same-source academics Person pairs for intra-source SA2."""
+    """Create deterministic same-source academics Person pairs for intra-source value-conflict checks."""
     cursor = conn.cursor()
     expected_pairs = []
     for pair_idx in range(1, pair_count + 1):

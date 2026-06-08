@@ -9,15 +9,6 @@ router = APIRouter(prefix="/metadata", tags=["metadata"])
 
 
 def _parse_obda(obda_path: str) -> dict[str, set[str]]:
-    """
-    Parse an Ontop OBDA mapping file and return {class_uri: set(property_uris)}.
-
-    Mappings are grouped by subject template base (the template URI with column
-    variables stripped, e.g. "…voc#compsci/academic/" for {a_id} templates).
-    All entries sharing the same base pool their class assertions and property
-    assertions, so subclass mappings like compsci-fullProfessor automatically
-    inherit the properties from compsci-academic.
-    """
     RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
     with open(obda_path, encoding="utf-8") as f:
@@ -48,10 +39,9 @@ def _parse_obda(obda_path: str) -> dict[str, set[str]]:
         return None
 
     def _subject_base(subject_term: str) -> str | None:
-        # Handle blank node templates like _:compscistudent{s_id}
         raw = re.sub(r"\{[^}]+\}", "", subject_term).strip()
         if raw.startswith("_:"):
-            return raw  # e.g. "_:compscistudent"
+            return raw
         expanded = _expand(subject_term)
         if expanded is None:
             return None
@@ -100,10 +90,6 @@ def _parse_obda(obda_path: str) -> dict[str, set[str]]:
 
 
 def _parse_ontology(ttl_path: str) -> dict:
-    """
-    Parse the OWL ontology (.ttl) with rdflib.
-    Returns all_class_uris and prop_lookup {uri: {localName, type, domain, range}}.
-    """
     from rdflib import Graph, RDF, RDFS, OWL, URIRef
 
     g = Graph()
@@ -116,7 +102,6 @@ def _parse_ontology(ttl_path: str) -> dict:
         str(s) for s in g.subjects(RDF.type, OWL.Class) if isinstance(s, URIRef)
     }
 
-    # Parse rdfs:label for classes
     class_labels: dict[str, str] = {}
     for cls_uri in all_class_uris:
         label = next(
@@ -156,31 +141,6 @@ def _parse_ontology(ttl_path: str) -> dict:
 
 
 def _build_metadata(ttl_path: str, obda_path: str):
-    """
-    Combines ontology + OBDA info to produce the four metadata structures:
-    KNOWN_CLASSES, KNOWN_PROPERTIES, ONTOLOGY_CLASSES, ONTOLOGY_PROPERTIES.
-
-    KNOWN_PROPERTIES uses ONTOLOGY DOMAIN CONSTRAINTS (not OBDA URI-template
-    grouping) to decide which properties are expected for each class:
-
-      A property P is expected for class C if C ⊆ effective_domain(P), where
-      effective_domain follows the rdfs:subPropertyOf chain when no direct
-      rdfs:domain is declared.
-
-    Why this matters:
-    - :givesLecture / :givesLab have no explicit domain but are subProperties of
-      :teaches whose domain is :Teacher.  Under OBDA template grouping these
-      properties were incorrectly listed as expected on non-Teacher classes such
-      as :GraduateStudent (because the lecturer / lab_teacher mapping shares the
-      same mathsci/person/ URI template base).  The domain-constraint approach
-      correctly excludes them.
-    - Ontop performs sub-property inference: querying ?entity :teaches ?val also
-      returns entities with :givesLecture (a sub-property).  So AssistantProfessor
-      entities that have givesLecture are also found by teaches queries.  By
-      including :teaches as expected for AssistantProfessor (via the class
-      hierarchy AssistantProfessor ⊑ Professor ⊑ Teacher), SA4 no longer flags
-      this as a misuse.
-    """
     from rdflib import Graph, RDF, RDFS, OWL, URIRef
 
     def _ln(uri: str) -> str:
@@ -195,11 +155,9 @@ def _build_metadata(ttl_path: str, obda_path: str):
     mapped_class_uris = set(class_prop_map.keys())
     mapped_prop_uris  = {uri for uris in class_prop_map.values() for uri in uris}
 
-    # Parse the ontology graph for hierarchy + sub-property domain resolution
     g = Graph()
     g.parse(ttl_path, format="turtle")
 
-    # ── Class ancestry (iterative to avoid recursion-limit issues) ────────────
     _anc_cache: dict[str, set[str]] = {}
 
     def _ancestors(cls_uri: str) -> set[str]:
@@ -220,7 +178,6 @@ def _build_metadata(ttl_path: str, obda_path: str):
         _anc_cache[cls_uri] = result
         return result
 
-    # ── Effective domain (follows rdfs:subPropertyOf chain) ───────────────────
     _dom_cache: dict[str, str | None] = {}
 
     def _effective_domain(prop_uri: str, _seen: frozenset = frozenset()) -> str | None:
@@ -242,7 +199,6 @@ def _build_metadata(ttl_path: str, obda_path: str):
         _dom_cache[prop_uri] = None
         return None
 
-    # ── Standard metadata structures ──────────────────────────────────────────
     ontology_classes = sorted(
         [{"localName": _ln(uri), "uri": uri, "mapped": uri in mapped_class_uris,
           "label": class_labels.get(uri)}
@@ -272,30 +228,19 @@ def _build_metadata(ttl_path: str, obda_path: str):
         key=lambda x: x["uri"],
     )
 
-    # ── KNOWN_PROPERTIES via ontology domain constraints (hybrid) ────────────
-    # For each OBDA-mapped class C, expected properties = all OBDA-mapped
-    # properties P where:
-    #   • P has an effective domain D  →  include iff C ⊆ D
-    #   • P has NO effective domain    →  fall back to OBDA URI-template grouping
-    #                                     (include iff P was explicitly assigned to
-    #                                     C's template group by the OBDA parser)
-    #
-    # The fallback is needed for domain-less properties like :title (Course only)
-    # that would otherwise be listed as expected for every class.
     known_properties: dict[str, list] = {}
     for cls_uri in mapped_class_uris:
         cls_name = _ln(cls_uri)
-        cls_anc  = _ancestors(cls_uri)   # includes cls_uri itself
-        # Props the OBDA explicitly assigned to this class's URI-template group
+        cls_anc  = _ancestors(cls_uri)
         obda_cls_props = class_prop_map.get(cls_uri, set())
 
         props: list[dict] = []
         for prop_uri in sorted(mapped_prop_uris):
             eff_dom = _effective_domain(prop_uri)
             if eff_dom is not None:
-                include = eff_dom in cls_anc          # domain constraint
+                include = eff_dom in cls_anc
             else:
-                include = prop_uri in obda_cls_props  # OBDA grouping fallback
+                include = prop_uri in obda_cls_props
             if not include:
                 continue
             d = prop_lookup.get(prop_uri)
@@ -320,19 +265,11 @@ def _build_metadata(ttl_path: str, obda_path: str):
 
 
 def _source_local_name(uri: str) -> str:
-    """Short name for a source URI prefix, e.g. "…voc#compsci/" → "compsci"."""
     frag = uri.split("#")[-1] if "#" in uri else uri.rstrip("/").split("/")[-1]
     return frag.strip("/")
 
 
 def _extract_source_prefixes(obda_path: str) -> list[str]:
-    """
-    Extract unique source URI prefixes from OBDA mapping file.
-
-    Looks at subject templates in target lines and extracts the common
-    prefix up to the first path segment after the namespace fragment.
-    E.g. "http://example.org/voc#compsci/academic/{a_id}" → "http://example.org/voc#compsci/"
-    """
     with open(obda_path, encoding="utf-8") as f:
         content = f.read()
 
@@ -347,10 +284,8 @@ def _extract_source_prefixes(obda_path: str) -> list[str]:
     source_prefixes: set[str] = set()
     for m in re.finditer(r"^target\s+(.+)$", content, re.MULTILINE):
         subject = m.group(1).strip().split()[0]
-        # Skip blank-node templates
         if subject.startswith("_:"):
             continue
-        # Expand prefixed name
         expanded = None
         if subject.startswith("<") and subject.endswith(">"):
             expanded = subject[1:-1]
@@ -376,7 +311,6 @@ KNOWN_SOURCES = [
     for prefix in _extract_source_prefixes(OBDA_FILE)
 ]
 
-# O(1) class lookup by URI — replaces linear scans of KNOWN_CLASSES list
 KNOWN_CLASSES_BY_URI: dict[str, dict] = {c["uri"]: c for c in KNOWN_CLASSES}
 
 
@@ -445,7 +379,6 @@ async def get_facet_values(
 
 @router.get("/all-properties")
 def get_all_properties():
-    """Returns every unique OBDA-mapped property across all classes, deduplicated and sorted."""
     seen: dict[str, dict] = {}
     for props in KNOWN_PROPERTIES.values():
         for p in props:
@@ -466,7 +399,6 @@ def get_schema_properties():
 
 @router.get("/sources")
 def get_sources():
-    """Registered data sources from the OBDA mapping, each as {uri, localName}."""
     return {"sources": KNOWN_SOURCES}
 
 

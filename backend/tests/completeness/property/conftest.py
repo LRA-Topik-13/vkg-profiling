@@ -31,22 +31,12 @@ PROPERTY_TARGETS = {
             _src("mathsci", "person", "pid", "email", f"{VOC}mathsci/person/", "status IN (1,2,4)"),
         ],
     },
-    f"{VOC}FacultyMember": {
-        EMAIL: [
-            _src("compsci", "academic", "a_id", "email", f"{VOC}compsci/academic/"),
-            _src("academics", "teacher", "t_id", "email", f"{VOC}academics/teacher/"),
-            _src("mathsci", "person", "pid", "email", f"{VOC}mathsci/person/", "status IN (7,8,9)"),
-        ],
-    },
     f"{VOC}Course": {
         f"{VOC}title": [
             _src("compsci", "course", "c_id", "title", f"{VOC}compsci/course/"),
             _src("academics", "course", "c_id", "title", f"{VOC}academics/course/"),
             _src("mathsci", "course", "cid", "topic", f"{VOC}mathsci/course/"),
         ],
-    },
-    f"{VOC}Place": {
-        f"{VOC}roomCode": [_src("academics", "place", "place_id", "room_code", f"{VOC}academics/place/")],
     },
     f"{VOC}TimeSlot": {
         f"{VOC}day": [_src("academics", "time_slot", "ts_id", "day", f"{VOC}academics/timeslot/")],

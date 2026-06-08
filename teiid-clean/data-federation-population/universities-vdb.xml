@@ -34,6 +34,21 @@
                   s_id integer not null
                  )OPTIONS(UPDATABLE 'FALSE');
 
+                CREATE FOREIGN TABLE student_unmapped (
+                  s_id integer not null primary key,
+                  first_name varchar(40) not null,
+                  last_name varchar(40) not null,
+                  birth_date date,
+                  email varchar(100)
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE alumni (
+                  s_id integer not null primary key,
+                  first_name varchar(40) not null,
+                  last_name varchar(40) not null,
+                  birth_date date,
+                  email varchar(100)
+                 )OPTIONS(UPDATABLE 'FALSE');
             ]]> </metadata>
       </model>
       <model visible="true" name="mathsci">
@@ -65,6 +80,14 @@
               pid_supervisor integer not null
               )OPTIONS(UPDATABLE 'FALSE');
 
+             CREATE FOREIGN TABLE person_unmapped (
+              pid integer not null primary key,
+              fname varchar(40) not null,
+              lname varchar(40) not null,
+              status integer not null,
+              birth_date date,
+              email varchar(100)
+              )OPTIONS(UPDATABLE 'FALSE');
             ]]> </metadata>
       </model>
       <model visible="true" name="academics">
@@ -108,6 +131,19 @@
                   ts_id integer not null
                  )OPTIONS(UPDATABLE 'FALSE');
 
+                CREATE FOREIGN TABLE teacher_unmapped (
+                  t_id integer not null primary key,
+                  first_name varchar(40) not null,
+                  last_name varchar(40) not null,
+                  position integer not null,
+                  birth_date date,
+                  email varchar(100)
+                 )OPTIONS(UPDATABLE 'FALSE');
+
+                CREATE FOREIGN TABLE course_unmapped (
+                  c_id integer not null primary key,
+                  title varchar(100)
+                 )OPTIONS(UPDATABLE 'FALSE');
             ]]> </metadata>
     </model>
 </vdb>

@@ -16,7 +16,7 @@ MSSQL_ACADEMICS = dict(server="localhost", port=1434, user="academics", password
 
 VOC = "http://example.org/voc#"
 
-CLASSES = [f"{VOC}Place", f"{VOC}TimeSlot", f"{VOC}Student", f"{VOC}FacultyMember"]
+CLASSES = [f"{VOC}Place", f"{VOC}Student", f"{VOC}FacultyMember"]
 
 URI_BASE = {
     f"{VOC}Place": {"academics": f"{VOC}academics/place/"},

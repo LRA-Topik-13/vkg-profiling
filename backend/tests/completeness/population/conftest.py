@@ -15,6 +15,7 @@ PGSQL_MATHSCI = dict(host="localhost", port=5434, user="mathsci", password="math
 MSSQL_ACADEMICS = dict(server="localhost", port=1434, user="academics", password="academicspwd", database="academics")
 
 VOC = "http://example.org/voc#"
+FOAF = "http://xmlns.com/foaf/0.1/"
 PK_OFFSET = 1_000_000
 
 POPULATION_TARGETS = [
@@ -27,7 +28,7 @@ POPULATION_TARGETS = [
                 "birth_date DATE NULL, email VARCHAR(100) NULL)"),
     },
     {
-        "key": "person_unmapped", "db": "mathsci", "class_uri": f"{VOC}Student",
+        "key": "person_unmapped", "db": "mathsci", "class_uri": f"{FOAF}Person",
         "source": "person", "shadow": "person_unmapped", "id_col": "pid",
         "columns": ["pid", "fname", "lname", "status", "birth_date", "email"],
         "filter": "status IN (1,2,4)",
@@ -35,22 +36,27 @@ POPULATION_TARGETS = [
                 "fname VARCHAR(40) NOT NULL, lname VARCHAR(40) NOT NULL, status INT NOT NULL, "
                 "birth_date DATE NULL, email VARCHAR(100) NULL)"),
     },
-    {
-        "key": "teacher_unmapped", "db": "academics", "class_uri": f"{VOC}FacultyMember",
-        "source": "teacher", "shadow": "teacher_unmapped", "id_col": "t_id",
-        "columns": ["t_id", "first_name", "last_name", "position", "birth_date", "email"], "filter": None,
-        "ddl": ("CREATE TABLE teacher_unmapped (t_id INT NOT NULL PRIMARY KEY, "
-                "first_name VARCHAR(40) NOT NULL, last_name VARCHAR(40) NOT NULL, position INT NOT NULL, "
-                "birth_date DATE NULL, email VARCHAR(100) NULL)"),
-    },
-    {
-        "key": "course_unmapped", "db": "academics", "class_uri": f"{VOC}Course",
-        "source": "course", "shadow": "course_unmapped", "id_col": "c_id",
-        "columns": ["c_id", "title"], "filter": None,
-        "ddl": ("CREATE TABLE course_unmapped (c_id INT NOT NULL PRIMARY KEY, "
-                "title VARCHAR(100) NULL)"),
-    },
 ]
+
+UNFOLDABLE_TARGET = {
+    "key": "alumni", "db": "compsci", "class_uri": None,
+    "source": "student", "shadow": "alumni", "id_col": "s_id",
+    "columns": ["s_id", "first_name", "last_name", "birth_date", "email"], "filter": None,
+    "ddl": ("CREATE TABLE alumni (s_id INT NOT NULL PRIMARY KEY, "
+            "first_name VARCHAR(40) NOT NULL, last_name VARCHAR(40) NOT NULL, "
+            "birth_date DATE NULL, email VARCHAR(100) NULL)"),
+}
+
+_EXTRA_SHADOWS = [
+    {"db": "academics", "shadow": "teacher_unmapped",
+     "ddl": ("CREATE TABLE teacher_unmapped (t_id INT NOT NULL PRIMARY KEY, "
+             "first_name VARCHAR(40) NOT NULL, last_name VARCHAR(40) NOT NULL, position INT NOT NULL, "
+             "birth_date DATE NULL, email VARCHAR(100) NULL)")},
+    {"db": "academics", "shadow": "course_unmapped",
+     "ddl": "CREATE TABLE course_unmapped (c_id INT NOT NULL PRIMARY KEY, title VARCHAR(100) NULL)"},
+]
+
+_ALL_TARGETS = POPULATION_TARGETS + [UNFOLDABLE_TARGET] + _EXTRA_SHADOWS
 
 
 def _fetch(conn, sql, params=None):
@@ -108,20 +114,20 @@ def client():
 
 @pytest.fixture(scope="session", autouse=True)
 def shadow_tables(conns):
-    for t in POPULATION_TARGETS:
+    for t in _ALL_TARGETS:
         _execute(conns[t["db"]], f"DROP TABLE IF EXISTS {t['shadow']}")
         _execute(conns[t["db"]], t["ddl"])
     yield
-    for t in POPULATION_TARGETS:
+    for t in _ALL_TARGETS:
         _execute(conns[t["db"]], f"DROP TABLE IF EXISTS {t['shadow']}")
 
 
 @pytest.fixture(autouse=True)
 def reset_to_clean(conns, shadow_tables):
-    for t in POPULATION_TARGETS:
+    for t in _ALL_TARGETS:
         _execute(conns[t["db"]], f"DELETE FROM {t['shadow']}")
     yield
-    for t in POPULATION_TARGETS:
+    for t in _ALL_TARGETS:
         _execute(conns[t["db"]], f"DELETE FROM {t['shadow']}")
 
 
@@ -130,14 +136,7 @@ def population_baseline(shadow_tables):
     with TestClient(app) as c:
         data = c.get("/completeness/population").json()
     assert data["source_reachable"], f"Teiid unreachable: {data.get('source_error')}"
-    base = {}
-    for row in data["classes"]:
-        base[row["uri"]] = {
-            "represented": row["represented"],
-            "source_population": row["source_population"],
-            "missing": row["missing"],
-        }
-    return base
+    return data
 
 
 def inject_population_defects(conns, target, pct, seed=42):

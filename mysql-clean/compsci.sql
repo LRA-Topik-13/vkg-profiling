@@ -604,8 +604,6 @@ CREATE TABLE `legacy_student` (
   PRIMARY KEY (`s_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- legacy_student intentionally left EMPTY in the clean (0-defect) dataset:
--- it is the unmapped "dummy" student rows used as a completeness defect elsewhere.
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;

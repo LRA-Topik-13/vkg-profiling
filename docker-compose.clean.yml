@@ -1,11 +1,3 @@
-# Standalone "clean" (0-defect benchmark) stack.
-# Parallel to the healthy stack: its own *-clean DB services, its own teiid-clean
-# (whose setup.cli points at the *-clean hostnames) and ontop-teiid-clean, plus
-# the same api + frontend so the dashboard URL is unchanged.
-#
-# Run with:  docker compose -p vkg-clean -f docker-compose.clean.yml up -d --build
-# (the Makefile `*-clean-all` targets wrap this)
-
 services:
 
   mysql-clean:
@@ -74,6 +66,24 @@ services:
       - teiid-clean-standalone-configuration:/opt/jboss/wildfly/standalone/configuration
       - teiid-clean-domain-configuration:/opt/jboss/wildfly/domain/configuration
 
+  teiid-clean-population:
+    platform: linux/amd64
+    profiles: ["population"]
+    build:
+      context: ./teiid-clean
+      dockerfile: Dockerfile
+      args:
+        FED_DIR: data-federation-population
+    ports:
+      - '0.0.0.0:35533:35432'
+    depends_on:
+      - "mysql-clean"
+      - "pgsql-clean"
+      - "mssql-clean"
+    volumes:
+      - teiid-clean-population-standalone-configuration:/opt/jboss/wildfly/standalone/configuration
+      - teiid-clean-population-domain-configuration:/opt/jboss/wildfly/domain/configuration
+
   ontop-teiid-clean:
     image: ontop/ontop-endpoint:4.1.1
     restart: unless-stopped
@@ -114,7 +124,7 @@ services:
       METADATA_SOURCE: "${METADATA_SOURCE:-ontology}"
       ONTOLOGY_FILE: "/app/vkg/obda/university.ttl"
       OBDA_FILE: "/app/vkg/obda/university.clean.obda"
-      TEIID_HOST: "teiid-clean"
+      TEIID_HOST: "${CLEAN_API_TEIID_HOST:-teiid-clean}"
       TEIID_PORT: "${TEIID_PORT:-35432}"
       TEIID_DB: "${TEIID_DB:-universities}"
       TEIID_USER: "${TEIID_USER:-user1}"
@@ -146,3 +156,5 @@ volumes:
   data-mssql-clean: { }
   teiid-clean-standalone-configuration: { }
   teiid-clean-domain-configuration: { }
+  teiid-clean-population-standalone-configuration: { }
+  teiid-clean-population-domain-configuration: { }

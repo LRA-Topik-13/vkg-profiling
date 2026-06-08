@@ -40,11 +40,13 @@ def _class_union(
     return "\nUNION\n".join(branches)
 
 
-def _population_source_label(tables: list[str], fallback: str, labels: dict[str, str]) -> str:
+ALL_CLASSES_URI = "urn:vkg:all-classes"
+
+
+def _population_source_label(tables: list[str], fallback: str) -> str:
     if not tables:
         return fallback
-    display = sorted({labels.get(table, table) for table in tables}, key=lambda label: (label.startswith("unmapped "), label))
-    return ", ".join(display)
+    return ", ".join(sorted(set(tables)))
 
 
 def _property_count_union(
@@ -116,11 +118,12 @@ async def _labels_for_entities(class_uri: str, entity_uris: list[str]) -> dict[s
         f"(SAMPLE(?v{i}) AS ?val{i})"
         for i in range(len(predicates))
     )
+    type_clause = "" if class_uri == ALL_CLASSES_URI else f"?e a <{class_uri}> ."
     label_q = f"""
         {PREFIXES}
         SELECT ?e {vars_select} WHERE {{
             VALUES ?e {{ {values} }}
-            ?e a <{class_uri}> .
+            {type_clause}
             {optionals}
         }}
         GROUP BY ?e
@@ -148,7 +151,6 @@ async def _labels_for_entities(class_uri: str, entity_uris: list[str]) -> dict[s
 
 
 def _filter_uris_by_query(uris: list[str], labels: dict[str, str], q_norm: str) -> list[str]:
-    """Keep entity URIs whose resolved label or URI contains the search text."""
     if not q_norm:
         return uris
     return [
@@ -227,7 +229,6 @@ def _not_linked_filters(obj_prop_uris: list[str]) -> str:
 
 
 def _direction_optionals(obj_prop_uris: list[str]) -> str:
-    """Binds ?hasOut/?hasIn per entity via OPTIONAL (no EXISTS); distinct prop vars avoid a cross-join."""
     if not obj_prop_uris:
         return ""
     vals = _property_values(obj_prop_uris)
@@ -249,7 +250,6 @@ def _direction_optionals(obj_prop_uris: list[str]) -> str:
 
 
 def _get_property_labels(class_uri: str) -> dict[str, str | None]:
-    """Returns {property_uri: label} for all properties of the given class."""
     from app.routers.metadata_router import KNOWN_PROPERTIES
     props = KNOWN_PROPERTIES.get(class_uri, [])
     return {p["uri"]: p.get("label") for p in props}
@@ -311,8 +311,6 @@ def parse_facets(filter_facets: Optional[str]) -> list[tuple[str, Optional[str]]
                     detail=f"Invalid facet '{token}'. Both predicate and object are required when using '::'.",
                 )
         else:
-            # Bare predicate = "any value (exists)" facet: keep entities that use
-            # this object property at all, regardless of which object it points to.
             pred = token.strip()
             obj = None
         validate_http_uri(pred, "facet predicate URI")
@@ -346,8 +344,6 @@ def build_facet_clauses(facets: list[tuple[str, Optional[str]]], subject_var: st
     lines: list[str] = []
     for i, (pred, obj) in enumerate(facets):
         if obj is None:
-            # "Any value (exists)" facet: entity must use this predicate at all.
-            # The throwaway binding var is collapsed by the COUNT(DISTINCT ...) aggregates.
             lines.append(f"?{subject_var} <{pred}> ?_facetval{i} .")
         else:
             lines.append(f"?{subject_var} <{pred}> <{obj}> .")
@@ -384,10 +380,6 @@ async def _by_entity_compute(
     optional_block, select_exprs, var_names = build_exists_bindings(prop_uris)
     var_list = " ".join(select_exprs)
 
-    # Ontop cannot ORDER BY aggregate expressions, and a text search has to
-    # match the (separately resolved) entity label, so whenever we sort by
-    # completeness or filter by a query we fetch every matching entity and
-    # sort/filter/paginate in Python. Completeness is derived per entity below.
     q_norm = (q or "").strip().lower()
     sort_by_completeness = sort == "completeness"
     fetch_all = sort_by_completeness or bool(q_norm)
@@ -415,7 +407,6 @@ async def _by_entity_compute(
 
     try:
         if fetch_all:
-            # Whole result set is fetched, so the total is the row count below.
             raw = await execute_sparql(query)
             total_entities = None
         elif include_total:
@@ -452,7 +443,6 @@ async def _by_entity_compute(
         })
 
     if fetch_all:
-        # Labels are needed both for the text search and for display.
         labels = await _labels_for_entities(class_uri, [e["uri"] for e in entities])
         for e in entities:
             e["label"] = labels.get(e["uri"])
@@ -462,7 +452,6 @@ async def _by_entity_compute(
                 if q_norm in (e.get("label") or "").lower() or q_norm in e["uri"].lower()
             ]
         if sort_by_completeness:
-            # Worst (lowest completeness) first; entity URI breaks ties stably.
             entities.sort(key=lambda e: (e["completeness"], e["uri"]))
         total_entities = len(entities)
         entities = entities[offset:offset + limit]
@@ -773,8 +762,6 @@ async def interlinking_entities(
         page_body = _not_linked_filters(obj_prop_uris)
         count_body = page_body
 
-    # Search matches the separately resolved label, so when filtering we fetch
-    # every entity and filter/paginate in Python (datasets are small).
     q_norm = (q or "").strip().lower()
     fetch_all = bool(q_norm)
     page_clause = "" if fetch_all else f"LIMIT {limit}\n        OFFSET {offset}"
@@ -888,7 +875,6 @@ async def interlinking_entity_detail(
         GROUP BY ?dir ?p ?otherClass
     """
 
-    # Distinct target-entity count per (direction, target class).
     counts_q = f"""
         {PREFIXES}
         SELECT ?dir ?otherClass (COUNT(DISTINCT ?other) AS ?n) WHERE {{
@@ -909,7 +895,6 @@ async def interlinking_entity_detail(
         GROUP BY ?dir ?otherClass
     """
 
-    # Sample of the actual linked entities per group (capped per group below).
     label_values = " ".join(f"<{p}>" for p in STANDARD_LABEL_PREDICATES)
     samples_q = f"""
         {PREFIXES}
@@ -1050,11 +1035,6 @@ def schema_items(
     offset: int = 0,
     include_total: bool = True,
 ):
-    """Paginated, searchable inventory of ontology items behind mapping coverage.
-
-    The schema item lists scale with the ontology, not the instance data, but a
-    generic dataset can still carry thousands of classes/properties — so this is
-    served in pages instead of inlined into /mapping-coverage."""
     limit, offset = validate_pagination(limit, offset)
     if kind not in {"class", "property"}:
         raise HTTPException(status_code=400, detail="kind must be 'class' or 'property'")
@@ -1237,7 +1217,12 @@ async def completeness_property():
 
 @router.get("/population")
 async def completeness_population():
-    from app.population import EXTERNAL_SOURCE_TABLE_LABELS, POPULATION_SPECS
+    from app.population import (
+        POPULATION_SPECS,
+        discover_vdb_tables,
+        guess_class_for_unmapped,
+        list_unmapped_tables,
+    )
     from app.routers.metadata_router import KNOWN_CLASSES_BY_URI
     from app.teiid_client import execute_teiid, TeiidUnavailable
 
@@ -1269,36 +1254,60 @@ async def completeness_population():
             if uri in represented:
                 represented[uri] = int(row["n"]["value"])
 
-    selects: list[str] = []
-    base_tables: dict[tuple[str, str], list[str]] = {}
-    for uri, groups in POPULATION_SPECS.items():
-        for g in groups:
-            base_tables[(uri, g.base)] = g.tables
-            branches = " UNION ALL ".join(
-                f"SELECT {b.key} AS id FROM {b.table}" + (f" WHERE {b.where}" if b.where else "")
-                for b in g.branches
-            )
-            selects.append(
-                f"SELECT CAST('{uri}' AS string) AS cls, "
-                f"CAST('{g.base}' AS string) AS grp, "
-                f"COUNT(DISTINCT id) AS n FROM ({branches}) AS u"
-            )
-    union_sql = "\nUNION ALL\n".join(selects)
-
+    UNMAPPED = "__unmapped__"
     source_total: dict[str, int] = {}
     source_by_table: dict[str, list[dict]] = {uri: [] for uri in class_uris}
+    unmapped_total = 0
+    raw_unmapped: list[tuple[str, int]] = []
     source_reachable = True
     source_error: str | None = None
     try:
+        selects: list[str] = []
+        base_tables: dict[tuple[str, str], list[str]] = {}
+        for uri, groups in POPULATION_SPECS.items():
+            for g in groups:
+                base_tables[(uri, g.base)] = g.tables
+                branches = " UNION ALL ".join(
+                    f"SELECT {b.key} AS id FROM {b.table}" + (f" WHERE {b.where}" if b.where else "")
+                    for b in g.branches
+                )
+                selects.append(
+                    f"SELECT CAST('{uri}' AS string) AS cls, "
+                    f"CAST('{g.base}' AS string) AS grp, "
+                    f"COUNT(DISTINCT id) AS n FROM ({branches}) AS u"
+                )
+        for table in list_unmapped_tables(await discover_vdb_tables()):
+            selects.append(
+                f"SELECT CAST('{UNMAPPED}' AS string) AS cls, "
+                f"CAST('{table}' AS string) AS grp, "
+                f"COUNT(*) AS n FROM {table}"
+            )
+        union_sql = "\nUNION ALL\n".join(selects)
+
         rows = await execute_teiid(union_sql)
         for cls_uri, base, n in rows:
             n = int(n)
+            if cls_uri == UNMAPPED:
+                if n > 0:
+                    raw_unmapped.append((base, n))
+                continue
             source_total[cls_uri] = source_total.get(cls_uri, 0) + n
             tables = base_tables.get((cls_uri, base), [])
             source_by_table.setdefault(cls_uri, []).append({
-                "table": _population_source_label(tables, base, EXTERNAL_SOURCE_TABLE_LABELS),
+                "table": _population_source_label(tables, base),
                 "source_population": n,
             })
+
+        for table, n in raw_unmapped:
+            guessed = guess_class_for_unmapped(table)
+            if guessed:
+                source_total[guessed] = source_total.get(guessed, 0) + n
+                source_by_table.setdefault(guessed, []).append({
+                    "table": f"{table} (unmapped)",
+                    "source_population": n,
+                })
+            else:
+                unmapped_total += n
     except TeiidUnavailable as e:
         source_reachable = False
         source_error = str(e)
@@ -1330,11 +1339,34 @@ async def completeness_population():
     results.sort(key=lambda r: (r["completeness"] is None, r["completeness"] if r["completeness"] is not None else 0))
 
     total_represented = sum(r["represented"] for r in results)
-    total_source = sum(src for r in results if (src := r["source_population"]) is not None) if source_reachable else None
+    if source_reachable:
+        total_source = sum(src for r in results if (src := r["source_population"]) is not None)
+        total_source += unmapped_total
+    else:
+        total_source = None
     overall = (
         round(total_represented / total_source * 100, 2)
         if source_reachable and total_source else None
     )
+
+    all_entry = {
+        "uri": ALL_CLASSES_URI,
+        "class": "All classes",
+        "label": "All classes",
+        "represented": total_represented,
+        "source_population": total_source,
+        "missing": (max(0, total_source - total_represented) if total_source is not None else None),
+        "completeness": None,
+        "by_source": [
+            {"table": f"{table} (unmapped)", "source_population": n}
+            for table, n in sorted(raw_unmapped)
+        ] + [
+            {"table": r["label"] or r["class"], "source_population": r["source_population"]}
+            for r in sorted(results, key=lambda r: r["label"] or r["class"])
+            if r["source_population"]
+        ],
+    }
+    results.insert(0, all_entry)
 
     return {
         "classes": results,
@@ -1354,17 +1386,22 @@ async def population_entities(
     include_total: bool = True,
     q: str = Query("", description="Filter entities whose label or URI contains this text"),
 ):
-    class_entry = validate_class_uri(class_uri)
+    if class_uri == ALL_CLASSES_URI:
+        from app.population import POPULATION_SPECS
+        class_entry = {"uri": ALL_CLASSES_URI, "localName": "All classes", "label": "All classes"}
+        values = " ".join(f"<{u}>" for u in POPULATION_SPECS.keys())
+        membership = f"?e a ?__c . VALUES ?__c {{ {values} }}"
+    else:
+        class_entry = validate_class_uri(class_uri)
+        membership = f"?e a <{class_uri}> ."
     limit, offset = validate_pagination(limit, offset)
     q_norm = (q or "").strip().lower()
 
     try:
         if q_norm:
-            # Search matches the separately resolved label, so fetch every
-            # entity and filter/paginate in Python (datasets are small).
             all_q = f"""
                 {PREFIXES}
-                SELECT DISTINCT ?e WHERE {{ ?e a <{class_uri}> . }}
+                SELECT DISTINCT ?e WHERE {{ {membership} }}
                 ORDER BY ?e
             """
             all_raw = await execute_sparql(all_q)
@@ -1376,13 +1413,13 @@ async def population_entities(
         else:
             page_q = f"""
                 {PREFIXES}
-                SELECT DISTINCT ?e WHERE {{ ?e a <{class_uri}> . }}
+                SELECT DISTINCT ?e WHERE {{ {membership} }}
                 ORDER BY ?e LIMIT {limit} OFFSET {offset}
             """
             if include_total:
                 count_q = f"""
                     {PREFIXES}
-                    SELECT (COUNT(DISTINCT ?e) AS ?n) WHERE {{ ?e a <{class_uri}> . }}
+                    SELECT (COUNT(DISTINCT ?e) AS ?n) WHERE {{ {membership} }}
                 """
                 count_raw, page_raw = await asyncio.gather(
                     execute_sparql(count_q),

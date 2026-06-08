@@ -101,6 +101,11 @@ down-clean-all:
 
 restart-clean-all: down-clean-all up-clean-all
 
+up-clean-population:
+	CLEAN_API_TEIID_HOST=teiid-clean-population $(COMPOSE_CLEAN) --profile population up -d --build
+
+restart-clean-population: down-clean-all up-clean-population
+
 build-clean-all:
 	$(COMPOSE_CLEAN) build
 

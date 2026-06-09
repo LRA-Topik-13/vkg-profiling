@@ -41,6 +41,7 @@ def _class_union(
 
 
 ALL_CLASSES_URI = "urn:vkg:all-classes"
+UNMAPPED_URI_PREFIX = "urn:vkg:unmapped:"
 
 
 def _population_source_label(tables: list[str], fallback: str) -> str:
@@ -1259,6 +1260,7 @@ async def completeness_population():
     source_by_table: dict[str, list[dict]] = {uri: [] for uri in class_uris}
     unmapped_total = 0
     raw_unmapped: list[tuple[str, int]] = []
+    unmapped_no_class: list[tuple[str, int]] = []
     source_reachable = True
     source_error: str | None = None
     try:
@@ -1308,6 +1310,7 @@ async def completeness_population():
                 })
             else:
                 unmapped_total += n
+                unmapped_no_class.append((table, n))
     except TeiidUnavailable as e:
         source_reachable = False
         source_error = str(e)
@@ -1349,24 +1352,20 @@ async def completeness_population():
         if source_reachable and total_source else None
     )
 
-    all_entry = {
-        "uri": ALL_CLASSES_URI,
-        "class": "All classes",
-        "label": "All classes",
-        "represented": total_represented,
-        "source_population": total_source,
-        "missing": (max(0, total_source - total_represented) if total_source is not None else None),
-        "completeness": None,
-        "by_source": [
-            {"table": f"{table} (unmapped)", "source_population": n}
-            for table, n in sorted(raw_unmapped)
-        ] + [
-            {"table": r["label"] or r["class"], "source_population": r["source_population"]}
-            for r in sorted(results, key=lambda r: r["label"] or r["class"])
-            if r["source_population"]
-        ],
-    }
-    results.insert(0, all_entry)
+    synthetic_unmapped = [
+        {
+            "uri": f"{UNMAPPED_URI_PREFIX}{table}",
+            "class": table,
+            "label": f"{table} (unmapped — no class)",
+            "represented": 0,
+            "source_population": n,
+            "missing": n,
+            "completeness": None,
+            "by_source": [{"table": table, "source_population": n}],
+        }
+        for table, n in sorted(unmapped_no_class)
+    ]
+    results[:0] = synthetic_unmapped
 
     return {
         "classes": results,
@@ -1386,6 +1385,13 @@ async def population_entities(
     include_total: bool = True,
     q: str = Query("", description="Filter entities whose label or URI contains this text"),
 ):
+    if class_uri.startswith(UNMAPPED_URI_PREFIX):
+        limit, offset = validate_pagination(limit, offset)
+        return {
+            "class": class_uri[len(UNMAPPED_URI_PREFIX):],
+            "entities": [],
+            "pagination": {"limit": limit, "offset": offset, "count": 0, "total": 0},
+        }
     if class_uri == ALL_CLASSES_URI:
         from app.population import POPULATION_SPECS
         class_entry = {"uri": ALL_CLASSES_URI, "localName": "All classes", "label": "All classes"}

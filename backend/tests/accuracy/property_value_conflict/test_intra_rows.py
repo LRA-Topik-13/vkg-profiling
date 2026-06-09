@@ -10,7 +10,7 @@ from tests.accuracy.property_value_conflict.conftest import (
 
 
 @pytest.mark.parametrize("pct", DEFECT_PCTS)
-def test_intra_source_person_identity_email_rows(pct, mssql_conn, client):
+def test_intra_source_person_identity_email_rows(pct, mssql_conn, client, detection):
     n_defects = defect_count(INTRA_TOTAL_PAIRS, pct)
     expected_pairs = set_intra_source_person_pairs(
         mssql_conn,
@@ -28,3 +28,4 @@ def test_intra_source_person_identity_email_rows(pct, mssql_conn, client):
     assert data["returned_count"] == n_defects
     assert len(data["pairs"]) == n_defects
     assert_pair_evidence(data, expected_pairs)
+    detection("pvc-intra-rows", pct, n_defects, data["returned_count"], INTRA_TOTAL_PAIRS)

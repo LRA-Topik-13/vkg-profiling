@@ -28,7 +28,7 @@ def set_academics_teaches_misuse(conn, misuse_count: int) -> list[str]:
 
 
 def set_mathsci_supervision_misuse(conn, misuse_count: int) -> list[str]:
-    """Make selected supervision subjects non-graduate students for SA4 misuse."""
+    """Make selected supervision subjects non-graduate students for property misuse."""
     if misuse_count == 0:
         return []
 

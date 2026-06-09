@@ -56,9 +56,9 @@ interface RowState {
 
 const emptyRows = (): RowState => ({ rows: [], offset: 0, pageSize: DEFAULT_PAGE_SIZE, loading: false, error: null });
 
-function scoreFromSummary(summary: AccuracyValueConflictSummary | null, mode: EvidenceMode) {
+function scoreFromSummary(summary: AccuracyValueConflictSummary | null) {
   if (!summary) return null;
-  return mode === 'cross' ? summary.sa2_cross_score ?? null : summary.sa2_score ?? null;
+  return summary.property_value_conflict_score ?? null;
 }
 
 function summaryLabel(mode: EvidenceMode) {
@@ -200,7 +200,7 @@ function BreakdownTable({ summary, mode }: { summary: AccuracyValueConflictSumma
           <tbody>
             {rows.map((row, index) => {
               const isCrossRow = 'source_a_label' in row;
-              const score = isCrossRow ? row.sa2_cross_score : row.sa2_score;
+              const score = row.property_value_conflict_score;
               const label = isCrossRow ? `${row.source_a_label} and ${row.source_b_label}` : row.source_label;
               return (
                 <tr key={index} style={{ backgroundColor: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
@@ -256,7 +256,7 @@ export default function AccuracyValueConflict() {
   );
   const activeSummary = activeMode === 'cross' ? crossSummary : intraSummary;
   const activeRows = activeMode === 'cross' ? crossRows : intraRows;
-  const activeScore = scoreFromSummary(activeSummary, activeMode);
+  const activeScore = scoreFromSummary(activeSummary);
   const ruleText = targetProp && identityLabels.length > 0 ? `${identityLabels.join(' + ')} -> ${labelForProperty(targetProp)}` : '';
 
   useEffect(() => {

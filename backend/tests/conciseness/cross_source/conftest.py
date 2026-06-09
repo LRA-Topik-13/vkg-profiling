@@ -1,3 +1,4 @@
+import math
 import random
 
 import pymysql
@@ -122,7 +123,7 @@ def _fetch_rows(conn, table, id_col, identity_cols, filter_clause=None):
 
 def inject_cross_source_defects(
     mysql_conn, pgsql_conn, mssql_conn,
-    entity: str, pct: float, seed: int = 42,
+    entity: str, pct: float, total_n: int, seed: int = 42,
 ) -> dict:
     """
     Injects `pct`% cross-source duplicates by updating identity columns in the
@@ -150,8 +151,7 @@ def inject_cross_source_defects(
         for src in rcv
     }
 
-    N = len(donor_rows)
-    n_defects = max(1, round(N * pct / 100)) if pct > 0 else 0
+    n_defects = math.ceil(total_n * pct / 100 / 3) if pct > 0 else 0
 
     groups = []
 

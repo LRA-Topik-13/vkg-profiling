@@ -10,9 +10,9 @@ _ABBREV = {"FacultyMember": "Faculty", "Course": "Course"}
 @pytest.mark.parametrize("pct", [0, 2, 5, 10, 20])
 @pytest.mark.parametrize("entity", ["FacultyMember", "Course"])
 def test_cross_source_conciseness(entity, pct, mysql_conn, pgsql_conn, mssql_conn, entity_totals, client, detection):
-    expected  = inject_cross_source_defects(mysql_conn, pgsql_conn, mssql_conn, entity, pct)
     cfg       = ENTITY_CONFIG[entity]
     total     = entity_totals[entity]
+    expected  = inject_cross_source_defects(mysql_conn, pgsql_conn, mssql_conn, entity, pct, total)
     ambiguous = expected["ambiguous_instances"]
     n_defects = len(expected["groups"])
     expected_cn3 = round((1 - ambiguous / total) * 100, 2) if total else 100.0
@@ -35,6 +35,4 @@ def test_cross_source_conciseness(entity, pct, mysql_conn, pgsql_conn, mssql_con
     assert data["cn3_score"]           == expected_cn3, \
         f"{entity} {pct}%: cn3_score mismatch"
 
-    # detected groups = ambiguous_instances / 3 (each group spans exactly 3 sources)
-    detected = data["ambiguous_instances"] // 3
-    detection(f"cross-source/{_ABBREV[entity]}", pct, n_defects, detected, total)
+    detection(f"cross-source/{_ABBREV[entity]}", pct, n_defects * 3, data["ambiguous_instances"], total)

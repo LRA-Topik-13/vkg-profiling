@@ -12,9 +12,9 @@ _ABBREV = {"FacultyMember": "Faculty", "Course": "Course"}
 @pytest.mark.parametrize("pct", [0, 2, 5, 10, 20])
 @pytest.mark.parametrize("entity", ["FacultyMember", "Course"])
 def test_cross_source_duplicates(entity, pct, mysql_conn, pgsql_conn, mssql_conn, entity_totals, client, detection):
-    expected  = inject_cross_source_defects(mysql_conn, pgsql_conn, mssql_conn, entity, pct)
     cfg       = ENTITY_CONFIG[entity]
     total     = entity_totals[entity]
+    expected  = inject_cross_source_defects(mysql_conn, pgsql_conn, mssql_conn, entity, pct, total)
     n_defects = len(expected["groups"])
 
     resp = client.get(
@@ -23,6 +23,7 @@ def test_cross_source_duplicates(entity, pct, mysql_conn, pgsql_conn, mssql_conn
             "class_uri":      cfg["class_uri"],
             "identity_props": cfg["identity_props"],
             "sources":        ALL_SOURCES,
+            "limit":          100,
         },
     )
     assert resp.status_code == 200, resp.text

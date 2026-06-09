@@ -63,26 +63,6 @@
          rdfs:range :Course .
 
 
-###  http://example.org/voc#forCourse
-:forCourse rdf:type owl:ObjectProperty ;
-           rdfs:label "For Course" ;
-           rdfs:domain :Schedule ;
-           rdfs:range :Course .
-
-
-###  http://example.org/voc#atPlace
-:atPlace rdf:type owl:ObjectProperty ;
-         rdfs:label "At Place" ;
-         rdfs:domain :Schedule ;
-         rdfs:range :Place .
-
-
-###  http://example.org/voc#atTime
-:atTime rdf:type owl:ObjectProperty ;
-        rdfs:label "At Time" ;
-        rdfs:domain :Schedule ;
-        rdfs:range :TimeSlot .
-
 
 #################################################################
 #    Data properties

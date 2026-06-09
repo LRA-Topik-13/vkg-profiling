@@ -17,6 +17,7 @@ def test_intra_source_duplicates(entity, pct, db_conn, client, detection):
             "class_uri":      cfg["class_uri"],
             "identity_props": cfg["identity_props"],
             "source_prefix":  SOURCE_ACADEMICS,
+            "limit":          100,
         },
     )
     assert resp.status_code == 200, resp.text

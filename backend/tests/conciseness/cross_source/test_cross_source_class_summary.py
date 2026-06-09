@@ -8,9 +8,9 @@ from tests.conciseness.cross_source.conftest import (
 @pytest.mark.parametrize("pct", [0, 2, 5, 10, 20])
 @pytest.mark.parametrize("entity", ["FacultyMember", "Course"])
 def test_cross_source_class_summary(entity, pct, mysql_conn, pgsql_conn, mssql_conn, entity_totals, client):
-    expected  = inject_cross_source_defects(mysql_conn, pgsql_conn, mssql_conn, entity, pct)
     cfg       = ENTITY_CONFIG[entity]
     total     = entity_totals[entity]
+    expected  = inject_cross_source_defects(mysql_conn, pgsql_conn, mssql_conn, entity, pct, total)
     ambiguous = expected["ambiguous_instances"]
     expected_cn3 = round((1 - ambiguous / total) * 100, 2) if total else 100.0
 

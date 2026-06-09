@@ -305,23 +305,5 @@ target		ex:voc#academics/course/{c_id} ex:voc#isScheduledOn ex:voc#academics/tim
 source		SELECT c_id, ts_id FROM academics.schedule
 
 
-mappingId	academics-schedule-class
-target		ex:voc#academics/schedule/{c_id}/{place_id}/{ts_id} a ex:voc#Schedule .
-source		SELECT c_id, place_id, ts_id FROM academics.schedule
-
-
-mappingId	academics-schedule-forCourse
-target		ex:voc#academics/schedule/{c_id}/{place_id}/{ts_id} ex:voc#forCourse ex:voc#academics/course/{c_id} .
-source		SELECT c_id, place_id, ts_id FROM academics.schedule
-
-
-mappingId	academics-schedule-atPlace
-target		ex:voc#academics/schedule/{c_id}/{place_id}/{ts_id} ex:voc#atPlace ex:voc#academics/place/{place_id} .
-source		SELECT c_id, place_id, ts_id FROM academics.schedule
-
-
-mappingId	academics-schedule-atTime
-target		ex:voc#academics/schedule/{c_id}/{place_id}/{ts_id} ex:voc#atTime ex:voc#academics/timeslot/{ts_id} .
-source		SELECT c_id, place_id, ts_id FROM academics.schedule
 
 ]]

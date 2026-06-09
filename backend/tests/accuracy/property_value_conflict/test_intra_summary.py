@@ -9,7 +9,7 @@ from tests.accuracy.property_value_conflict.conftest import (
 
 
 @pytest.mark.parametrize("pct", DEFECT_PCTS)
-def test_intra_source_person_identity_email_summary(pct, mssql_conn, client):
+def test_intra_source_person_identity_email_summary(pct, mssql_conn, client, detection):
     n_defects = defect_count(INTRA_TOTAL_PAIRS, pct)
     set_intra_source_person_pairs(
         mssql_conn,
@@ -26,3 +26,4 @@ def test_intra_source_person_identity_email_summary(pct, mssql_conn, client):
     assert data["property_value_conflict_score"] == round((1 - n_defects / INTRA_TOTAL_PAIRS) * 100, 2)
     assert data["source_summary"][0]["total_matched"] == INTRA_TOTAL_PAIRS
     assert data["source_summary"][0]["conflicting_pairs"] == n_defects
+    detection("pvc-intra-summary", pct, n_defects, data["conflicting_pairs"], INTRA_TOTAL_PAIRS)

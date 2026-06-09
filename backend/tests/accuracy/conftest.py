@@ -31,6 +31,8 @@ PROP_EMAIL = f"{SCHEMA}email"
 
 DEFECT_PCTS = [0, 2, 5, 10, 20]
 
+_RECORDS = []
+
 
 MSSQL = dict(
     server=os.getenv("ACCURACY_MSSQL_HOST", "localhost"),
@@ -65,6 +67,74 @@ def defect_count(total: int, pct: float) -> int:
 def accuracy_score(clean_count: int, total: int) -> float:
     """Return the percentage score used by Accuracy summary endpoints."""
     return round(clean_count / total * 100, 2) if total else 100.0
+
+
+def _record(metric, pct, injected, detected, total=0):
+    """Record injected-vs-detected counts for terminal evaluation metrics."""
+    tp = min(injected, detected)
+    fp = max(detected - injected, 0)
+    fn = max(injected - detected, 0)
+    _RECORDS.append({
+        "metric": metric, "pct": pct, "total": total,
+        "injected": injected, "detected": detected,
+        "tp": tp, "fp": fp, "fn": fn,
+    })
+
+
+@pytest.fixture
+def detection():
+    """Return a recorder for Accuracy defect detection metrics."""
+    return _record
+
+
+def _safe_div(num, den):
+    """Divide while treating empty detection populations as perfect by convention."""
+    return 1.0 if den == 0 else num / den
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Print aggregated Accuracy precision, recall, and F1 after pytest finishes."""
+    if not _RECORDS:
+        return
+
+    agg = {}
+    for r in _RECORDS:
+        key = (r["metric"], r["pct"])
+        a = agg.setdefault(key, {"total": 0, "injected": 0, "detected": 0, "tp": 0, "fp": 0, "fn": 0})
+        for f in ("total", "injected", "detected", "tp", "fp", "fn"):
+            a[f] += r[f]
+
+    w = terminalreporter.write_line
+    width = 100
+    w("")
+    w("=" * width)
+    w("ACCURACY DEFECT DETECTION METRICS")
+    w("=" * width)
+    header = (f"{'metric':<22}{'pct':>5}{'N':>7}{'inj':>7}{'eff%':>8}"
+              f"{'det':>7}{'TP':>6}{'FP':>6}{'FN':>6}{'prec':>8}{'recall':>8}{'f1':>8}")
+    w(header)
+    w("-" * width)
+
+    totals = {"total": 0, "injected": 0, "tp": 0, "fp": 0, "fn": 0}
+    for (metric, pct) in sorted(agg.keys()):
+        a = agg[(metric, pct)]
+        prec = _safe_div(a["tp"], a["tp"] + a["fp"])
+        rec = _safe_div(a["tp"], a["tp"] + a["fn"])
+        f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
+        eff = (a["injected"] / a["total"] * 100) if a["total"] else 0.0
+        w(f"{metric:<22}{pct:>4}%{a['total']:>7}{a['injected']:>7}{eff:>7.1f}%"
+          f"{a['detected']:>7}{a['tp']:>6}{a['fp']:>6}{a['fn']:>6}{prec:>8.3f}{rec:>8.3f}{f1:>8.3f}")
+        for f in ("total", "injected", "tp", "fp", "fn"):
+            totals[f] += a[f]
+
+    w("-" * width)
+    prec = _safe_div(totals["tp"], totals["tp"] + totals["fp"])
+    rec = _safe_div(totals["tp"], totals["tp"] + totals["fn"])
+    f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
+    eff = (totals["injected"] / totals["total"] * 100) if totals["total"] else 0.0
+    w(f"{'OVERALL':<22}{'':>5}{totals['total']:>7}{totals['injected']:>7}{eff:>7.1f}%"
+      f"{'':>7}{totals['tp']:>6}{totals['fp']:>6}{totals['fn']:>6}{prec:>8.3f}{rec:>8.3f}{f1:>8.3f}")
+    w("=" * width)
 
 
 @pytest.fixture(scope="session")

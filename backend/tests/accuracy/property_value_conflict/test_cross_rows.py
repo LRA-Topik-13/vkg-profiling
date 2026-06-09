@@ -13,7 +13,7 @@ from tests.accuracy.property_value_conflict.conftest import (
 
 
 @pytest.mark.parametrize("pct", DEFECT_PCTS)
-def test_cross_source_person_identity_email_rows(pct, mssql_conn, pgsql_conn, client):
+def test_cross_source_person_identity_email_rows(pct, mssql_conn, pgsql_conn, client, detection):
     n_defects = defect_count(CROSS_TOTAL_PAIRS, pct)
     expected_pairs = set_cross_source_person_pairs(
         mssql_conn,
@@ -32,10 +32,11 @@ def test_cross_source_person_identity_email_rows(pct, mssql_conn, pgsql_conn, cl
     assert data["returned_count"] == n_defects
     assert len(data["pairs"]) == n_defects
     assert_pair_evidence(data, expected_pairs)
+    detection("pvc-cross-person-row", pct, n_defects, data["returned_count"], CROSS_TOTAL_PAIRS)
 
 
 @pytest.mark.parametrize("pct", DEFECT_PCTS)
-def test_cross_source_faculty_member_mysql_identity_email_rows(pct, mysql_conn, mssql_conn, client):
+def test_cross_source_faculty_member_mysql_identity_email_rows(pct, mysql_conn, mssql_conn, client, detection):
     n_defects = defect_count(MYSQL_CROSS_TOTAL_PAIRS, pct)
     expected_pairs = set_cross_source_faculty_member_pairs(
         mysql_conn,
@@ -54,3 +55,4 @@ def test_cross_source_faculty_member_mysql_identity_email_rows(pct, mysql_conn, 
     assert data["returned_count"] == n_defects
     assert len(data["pairs"]) == n_defects
     assert_pair_evidence(data, expected_pairs)
+    detection("pvc-cross-mysql-row", pct, n_defects, data["returned_count"], MYSQL_CROSS_TOTAL_PAIRS)

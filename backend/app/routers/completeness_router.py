@@ -374,6 +374,7 @@ async def _by_entity_compute(
     limit: int,
     offset: int,
     include_total: bool,
+    total_count: int,
     sort: str = "entity",
     q: str = "",
 ) -> dict:
@@ -398,29 +399,15 @@ async def _by_entity_compute(
         {page_clause}
     """
 
-    count_query = f"""
-        {PREFIXES}
-        SELECT (COUNT(DISTINCT ?entity) AS ?total) WHERE {{
-            ?entity a <{class_uri}> .
-            {facet_clauses}
-        }}
-    """
-
     try:
-        if fetch_all:
-            raw = await execute_sparql(query)
-            total_entities = None
-        elif include_total:
-            raw, total_raw = await asyncio.gather(
-                execute_sparql(query),
-                execute_sparql(count_query),
-            )
-            total_entities = count_binding(total_raw, "total")
-        else:
-            raw = await execute_sparql(query)
-            total_entities = None
+        raw = await execute_sparql(query)
     except Exception as e:
         raise sparql_502(e)
+
+    if fetch_all or not include_total:
+        total_entities = None
+    else:
+        total_entities = total_count
 
     bindings = raw.get("results", {}).get("bindings", [])
     total_props = len(prop_uris)
@@ -481,16 +468,9 @@ async def _by_property_compute(
     class_entry: dict,
     prop_uris: list[str],
     facets: list[tuple[str, Optional[str]]],
+    total_entities: int,
 ) -> dict:
     facet_clauses = build_facet_clauses(facets)
-
-    count_query = f"""
-        {PREFIXES}
-        SELECT (COUNT(DISTINCT ?entity) AS ?total) WHERE {{
-            ?entity a <{class_uri}> .
-            {facet_clauses}
-        }}
-    """
 
     prop_union = _property_count_union(class_uri, prop_uris, filter_clause=facet_clauses)
     filled_query = f"""
@@ -502,11 +482,7 @@ async def _by_property_compute(
     """
 
     try:
-        total_raw, filled_raw = await asyncio.gather(
-            execute_sparql(count_query),
-            execute_sparql(filled_query),
-        )
-        total_entities = count_binding(total_raw, "total")
+        filled_raw = await execute_sparql(filled_query)
         filled_by_uri = {uri: 0 for uri in prop_uris}
         filled_bindings = filled_raw.get("results", {}).get("bindings", [])
         if len(prop_uris) == 1 and filled_bindings and "prop" not in filled_bindings[0]:
@@ -561,9 +537,24 @@ async def property_class_matrix(
     class_entry = validate_class_uri(class_uri)
     prop_uris = parse_property_uris(properties)
     facets = parse_facets(filter_facets)
+
+    facet_clauses = build_facet_clauses(facets)
+    count_query = f"""
+        {PREFIXES}
+        SELECT (COUNT(DISTINCT ?entity) AS ?total) WHERE {{
+            ?entity a <{class_uri}> .
+            {facet_clauses}
+        }}
+    """
+    try:
+        total_raw = await execute_sparql(count_query)
+    except Exception as e:
+        raise sparql_502(e)
+    total_entities = count_binding(total_raw, "total")
+
     entity_result, property_result = await asyncio.gather(
-        _by_entity_compute(class_uri, class_entry, prop_uris, facets, limit, offset, include_total, sort, q),
-        _by_property_compute(class_uri, class_entry, prop_uris, facets),
+        _by_entity_compute(class_uri, class_entry, prop_uris, facets, limit, offset, include_total, total_entities, sort, q),
+        _by_property_compute(class_uri, class_entry, prop_uris, facets, total_entities),
     )
 
     prop_list = entity_result["properties"]
@@ -856,50 +847,11 @@ async def interlinking_entity_detail(
         }
 
     prop_values = _property_values(obj_prop_uris)
-    breakdown_q = f"""
-        {PREFIXES}
-        SELECT ?dir ?p ?otherClass (COUNT(DISTINCT ?other) AS ?n) WHERE {{
-            VALUES ?p {{ {prop_values} }}
-            {{
-                <{entity_uri}> ?p ?other .
-                FILTER(isIRI(?other))
-                FILTER(?p != rdf:type)
-                ?other a ?otherClass .
-                BIND("out" AS ?dir)
-            }} UNION {{
-                ?other ?p <{entity_uri}> .
-                FILTER(?p != rdf:type)
-                ?other a ?otherClass .
-                BIND("in" AS ?dir)
-            }}
-        }}
-        GROUP BY ?dir ?p ?otherClass
-    """
-
-    counts_q = f"""
-        {PREFIXES}
-        SELECT ?dir ?otherClass (COUNT(DISTINCT ?other) AS ?n) WHERE {{
-            VALUES ?p {{ {prop_values} }}
-            {{
-                <{entity_uri}> ?p ?other .
-                FILTER(isIRI(?other))
-                FILTER(?p != rdf:type)
-                ?other a ?otherClass .
-                BIND("out" AS ?dir)
-            }} UNION {{
-                ?other ?p <{entity_uri}> .
-                FILTER(?p != rdf:type)
-                ?other a ?otherClass .
-                BIND("in" AS ?dir)
-            }}
-        }}
-        GROUP BY ?dir ?otherClass
-    """
-
     label_values = " ".join(f"<{p}>" for p in STANDARD_LABEL_PREDICATES)
-    samples_q = f"""
+
+    detail_q = f"""
         {PREFIXES}
-        SELECT ?dir ?otherClass ?other (SAMPLE(?lbl) AS ?label) WHERE {{
+        SELECT ?dir ?p ?otherClass ?other (SAMPLE(?lbl) AS ?label) WHERE {{
             VALUES ?p {{ {prop_values} }}
             {{
                 <{entity_uri}> ?p ?other .
@@ -918,16 +870,13 @@ async def interlinking_entity_detail(
                 VALUES ?lblP {{ {label_values} }}
             }}
         }}
-        GROUP BY ?dir ?otherClass ?other
+        GROUP BY ?dir ?p ?otherClass ?other
         ORDER BY ?dir ?otherClass ?other
-        LIMIT 500
     """
 
     try:
-        raw, counts_raw, samples_raw, labels = await asyncio.gather(
-            execute_sparql(breakdown_q),
-            execute_sparql(counts_q),
-            execute_sparql(samples_q),
+        raw, labels = await asyncio.gather(
+            execute_sparql(detail_q),
             _labels_for_entities(class_uri, [entity_uri]),
         )
     except Exception as e:
@@ -938,22 +887,39 @@ async def interlinking_entity_detail(
     def _dir(b: dict) -> str:
         return "outgoing" if b["dir"]["value"] == "out" else "incoming"
 
-    entity_counts: dict[str, dict[str, int]] = {"outgoing": {}, "incoming": {}}
-    for b in counts_raw.get("results", {}).get("bindings", []):
-        entity_counts[_dir(b)][b["otherClass"]["value"]] = int(b["n"]["value"])
+    prop_others: dict[tuple[str, str, str], set[str]] = {}
+    class_others: dict[tuple[str, str], list[str]] = {}
+    class_seen: dict[tuple[str, str], set[str]] = {}
+    other_label: dict[str, str | None] = {}
 
-    samples: dict[str, dict[str, list]] = {"outgoing": {}, "incoming": {}}
-    for b in samples_raw.get("results", {}).get("bindings", []):
-        bucket = samples[_dir(b)].setdefault(b["otherClass"]["value"], [])
-        if len(bucket) < SAMPLE_PER_GROUP:
-            bucket.append({"uri": b["other"]["value"], "label": b.get("label", {}).get("value")})
-
-    grouped: dict[str, dict[str, dict]] = {"outgoing": {}, "incoming": {}}
     for b in raw.get("results", {}).get("bindings", []):
         direction = _dir(b)
         p_uri = b["p"]["value"]
         cls_uri = b["otherClass"]["value"]
-        count = int(b["n"]["value"])
+        other = b["other"]["value"]
+        label = b.get("label", {}).get("value")
+        prop_others.setdefault((direction, p_uri, cls_uri), set()).add(other)
+        seen = class_seen.setdefault((direction, cls_uri), set())
+        if other not in seen:
+            seen.add(other)
+            class_others.setdefault((direction, cls_uri), []).append(other)
+        if label and not other_label.get(other):
+            other_label[other] = label
+        else:
+            other_label.setdefault(other, None)
+
+    entity_counts: dict[str, dict[str, int]] = {"outgoing": {}, "incoming": {}}
+    samples: dict[str, dict[str, list]] = {"outgoing": {}, "incoming": {}}
+    for (direction, cls_uri), others in class_others.items():
+        entity_counts[direction][cls_uri] = len(others)
+        samples[direction][cls_uri] = [
+            {"uri": o, "label": other_label.get(o)}
+            for o in others[:SAMPLE_PER_GROUP]
+        ]
+
+    grouped: dict[str, dict[str, dict]] = {"outgoing": {}, "incoming": {}}
+    for (direction, p_uri, cls_uri), others in prop_others.items():
+        count = len(others)
         column = grouped[direction]
         entry = column.get(cls_uri)
         if entry is None:

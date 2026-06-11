@@ -81,5 +81,5 @@ def test_population_unfoldable(pct, conns, client, population_baseline, detectio
     else:
         assert ALUMNI_URI not in by_uri, f"{tag}: no alumni entry expected at 0%"
 
-    detection("population/unfoldable", pct, n,
+    detection("population", pct, n,
               data["total_source_population"] - population_baseline["total_source_population"], N)

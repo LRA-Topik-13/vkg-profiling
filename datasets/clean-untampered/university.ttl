@@ -1,0 +1,285 @@
+@prefix : <http://example.org/voc#> .
+@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xml: <http://www.w3.org/XML/1998/namespace> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix schema: <http://schema.org/> .
+@prefix obda: <https://w3id.org/obda/vocabulary#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@base <http://example.org/voc#> .
+
+<http://example.org/voc#> rdf:type owl:Ontology .
+
+#################################################################
+#    Object Properties
+#################################################################
+
+###  http://example.org/voc#attends
+:attends rdf:type owl:ObjectProperty ;
+         rdfs:label "Attends" ;
+         rdfs:domain :Student ;
+         rdfs:range :Course .
+
+
+###  http://example.org/voc#givesLab
+:givesLab rdf:type owl:ObjectProperty ;
+          rdfs:label "Gives Lab" ;
+          rdfs:subPropertyOf :teaches .
+
+
+###  http://example.org/voc#givesLecture
+:givesLecture rdf:type owl:ObjectProperty ;
+              rdfs:label "Gives Lecture" ;
+              rdfs:subPropertyOf :teaches .
+
+
+###  http://example.org/voc#isGivenAt
+:isGivenAt rdf:type owl:ObjectProperty ;
+           rdfs:label "Is Given At" ;
+           rdfs:domain :Course ;
+           rdfs:range :EducationalInstitution .
+
+
+###  http://example.org/voc#isSupervisedBy
+:isSupervisedBy rdf:type owl:ObjectProperty ;
+                rdfs:label "Is Supervised By" ;
+                rdfs:domain :GraduateStudent .
+
+
+###  http://example.org/voc#isTaughtBy
+:isTaughtBy rdf:type owl:ObjectProperty ;
+            rdfs:label "Is Taught By" ;
+            owl:inverseOf :teaches .
+
+
+###  http://example.org/voc#teaches
+:teaches rdf:type owl:ObjectProperty ;
+         rdfs:label "Teaches" ;
+         rdfs:domain :Teacher ;
+         rdfs:range :Course .
+
+
+###  http://example.org/voc#forCourse
+:forCourse rdf:type owl:ObjectProperty ;
+           rdfs:label "For Course" ;
+           rdfs:domain :Schedule ;
+           rdfs:range :Course .
+
+
+###  http://example.org/voc#atPlace
+:atPlace rdf:type owl:ObjectProperty ;
+         rdfs:label "At Place" ;
+         rdfs:domain :Schedule ;
+         rdfs:range :Place .
+
+
+###  http://example.org/voc#atTime
+:atTime rdf:type owl:ObjectProperty ;
+        rdfs:label "At Time" ;
+        rdfs:domain :Schedule ;
+        rdfs:range :TimeSlot .
+
+
+#################################################################
+#    Data properties
+#################################################################
+
+###  http://example.org/voc#title
+:title rdf:type owl:DatatypeProperty ;
+       rdfs:label "Title" ;
+       rdfs:range xsd:string .
+
+
+###  http://example.org/voc#building
+:building rdf:type owl:DatatypeProperty ;
+          rdfs:label "Building" ;
+          rdfs:domain :Place ;
+          rdfs:range xsd:string .
+
+
+###  http://example.org/voc#roomCode
+:roomCode rdf:type owl:DatatypeProperty ;
+          rdfs:label "Room Code" ;
+          rdfs:domain :Place ;
+          rdfs:range xsd:string .
+
+
+###  http://example.org/voc#day
+:day rdf:type owl:DatatypeProperty ;
+     rdfs:label "Day" ;
+     rdfs:domain :TimeSlot ;
+     rdfs:range xsd:string .
+
+
+###  http://example.org/voc#startTime
+:startTime rdf:type owl:DatatypeProperty ;
+           rdfs:label "Start Time" ;
+           rdfs:domain :TimeSlot ;
+           rdfs:range xsd:time .
+
+
+###  http://example.org/voc#endTime
+:endTime rdf:type owl:DatatypeProperty ;
+         rdfs:label "End Time" ;
+         rdfs:domain :TimeSlot ;
+         rdfs:range xsd:time .
+
+
+###  http://schema.org/birthDate
+schema:birthDate rdf:type owl:DatatypeProperty ;
+                 rdfs:label "Birth Date" ;
+                 rdfs:domain foaf:Person ;
+                 rdfs:range xsd:date .
+
+
+###  http://schema.org/email
+schema:email rdf:type owl:DatatypeProperty ;
+             rdfs:label "Email" ;
+             rdfs:domain foaf:Person ;
+             rdfs:range xsd:string .
+
+
+###  http://xmlns.com/foaf/0.1/firstName
+foaf:firstName rdf:type owl:DatatypeProperty ;
+               rdfs:label "First Name" ;
+               rdfs:domain foaf:Person ;
+               rdfs:range rdfs:Literal .
+
+
+###  http://xmlns.com/foaf/0.1/lastName
+foaf:lastName rdf:type owl:DatatypeProperty ;
+              rdfs:label "Last Name" ;
+              rdfs:domain foaf:Person ;
+              rdfs:range rdfs:Literal .
+
+
+#################################################################
+#    Classes
+#################################################################
+
+###  http://example.org/voc#AssistantProfessor
+:AssistantProfessor rdf:type owl:Class ;
+                    rdfs:label "Assistant Professor" ;
+                    rdfs:subClassOf :Professor .
+
+
+###  http://example.org/voc#AssociateProfessor
+:AssociateProfessor rdf:type owl:Class ;
+                    rdfs:label "Associate Professor" ;
+                    rdfs:subClassOf :Professor .
+
+
+###  http://example.org/voc#Course
+:Course rdf:type owl:Class ;
+        rdfs:label "Course" ;
+        owl:disjointWith :EducationalInstitution ,
+                         foaf:Person .
+
+
+###  http://example.org/voc#EducationalInstitution
+:EducationalInstitution rdf:type owl:Class ;
+                        rdfs:label "Educational Institution" ;
+                        owl:disjointWith foaf:Person .
+
+
+###  http://example.org/voc#ExternalTeacher
+:ExternalTeacher rdf:type owl:Class ;
+                 rdfs:label "External Teacher" ;
+                 rdfs:subClassOf :Teacher .
+
+
+###  http://example.org/voc#FacultyMember
+:FacultyMember rdf:type owl:Class ;
+               rdfs:label "Faculty Member" ;
+               rdfs:subClassOf foaf:Person .
+
+
+###  http://example.org/voc#FullProfessor
+:FullProfessor rdf:type owl:Class ;
+               rdfs:label "Full Professor" ;
+               rdfs:subClassOf :Professor .
+
+
+###  http://example.org/voc#GraduateStudent
+:GraduateStudent rdf:type owl:Class ;
+                 rdfs:label "Graduate Student" ;
+                 rdfs:subClassOf :Student ,
+                                 [ rdf:type owl:Restriction ;
+                                   owl:onProperty :isSupervisedBy ;
+                                   owl:someValuesFrom :Professor
+                                 ] .
+
+
+###  http://example.org/voc#PhDStudent
+:PhDStudent rdf:type owl:Class ;
+            rdfs:label "PhD Student" ;
+            rdfs:subClassOf :GraduateStudent ,
+                            :Researcher .
+
+
+###  http://example.org/voc#PostDoc
+:PostDoc rdf:type owl:Class ;
+         rdfs:label "Post-Doc" ;
+         rdfs:subClassOf :Researcher .
+
+
+###  http://example.org/voc#Professor
+:Professor rdf:type owl:Class ;
+           rdfs:label "Professor" ;
+           rdfs:subClassOf :Researcher ,
+                           :Teacher .
+
+
+###  http://example.org/voc#Researcher
+:Researcher rdf:type owl:Class ;
+            rdfs:label "Researcher" ;
+            rdfs:subClassOf :FacultyMember .
+
+
+###  http://example.org/voc#Student
+:Student rdf:type owl:Class ;
+         rdfs:label "Student" ;
+         rdfs:subClassOf foaf:Person .
+
+
+###  http://example.org/voc#Teacher
+:Teacher rdf:type owl:Class ;
+         rdfs:label "Teacher" ;
+         rdfs:subClassOf :FacultyMember .
+
+
+###  http://example.org/voc#UndergraduateStudent
+:UndergraduateStudent rdf:type owl:Class ;
+                      rdfs:label "Undergraduate Student" ;
+                      rdfs:subClassOf :Student .
+
+
+###  http://example.org/voc#Place
+:Place rdf:type owl:Class ;
+       rdfs:label "Place" .
+
+
+###  http://example.org/voc#TimeSlot
+:TimeSlot rdf:type owl:Class ;
+          rdfs:label "Time Slot" .
+
+
+###  http://example.org/voc#isScheduledAt
+:isScheduledAt rdf:type owl:ObjectProperty ;
+               rdfs:label "Is Scheduled At" ;
+               rdfs:domain :Course ;
+               rdfs:range :Place .
+
+###  http://example.org/voc#isScheduledOn
+:isScheduledOn rdf:type owl:ObjectProperty ;
+               rdfs:label "Is Scheduled On" ;
+               rdfs:domain :Course ;
+               rdfs:range :TimeSlot .
+###  http://xmlns.com/foaf/0.1/Person
+foaf:Person rdf:type owl:Class ;
+            rdfs:label "Person" .
+
+
+###  Generated by the OWL API (version 4.5.9.2019-02-01T07:24:44Z) https://github.com/owlcs/owlapi

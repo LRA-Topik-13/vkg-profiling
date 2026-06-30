@@ -211,23 +211,12 @@ def _parse_ontology(ttl_path: str):
     return desc, eff_domain, eff_range
 
 
-# Source rows that are intentionally outside the OBDA mapping but should count
-# as expected population for completeness profiling.
-EXTERNAL_SOURCE_TABLES: dict[str, list[tuple[str, str, str]]] = {
-    "http://example.org/voc#Student": [
-        ("compsci.legacy_student", "s_id", "http://example.org/voc#compsci/student/"),
-    ],
-}
-
-EXTERNAL_SOURCE_TABLE_LABELS: dict[str, str] = {
-    "compsci.legacy_student": "unmapped student rows",
-}
-
-
-def _build_specs(obda_path: str, ttl_path: str) -> dict[str, list[BaseGroup]]:
-    mappings = _parse_mappings(obda_path)
-    desc, eff_domain, eff_range = _parse_ontology(ttl_path)
-
+def _build_specs(
+    mappings: list[_Mapping],
+    desc: dict[str, set[str]],
+    eff_domain: dict[str, str | None],
+    eff_range: dict[str, str | None],
+) -> dict[str, list[BaseGroup]]:
     reported = sorted({t for m in mappings for t in m.types})
 
     specs: dict[str, list[BaseGroup]] = {}
@@ -249,11 +238,6 @@ def _build_specs(obda_path: str, ttl_path: str) -> dict[str, list[BaseGroup]]:
                 if rng and rng in cls_desc and obj_base and obj_key:
                     add(obj_base, m.table, obj_key, m.where)
 
-        for ext_cls, entries in EXTERNAL_SOURCE_TABLES.items():
-            if ext_cls in cls_desc:
-                for table, key, base in entries:
-                    add(base, table, key, None)
-
         groups: list[BaseGroup] = []
         for base, branches in by_base.items():
             unfiltered = {(b.table, b.key) for b in branches if b.where is None}
@@ -263,4 +247,39 @@ def _build_specs(obda_path: str, ttl_path: str) -> dict[str, list[BaseGroup]]:
     return specs
 
 
-POPULATION_SPECS: dict[str, list[BaseGroup]] = _build_specs(OBDA_FILE, ONTOLOGY_FILE)
+_MAPPINGS: list[_Mapping] = _parse_mappings(OBDA_FILE)
+_DESC, _EFF_DOMAIN, _EFF_RANGE = _parse_ontology(ONTOLOGY_FILE)
+_MAPPED_TABLES: frozenset[str] = frozenset(m.table.lower() for m in _MAPPINGS)
+
+POPULATION_SPECS: dict[str, list[BaseGroup]] = _build_specs(
+    _MAPPINGS, _DESC, _EFF_DOMAIN, _EFF_RANGE
+)
+
+
+def list_unmapped_tables(vdb_tables: set[str]) -> list[str]:
+    return sorted(t for t in vdb_tables if t.lower() not in _MAPPED_TABLES)
+
+
+def guess_class_for_unmapped(table: str) -> str | None:
+    schema, _, name = table.lower().partition(".")
+    best: tuple[int, str] | None = None
+    for m in _MAPPINGS:
+        if m.where is not None or not m.types:
+            continue
+        bschema, _, bname = m.table.lower().partition(".")
+        if bschema != schema:
+            continue
+        rest = name[len(bname):]
+        matches = name.startswith(bname) and (rest == "" or rest[0] == "_" or rest[0].isdigit())
+        if matches and (best is None or len(bname) > best[0]):
+            best = (len(bname), m.types[0])
+    return best[1] if best else None
+
+
+async def discover_vdb_tables() -> set[str]:
+    from app.teiid_client import execute_teiid
+
+    rows = await execute_teiid(
+        "SELECT SchemaName, Name FROM SYS.Tables WHERE IsSystem = false"
+    )
+    return {f"{schema}.{name}".lower() for schema, name in rows}

@@ -10,9 +10,11 @@ clean:
         logs logs-healthy logs-shared logs-all \
         ps \
         shell-api shell-mysql shell-pgsql shell-mssql \
-        clean clean-healthy clean-all
+        clean clean-healthy clean-all \
+        up-clean-all down-clean-all restart-clean-all build-clean-all logs-clean-all ps-clean
 
 COMPOSE           := docker compose
+COMPOSE_CLEAN     := docker compose -p vkg-clean -f docker-compose.clean.yml
 PROFILE_HEALTHY   := --profile healthy
 PROFILE_SHARED    := --profile shared
 PROFILE_FRONTEND  := --profile frontend
@@ -90,3 +92,25 @@ ps: ## List running containers across all profiles
 
 shell-mssql: ## Open MSSQL shell (healthy dataset)
 	$(COMPOSE) $(PROFILE_HEALTHY) exec mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U academics -P academicspwd
+
+up-clean-all:
+	$(COMPOSE_CLEAN) up -d --build
+
+down-clean-all:
+	$(COMPOSE_CLEAN) down -v
+
+restart-clean-all: down-clean-all up-clean-all
+
+up-clean-population:
+	CLEAN_API_TEIID_HOST=teiid-clean-population $(COMPOSE_CLEAN) --profile population up -d --build
+
+restart-clean-population: down-clean-all up-clean-population
+
+build-clean-all:
+	$(COMPOSE_CLEAN) build
+
+logs-clean-all:
+	$(COMPOSE_CLEAN) logs -f
+
+ps-clean:
+	$(COMPOSE_CLEAN) ps

@@ -180,3 +180,19 @@ INSERT INTO schedule VALUES (13, 6, 2);
 INSERT INTO schedule VALUES (14, 7, 9);
 INSERT INTO schedule VALUES (13, 8, 10);
 INSERT INTO schedule VALUES (16, 5, 10);
+
+CREATE TABLE teacher_unmapped (
+    t_id        INT         NOT NULL,
+    first_name  VARCHAR(40) NOT NULL,
+    last_name   VARCHAR(40) NOT NULL,
+    position    INT         NOT NULL,
+    birth_date  DATE        NULL,
+    email       VARCHAR(100) NULL,
+    CONSTRAINT pk_teacher_unmapped PRIMARY KEY (t_id)
+);
+
+CREATE TABLE course_unmapped (
+    c_id    INT             NOT NULL,
+    title   VARCHAR(100)    NULL,
+    CONSTRAINT pk_course_unmapped PRIMARY KEY (c_id)
+);

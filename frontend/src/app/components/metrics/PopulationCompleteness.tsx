@@ -17,7 +17,7 @@ export default function PopulationCompleteness() {
   const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    completenessApi.populationSummary().then(setData).catch((e) => setError(String(e)));
+    completenessApi.population().then(setData).catch((e) => setError(String(e)));
   }, []);
 
   function pickFromChart(uri: string) {
@@ -274,7 +274,7 @@ function ClassDetail({ entry, reachable, onClose }: { entry: PopulationEntry; re
           {hasSource ? 'No source tables.' : 'Source layer unavailable.'}
         </div>
       ) : (
-        <ul className="space-y-1 text-sm">
+        <ul className="space-y-1 text-sm" style={{ maxHeight: '20rem', overflowY: 'auto' }}>
           {entry.by_source.map((s) => (
             <li
               key={s.table}

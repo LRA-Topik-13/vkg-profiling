@@ -110,20 +110,23 @@ export interface LinkDetail {
   count: number;
 }
 export interface InterlinkingClass {
+  uri: string;
   class: string;
   label?: string | null;
   total_entities: number;
   linked: number;
   not_linked: number;
-  outgoing: number;
-  incoming: number;
   ratio: number;
-  links: LinkDetail[];
-  entity_drilldown: string;
 }
 export interface Interlinking {
   classes: InterlinkingClass[];
   overall_ratio: number;
+}
+export interface InterlinkingClassDetail {
+  uri: string;
+  class: string;
+  label?: string | null;
+  links: LinkDetail[];
 }
 export interface InterlinkingEntities {
   class: string;
@@ -176,6 +179,7 @@ export interface AccuracyOutlierResult {
   statistics: Partial<{ q1: number; q3: number; iqr: number; lower_fence: number; upper_fence: number; insufficient_data: boolean }>;
   outlier_count: number;
   total: number;
+  relationship_count_score: number | null;
   entities: AccuracyRelationshipEntity[];
 }
 
@@ -198,7 +202,7 @@ export interface AccuracyWithinSourceSummaryEntry {
   total_matched: number;
   conflicting_pairs: number;
   conflict_rate: number | null;
-  sa2_score: number | null;
+  property_value_conflict_score: number | null;
 }
 
 export interface AccuracyCrossSourceSummaryEntry {
@@ -209,7 +213,7 @@ export interface AccuracyCrossSourceSummaryEntry {
   total_matched: number;
   conflicting_pairs: number;
   conflict_rate: number | null;
-  sa2_cross_score: number | null;
+  property_value_conflict_score: number | null;
 }
 
 export interface AccuracyValueConflictSummary {
@@ -224,8 +228,7 @@ export interface AccuracyValueConflictSummary {
   total_matched: number;
   conflicting_pairs: number;
   conflict_rate: number | null;
-  sa2_score?: number | null;
-  sa2_cross_score?: number | null;
+  property_value_conflict_score?: number | null;
   source_summary?: AccuracyWithinSourceSummaryEntry[];
   source_pair_summary?: AccuracyCrossSourceSummaryEntry[];
 }
@@ -255,7 +258,7 @@ export interface AccuracyPropertyMisuseResult {
   total_expected_count: number;
   total_misuse_count: number;
   total_property_uses: number;
-  sa4_score: number;
+  property_misuse_score: number;
   classes: AccuracyPropertyMisuseClass[];
 }
 
@@ -370,20 +373,22 @@ export const concisenessApi = {
 };
 
 export const completenessApi = {
-  mappingCoverage: () => get<MappingCoverage>('/completeness/mapping-coverage'),
-  mappingItems: (params: { kind: MappingItemKind; status: MappingItemStatus; q?: string; limit?: number; offset?: number; include_total?: boolean }) =>
-    get<MappingItemsResponse>('/completeness/mapping-items', params),
-  matrix: (params: { class_uri: string; properties: string; filter_facets?: string; limit?: number; offset?: number; sort?: 'entity' | 'completeness'; q?: string }) =>
-    get<CompletenessMatrix>('/completeness/matrix', params),
-  classSummary: () => get<ClassSummary>('/completeness/class-summary'),
-  populationSummary: () => get<PopulationSummary>('/completeness/population-summary'),
-  populationEntities: (params: { class_uri: string; limit?: number; offset?: number; q?: string }) =>
-    get<PopulationEntities>('/completeness/population-entities', params),
+  schema: () => get<MappingCoverage>('/completeness/schema'),
+  schemaItems: (params: { kind: MappingItemKind; status: MappingItemStatus; q?: string; limit?: number; offset?: number; include_total?: boolean }) =>
+    get<MappingItemsResponse>('/completeness/schema/items', params),
+  property: () => get<ClassSummary>('/completeness/property'),
+  propertyClassMatrix: (params: { class_uri: string; properties: string; filter_facets?: string; limit?: number; offset?: number; sort?: 'entity' | 'completeness'; q?: string }) =>
+    get<CompletenessMatrix>('/completeness/property/class-matrix', params),
+  population: () => get<PopulationSummary>('/completeness/population'),
+  populationEntities: (params: { class_uri: string; limit?: number; offset?: number; include_total?: boolean; q?: string }) =>
+    get<PopulationEntities>('/completeness/population/entities', params),
   interlinking: () => get<Interlinking>('/completeness/interlinking'),
+  interlinkingClass: (params: { class_uri: string }) =>
+    get<InterlinkingClassDetail>('/completeness/interlinking/class', params),
   interlinkingEntities: (params: { class_uri: string; status: 'linked' | 'not_linked'; limit?: number; offset?: number; q?: string }) =>
     get<InterlinkingEntities>('/completeness/interlinking/entities', params),
-  interlinkingEntity: (params: { class_uri: string; entity_uri: string }) =>
-    get<InterlinkingEntityDetail>('/completeness/interlinking/entity', params),
+  interlinkingEntityDetail: (params: { class_uri: string; entity_uri: string }) =>
+    get<InterlinkingEntityDetail>('/completeness/interlinking/entity-detail', params),
 };
 
 export function statusFor(percent: number): 'good' | 'warn' | 'bad' {

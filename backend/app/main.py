@@ -3,12 +3,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.dependencies import close_sparql_client
+from app.dependencies import close_sparql_client, init_sparql_resources
 from app.routers import accuracy_router, completeness_router, conciseness_router, metadata_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await init_sparql_resources()
     yield
     await close_sparql_client()
 

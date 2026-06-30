@@ -1,0 +1,160 @@
+services:
+
+  mysql-clean:
+    image: mysql:8.0
+    security_opt:
+      - seccomp:unconfined
+    ports:
+      - '0.0.0.0:${MYSQL_CLEAN_PORT:-3308}:3306'
+    restart: always
+    volumes:
+      - ./mysql-clean:/docker-entrypoint-initdb.d
+      - data-mysql-clean:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: '${MYSQL_DATABASE}'
+      MYSQL_USER: '${MYSQL_USER}'
+      MYSQL_PASSWORD: '${MYSQL_PASSWORD}'
+      MYSQL_ROOT_PASSWORD: '${MYSQL_ROOT_PASSWORD}'
+
+  pgsql-clean:
+    image: postgres:13.2
+    ports:
+      - '0.0.0.0:${POSTGRES_CLEAN_PORT:-5434}:5432'
+    volumes:
+      - ./pgsql-clean:/docker-entrypoint-initdb.d
+      - data-pgsql-clean:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: '${POSTGRES_DB}'
+      POSTGRES_USER: '${POSTGRES_USER}'
+      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD}'
+
+  mssql-clean:
+    platform: linux/amd64
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    ports:
+      - '0.0.0.0:${MSSQL_CLEAN_PORT:-1434}:1433'
+    restart: always
+    volumes:
+      - ./mssql-clean:/docker-entrypoint-initdb.d
+      - data-mssql-clean:/var/opt/mssql
+    environment:
+      ACCEPT_EULA: 'Y'
+      MSSQL_SA_PASSWORD: '${MSSQL_SA_PASSWORD}'
+      MSSQL_USER: '${MSSQL_USER}'
+      MSSQL_PASSWORD: '${MSSQL_PASSWORD}'
+    entrypoint: /docker-entrypoint-initdb.d/entrypoint.sh
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  teiid-clean:
+    platform: linux/amd64
+    build:
+      context: ./teiid-clean
+      dockerfile: Dockerfile
+    ports:
+      - '0.0.0.0:31100:31000'
+      - '0.0.0.0:18180:8080'
+      - '0.0.0.0:19890:9990'
+      - '0.0.0.0:35532:35432'
+    depends_on:
+      - "mysql-clean"
+      - "pgsql-clean"
+      - "mssql-clean"
+    volumes:
+      - teiid-clean-standalone-configuration:/opt/jboss/wildfly/standalone/configuration
+      - teiid-clean-domain-configuration:/opt/jboss/wildfly/domain/configuration
+
+  teiid-clean-population:
+    platform: linux/amd64
+    profiles: ["population"]
+    build:
+      context: ./teiid-clean
+      dockerfile: Dockerfile
+      args:
+        FED_DIR: data-federation-population
+    ports:
+      - '0.0.0.0:35533:35432'
+    depends_on:
+      - "mysql-clean"
+      - "pgsql-clean"
+      - "mssql-clean"
+    volumes:
+      - teiid-clean-population-standalone-configuration:/opt/jboss/wildfly/standalone/configuration
+      - teiid-clean-population-domain-configuration:/opt/jboss/wildfly/domain/configuration
+
+  ontop-teiid-clean:
+    image: ontop/ontop-endpoint:4.1.1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null 'http://localhost:8080/sparql?query=SELECT+%281+AS+%3Fx%29+WHERE+%7B%7D'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    environment:
+      ONTOP_ONTOLOGY_FILE: /opt/ontop/input/university.ttl
+      ONTOP_MAPPING_FILE: /opt/ontop/input/university.clean.obda
+      ONTOP_PROPERTIES_FILE: /opt/ontop/input/university.clean.docker.properties
+      ONTOP_CORS_ALLOWED_ORIGINS: '*'
+      ONTOP_DEV_MODE: '${ONTOP_DEV_MODE}'
+    ports:
+      - '0.0.0.0:${ONTOP_CLEAN_PORT:-8089}:8080'
+    volumes:
+      - ./vkg/obda:/opt/ontop/input
+      - ./jdbc:/opt/ontop/jdbc
+      - ./wait-for-it:/opt/wait-for-it
+    depends_on:
+      - "teiid-clean"
+    entrypoint: [
+        "/opt/wait-for-it/wait-for-it.sh",
+        "teiid-clean:31000",
+        "--timeout=0",
+        "--strict",
+        "--",
+        "/opt/ontop/entrypoint.sh" ]
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      ONTOP_ENDPOINT: "http://ontop-teiid-clean:8080/sparql"
+      METADATA_SOURCE: "${METADATA_SOURCE:-ontology}"
+      ONTOLOGY_FILE: "/app/vkg/obda/university.ttl"
+      OBDA_FILE: "/app/vkg/obda/university.clean.obda"
+      TEIID_HOST: "${CLEAN_API_TEIID_HOST:-teiid-clean}"
+      TEIID_PORT: "${TEIID_PORT:-35432}"
+      TEIID_DB: "${TEIID_DB:-universities}"
+      TEIID_USER: "${TEIID_USER:-user1}"
+      TEIID_PASSWORD: "${TEIID_PASSWORD:-Password12345_}"
+    ports:
+      - '0.0.0.0:${API_PORT:-8000}:8000'
+    volumes:
+      - ./vkg/obda:/app/vkg/obda:ro
+    depends_on:
+      ontop-teiid-clean:
+        condition: service_healthy
+        required: false
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - '0.0.0.0:${FRONTEND_PORT:-5173}:80'
+    depends_on:
+      api:
+        condition: service_started
+        required: false
+
+volumes:
+  data-mysql-clean: { }
+  data-pgsql-clean: { }
+  data-mssql-clean: { }
+  teiid-clean-standalone-configuration: { }
+  teiid-clean-domain-configuration: { }
+  teiid-clean-population-standalone-configuration: { }
+  teiid-clean-population-domain-configuration: { }

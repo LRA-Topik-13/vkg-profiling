@@ -167,24 +167,15 @@ INSERT INTO `teaching` VALUES (1234,1),(1234,2),(1235,1),(1235,3),(1236,4),(1236
 /*!40000 ALTER TABLE `teaching` ENABLE KEYS */;
 UNLOCK TABLES;
 
---
--- Legacy roster table: source-system students that have not been mapped into the VKG.
---
-
-DROP TABLE IF EXISTS `legacy_student`;
-CREATE TABLE `legacy_student` (
+DROP TABLE IF EXISTS `student_unmapped`;
+CREATE TABLE `student_unmapped` (
   `s_id` int NOT NULL,
   `first_name` varchar(40) NOT NULL,
   `last_name` varchar(40) NOT NULL,
-  `birth_date` date NOT NULL,
-  `email` varchar(100) NOT NULL,
+  `birth_date` date NULL,
+  `email` varchar(100) NULL,
   PRIMARY KEY (`s_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
-INSERT INTO `legacy_student` VALUES
-  (9001,'Alice','Legacy','2000-03-21','alice.legacy@gmail.com'),
-  (9002,'Bob','Legacy','2001-07-14','bob.legacy@gmail.com'),
-  (9003,'Carol','Legacy','2002-11-30','carol.legacy@gmail.com');
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
